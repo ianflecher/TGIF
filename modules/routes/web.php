@@ -4,8 +4,59 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 use Livewire\Volt\Volt;
 
+// ====================
+// CUSTOMER ROUTES (Root)
+// ====================
 
-Volt::route('/', 'dashboard')->name('dashboard');
+Volt::route('/', 'landingpage')->name('landingpage');
+
+// Customer Dashboard
+Volt::route('/customerdashboard', 'customer.dashboard')->name('customer.dashboard');
+
+// Customer Profile
+Volt::route('/my-account', 'customer.account.index')->name('customer.account.index');
+Volt::route('/my-account/profile', 'customer.account.profile')->name('customer.account.profile');
+Volt::route('/my-account/addresses', 'customer.account.addresses')->name('customer.account.addresses');
+Volt::route('/my-account/security', 'customer.account.security')->name('customer.account.security');
+
+// Customer Orders
+Volt::route('/my-orders', 'customer.orders.index')->name('customer.orders.index');
+Volt::route('/my-orders/{order}', 'customer.orders.show')->name('customer.orders.show');
+Volt::route('/order-tracking/{order}', 'customer.orders.tracking')->name('customer.orders.tracking');
+
+// Customer Support
+Volt::route('/support', 'customer.support.index')->name('customer.support.index');
+Volt::route('/support/tickets', 'customer.support.tickets')->name('customer.support.tickets');
+Volt::route('/support/tickets/create', 'customer.support.ticket-create')->name('customer.support.ticket-create');
+Volt::route('/support/tickets/{ticket}', 'customer.support.ticket-show')->name('customer.support.ticket-show');
+Volt::route('/support/faq', 'customer.support.faq')->name('customer.support.faq');
+Volt::route('/support/contact', 'customer.support.contact')->name('customer.support.contact');
+
+// E-commerce Customer Side
+Volt::route('/products', 'customer.products.index')->name('customer.products.index');
+Volt::route('/products/category/{category}', 'customer.products.category')->name('customer.products.category');
+Volt::route('/products/{product}', 'customer.products.show')->name('customer.products.show');
+Volt::route('/cart', 'customer.cart.index')->name('customer.cart.index');
+Volt::route('/checkout', 'customer.checkout.index')->name('customer.checkout.index');
+Volt::route('/checkout/success', 'customer.checkout.success')->name('customer.checkout.success');
+
+// Customer Invoices & Payments
+Volt::route('/my-invoices', 'customer.invoices.index')->name('customer.invoices.index');
+Volt::route('/my-invoices/{invoice}', 'customer.invoices.show')->name('customer.invoices.show');
+Volt::route('/make-payment/{invoice}', 'customer.payments.create')->name('customer.payments.create');
+
+// Customer Wishlist
+Volt::route('/my-wishlist', 'customer.wishlist.index')->name('customer.wishlist.index');
+
+// Customer Reviews
+Volt::route('/my-reviews', 'customer.reviews.index')->name('customer.reviews.index');
+Volt::route('/write-review/{product}', 'customer.reviews.create')->name('customer.reviews.create');
+
+// ====================
+// ADMIN ROUTES
+// ====================
+
+Volt::route('/admin', 'dashboard')->name('dashboard');
 
 // Project Management Module
 Volt::route('/projects', 'projects.home')->name('projects.home');
