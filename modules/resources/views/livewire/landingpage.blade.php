@@ -123,7 +123,8 @@ new #[Layout('components.layouts.landing')] class extends Component
                     </p>
                     
                     <div class="flex flex-col sm:flex-row gap-4 mb-12">
-                        <a href="{{ route('customer.products.index') }}" 
+                        <!-- Use route('products.index') instead of customer.products.index -->
+                        <a href="{{ route('products.index') }}" 
                            class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-all duration-300 shadow-lg hover:shadow-xl">
                             <i class="fas fa-shopping-cart mr-3"></i>
                             Order Now
@@ -196,7 +197,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                             </div>
                         @endif
                         <div class="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                            ${{ number_format($product->price, 2) }}
+                            ₱{{ number_format($product->price, 2) }}
                         </div>
                     </div>
                     <div class="p-5">
@@ -213,12 +214,14 @@ new #[Layout('components.layouts.landing')] class extends Component
                             </div>
                             @auth
                                 @if(auth()->user()->role === 'customer')
-                                    <a href="{{ route('customer.products.show', $product->product_id) }}" 
+                                    <!-- Use route('products.show') -->
+                                    <a href="{{ route('products.show', $product->product_id) }}" 
                                        class="text-green-600 hover:text-green-700 font-medium text-sm">
                                         Order Now
                                     </a>
                                 @endif
                             @else
+                                <!-- Use route('login') -->
                                 <a href="{{ route('login') }}" class="text-green-600 hover:text-green-700 font-medium text-sm">
                                     Order Now
                                 </a>
@@ -231,7 +234,8 @@ new #[Layout('components.layouts.landing')] class extends Component
             
             @if(count($featuredProducts) > 0)
             <div class="text-center mt-12">
-                <a href="{{ route('customer.products.index') }}" 
+                <!-- Use route('products.index') -->
+                <a href="{{ route('products.index') }}" 
                    class="inline-flex items-center justify-center px-8 py-3 text-lg font-semibold text-white bg-green-600 rounded-xl hover:bg-green-700 transition-all duration-300 shadow-lg hover:shadow-xl">
                     View Full Menu <i class="fas fa-arrow-right ml-3"></i>
                 </a>
@@ -270,7 +274,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                         </div>
                         <h4 class="font-bold text-gray-900 text-center mb-2">{{ $product->product_name }}</h4>
                         <div class="text-center">
-                            <div class="text-green-600 font-bold text-lg">${{ number_format($product->price, 2) }}</div>
+                            <div class="text-green-600 font-bold text-lg">₱{{ number_format($product->price, 2) }}</div>
                             <div class="text-sm text-gray-500 mt-1">{{ $product->sold_count ?? 0 }} orders</div>
                         </div>
                     </div>
@@ -293,19 +297,22 @@ new #[Layout('components.layouts.landing')] class extends Component
                 <div class="flex flex-col sm:flex-row gap-4 justify-center">
                     @auth
                         @if(auth()->user()->role === 'customer')
-                            <a href="{{ route('customer.products.index') }}" 
+                            <!-- Use route('products.index') -->
+                            <a href="{{ route('products.index') }}" 
                                class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-green-600 bg-white rounded-xl hover:bg-gray-100 transition-all duration-300 shadow-lg">
                                 <i class="fas fa-bolt mr-3"></i>
                                 Order Now
                             </a>
                         @else
-                            <a href="{{ route('dashboard') }}" 
+                            <!-- Use route('admin.dashboard') -->
+                            <a href="{{ route('admin.dashboard') }}" 
                                class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-green-600 bg-white rounded-xl hover:bg-gray-100 transition-all duration-300 shadow-lg">
                                 <i class="fas fa-chart-line mr-3"></i>
                                 Admin Dashboard
                             </a>
                         @endif
                     @else
+                        <!-- Use route('register') -->
                         <a href="{{ route('register') }}" 
                            class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-green-600 bg-white rounded-xl hover:bg-gray-100 transition-all duration-300 shadow-lg">
                             <i class="fas fa-user-plus mr-3"></i>
@@ -313,6 +320,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                         </a>
                     @endauth
                     
+                    <!-- Use route('customer.support.index') or create a public support route -->
                     <a href="{{ route('customer.support.index') }}" 
                        class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white border-2 border-white rounded-xl hover:bg-white/10 transition-all duration-300">
                         <i class="fas fa-question-circle mr-3"></i>

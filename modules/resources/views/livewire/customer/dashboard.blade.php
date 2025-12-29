@@ -5,7 +5,7 @@ use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
-new #[Layout('components.layouts.customerapp')] class extends Component
+new #[Layout('components.layouts.customerappblade')] class extends Component
 {
     public array $orderSummary = [];
     public array $recentOrders = [];
@@ -243,7 +243,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                     Here's what's happening with your orders and account.
                 </p>
             </div>
-            <a href="{{ route('customer.products.index') }}" 
+            <a href="{{ route('products.index') }}" 
                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors">
                 🛍️ Shop Now
             </a>
@@ -368,7 +368,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                         <div class="flex flex-col items-center">
                                             <span class="text-3xl mb-2">📦</span>
                                             <p>No orders found</p>
-                                            <a href="{{ route('customer.products.index') }}" class="mt-2 text-blue-600 hover:text-blue-800">
+                                            <a href="{{ route('products.index') }}" class="mt-2 text-blue-600 hover:text-blue-800">
                                                 Start shopping →
                                             </a>
                                         </div>
@@ -387,7 +387,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                 <h3 class="font-bold text-gray-800 mb-4">Quick Actions</h3>
                 <div class="space-y-3">
-                    <a href="{{ route('customer.products.index') }}" 
+                    <a href="{{ route('products.index') }}" 
                        class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
                         <span class="text-xl mr-3">🛍️</span>
                         <span class="flex-1">Browse Products</span>
@@ -401,14 +401,14 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                         <span class="text-gray-400">→</span>
                     </a>
                     
-                    <a href="{{ route('customer.account.profile') }}" 
+                    <a href="#" 
                        class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
                         <span class="text-xl mr-3">👤</span>
                         <span class="flex-1">Update Profile</span>
                         <span class="text-gray-400">→</span>
                     </a>
                     
-                    <a href="{{ route('customer.wishlist.index') }}" 
+                    <a href="#" 
                        class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
                         <span class="text-xl mr-3">❤️</span>
                         <span class="flex-1">View Wishlist ({{ $wishlistItems }})</span>
@@ -459,7 +459,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                         <span class="font-medium">₱{{ number_format($totalSpent, 2) }}</span>
                     </div>
                 </div>
-                <a href="{{ route('customer.account.index') }}" 
+                <a href="#" 
                    class="mt-4 inline-block w-full text-center bg-white text-blue-700 hover:bg-blue-50 py-2 rounded-lg font-medium transition-colors">
                     Manage Account
                 </a>

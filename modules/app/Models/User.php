@@ -20,9 +20,14 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
+        'user_id',
+        'first_name',
+        'last_name',
+        'phone_number',
+        'address',
+        'loyalty_points',
+        'preferences',
+        'status'
     ];
 
     /**
@@ -60,5 +65,20 @@ class User extends Authenticatable
             ->take(2)
             ->map(fn ($word) => Str::substr($word, 0, 1))
             ->implode('');
+    }
+
+     protected $primaryKey = 'user_id'; // If your primary key is 'user_id'
+    public $incrementing = true;
+    protected $keyType = 'int';
+    
+    // Add this if you're using a different column name for id
+    public function getAuthIdentifierName()
+    {
+        return 'user_id';
+    }
+    
+    public function getAuthIdentifier()
+    {
+        return $this->user_id;
     }
 }
