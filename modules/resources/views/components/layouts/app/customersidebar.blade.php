@@ -1,720 +1,637 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
-    @include('partials.head')
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TGIF - Thanks G Its Fries Day</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Add custom blue theme colors -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    
-    <title>Thanks G Its Fries Day - Customer Portal</title>
-
     <style>
         :root {
-            --primary-blue: #3b82f6;
-            --dark-blue: #1d4ed8;
-            --light-blue: #dbeafe;
-            --navy-blue: #1e3a8a;
-            --sky-blue: #bfdbfe;
+            --primary-green: #22c55e;
+            --dark-green: #15803d;
+            --light-green: #dcfce7;
+            --forest-green: #14532d;
+            --mint-green: #bbf7d0;
         }
         
         body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             margin: 0;
             padding: 0;
-            overflow-x: hidden;
+            background: #f8fafc;
         }
         
-        .customer-header {
-            background: linear-gradient(135deg, var(--dark-blue) 0%, var(--navy-blue) 100%);
+        /* Compact Header - Matches Design Exactly */
+        .main-header {
+            background: linear-gradient(135deg, var(--dark-green) 0%, var(--forest-green) 100%);
             color: white;
-            padding: 0.8rem 1.5rem;
-            box-shadow: 0 2px 12px rgba(59, 130, 246, 0.2);
+            height: 60px;
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             z-index: 1000;
-            height: 60px;
+            box-shadow: 0 2px 12px rgba(21, 128, 61, 0.2);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 100%;
+            padding: 0 1.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* Logo Container */
+        .logo-container {
             display: flex;
             align-items: center;
-        }
-        
-        .customer-sidebar {
-            background: linear-gradient(180deg, var(--navy-blue) 0%, #172554 100%);
-            color: white;
-            width: 65px; /* Compact sidebar */
-            min-height: calc(100vh - 60px);
-            position: fixed;
-            left: 0;
-            top: 60px; /* Below header */
-            overflow-y: auto;
-            overflow-x: hidden;
-            padding: 15px 0;
-            box-shadow: 3px 0 15px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 999;
-        }
-        
-        .customer-sidebar:hover {
-            width: 220px; /* Expand on hover */
-        }
-        
-        .customer-sidebar h3 {
-            padding: 0 15px;
-            margin-bottom: 15px;
-            color: var(--sky-blue);
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 600;
-            opacity: 0;
-            white-space: nowrap;
-            transition: opacity 0.3s ease;
-        }
-        
-        .customer-sidebar:hover h3 {
-            opacity: 1;
-        }
-        
-        .customer-sidebar nav ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .customer-sidebar nav ul li {
-            margin-bottom: 2px;
-        }
-        
-        .customer-nav-item {
-            display: flex;
-            align-items: center;
-            padding: 12px 15px;
-            color: #e2e8f0;
+            gap: 10px;
             text-decoration: none;
-            transition: all 0.3s ease;
-            border-radius: 6px;
-            margin: 0 5px;
+        }
+        
+        .logo-icon {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            color: var(--dark-green);
+            font-size: 1.4rem;
+        }
+        
+        .logo-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+        
+        .company-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: white;
+        }
+        
+        .company-tagline {
+            font-size: 0.75rem;
+            opacity: 0.9;
+            color: var(--mint-green);
+        }
+        
+        /* Desktop Navigation */
+        .desktop-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .nav-item {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+            font-size: 0.875rem;
             font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
             white-space: nowrap;
             position: relative;
         }
         
-        .customer-nav-item:hover {
+        .nav-item:hover {
             background: rgba(255, 255, 255, 0.1);
             color: white;
         }
         
-        .customer-nav-item.active {
-            background: var(--primary-blue);
+        .nav-item.active {
+            background: var(--primary-green);
             color: white;
-            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+            animation: gentle-pulse 3s infinite;
         }
         
-        .customer-content {
-            margin-left: 65px; /* Match sidebar width */
-            margin-top: 60px; /* Match header height */
-            padding: 1.5rem;
-            min-height: calc(100vh - 60px);
-            background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 50%);
-            transition: margin-left 0.3s ease;
+        @keyframes gentle-pulse {
+            0%, 100% { box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3); }
+            50% { box-shadow: 0 2px 12px rgba(34, 197, 94, 0.5); }
         }
         
-        .customer-sidebar:hover + .customer-content,
-        .customer-content:hover {
-            margin-left: 220px; /* Expand when sidebar expands */
-        }
-        
-        .customer-icon {
-            min-width: 24px;
-            text-align: center;
-            font-size: 1.2rem;
-            margin-right: 0;
-            transition: margin-right 0.3s ease;
-        }
-        
-        .customer-sidebar:hover .customer-icon {
-            margin-right: 12px;
-        }
-        
-        .customer-nav-text {
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            font-size: 0.9rem;
-        }
-        
-        .customer-sidebar:hover .customer-nav-text {
-            opacity: 1;
-        }
-        
-        .customer-badge {
-            background: var(--primary-blue);
+        /* Notification Badge */
+        .notification-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #ef4444;
             color: white;
-            padding: 2px 6px;
-            border-radius: 10px;
             font-size: 0.7rem;
-            margin-left: auto;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .customer-sidebar:hover .customer-badge {
-            opacity: 1;
-        }
-        
-        /* Customer header content */
-        .customer-header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            width: 100%;
-        }
-        
-        .customer-logo-container {
+            font-weight: bold;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
         
-        .customer-logo-icon {
-            background: white;
-            padding: 6px;
-            border-radius: 8px;
-            color: var(--dark-blue);
-            font-size: 1.4rem;
+        /* User Dropdown */
+        .user-dropdown {
+            position: relative;
         }
         
-        .customer-logo-text {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .customer-company-name {
-            font-size: 1.2rem;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-        }
-        
-        .customer-company-tagline {
-            font-size: 0.75rem;
-            opacity: 0.9;
-            color: var(--sky-blue);
-        }
-        
-        /* User info in header */
-        .customer-user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
-        .customer-user-badge {
-            background: rgba(255, 255, 255, 0.15);
-            padding: 5px 15px;
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+        .user-dropdown-toggle {
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 0.85rem;
-        }
-        
-        .customer-logout-btn {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
-        }
-        
-        .customer-logout-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4);
-        }
-        
-        .welcome-text {
-            font-size: 0.9rem;
-            opacity: 0.9;
-            color: var(--sky-blue);
-            margin-right: 10px;
-        }
-        
-        /* Tooltip for compact mode */
-        .customer-tooltip {
-            position: absolute;
-            left: 100%;
-            top: 50%;
-            transform: translateY(-50%);
-            background: var(--navy-blue);
-            color: white;
             padding: 6px 12px;
-            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            color: white;
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .user-dropdown-toggle:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        
+        .user-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--primary-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 0.8rem;
-            white-space: nowrap;
+            font-weight: bold;
+        }
+        
+        .user-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            min-width: 200px;
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s ease;
-            box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
             z-index: 1001;
-            margin-left: 10px;
+            border: 1px solid #e5e7eb;
         }
         
-        .customer-tooltip::before {
-            content: '';
-            position: absolute;
-            right: 100%;
-            top: 50%;
-            transform: translateY(-50%);
-            border-width: 6px;
-            border-style: solid;
-            border-color: transparent var(--navy-blue) transparent transparent;
-        }
-        
-        .customer-nav-item:hover .customer-tooltip {
+        .user-dropdown-menu.active {
             opacity: 1;
             visibility: visible;
+            transform: translateY(0);
         }
         
-        .customer-sidebar:hover .customer-tooltip {
-            display: none;
+        .user-dropdown-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+            background: #f9fafb;
+            border-radius: 8px 8px 0 0;
         }
         
-        /* Blue scrollbar */
-        .customer-sidebar::-webkit-scrollbar {
-            width: 4px;
+        .user-name {
+            font-weight: 600;
+            color: #111827;
+            font-size: 0.875rem;
         }
         
-        .customer-sidebar::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.05);
+        .user-email {
+            font-size: 0.75rem;
+            color: #6b7280;
         }
         
-        .customer-sidebar::-webkit-scrollbar-thumb {
-            background: var(--primary-blue);
-            border-radius: 2px;
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            color: #374151;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-size: 0.875rem;
         }
         
-        /* Animation for active state */
-        @keyframes customer-pulse {
-            0%, 100% { box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3); }
-            50% { box-shadow: 0 2px 12px rgba(59, 130, 246, 0.5); }
+        .dropdown-item:hover {
+            background: #f0fdf4;
         }
         
-        .customer-nav-item.active {
-            animation: customer-pulse 3s infinite;
+        .dropdown-item i {
+            color: var(--dark-green);
+            width: 16px;
         }
         
-        /* Mobile menu toggle */
-        .customer-menu-toggle {
+        .dropdown-divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 4px 0;
+        }
+        
+        .dropdown-item.logout {
+            color: #dc2626;
+        }
+        
+        .dropdown-item.logout:hover {
+            background: #fef2f2;
+        }
+        
+        .dropdown-item.logout i {
+            color: #dc2626;
+        }
+        
+        /* Mobile Toggle */
+        .mobile-toggle {
             display: none;
             background: none;
             border: none;
             color: white;
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             cursor: pointer;
-            padding: 5px;
-            margin-right: 10px;
+            padding: 8px;
         }
         
-        /* Responsive design */
+        /* Mobile Menu */
+        .mobile-menu {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+            transform: translateY(-100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 999;
+            border-radius: 0 0 12px 12px;
+        }
+        
+        .mobile-menu.active {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        
+        .mobile-nav-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            color: #374151;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .mobile-nav-item:hover {
+            background: #f0fdf4;
+        }
+        
+        .mobile-nav-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .mobile-user-info {
+            padding: 12px 16px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        /* Responsive */
         @media (max-width: 768px) {
-            .customer-sidebar {
-                width: 55px;
+            .header-content {
+                padding: 0 1rem;
             }
             
-            .customer-sidebar:hover {
-                width: 200px;
-            }
-            
-            .customer-content {
-                margin-left: 55px;
-                padding: 1rem;
-            }
-            
-            .customer-sidebar:hover + .customer-content {
-                margin-left: 200px;
-            }
-            
-            .customer-company-name {
-                font-size: 1rem;
-            }
-            
-            .customer-company-tagline {
+            .desktop-nav {
                 display: none;
             }
             
-            .welcome-text {
-                display: none;
-            }
-            
-            .customer-user-badge span:last-child {
-                display: none;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .customer-menu-toggle {
+            .mobile-toggle {
                 display: block;
             }
             
-            .customer-sidebar {
-                transform: translateX(-100%);
-                width: 200px;
+            .company-tagline {
+                display: none;
             }
             
-            .customer-sidebar.mobile-open {
-                transform: translateX(0);
+            .company-name {
+                font-size: 1rem;
             }
             
-            .customer-content {
-                margin-left: 0;
+            .user-dropdown-toggle span:not(.user-avatar) {
+                display: none;
             }
         }
         
-        /* Customer-specific styles */
-        .order-notification {
-            position: absolute;
-            right: -5px;
-            top: -5px;
-            background: #ef4444;
-            color: white;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            font-size: 0.7rem;
+        @media (min-width: 769px) {
+            .mobile-menu {
+                display: none;
+            }
+        }
+        
+        /* User Stats */
+        .user-stats {
             display: flex;
             align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            gap: 12px;
         }
         
-        .customer-sidebar:hover .order-notification {
-            opacity: 1;
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.9);
         }
         
-        .section-divider {
-            height: 1px;
-            background: rgba(255, 255, 255, 0.1);
-            margin: 15px 10px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .customer-sidebar:hover .section-divider {
-            opacity: 1;
+        .stat-item i {
+            color: var(--mint-green);
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body>
+    <!-- Compact Header -->
+    <header class="main-header">
+        <div class="header-content">
+            <!-- Logo -->
+            <a href="{{ route('customer.dashboard') }}" class="logo-container">
+                <div class="logo-icon" style="display: flex; align-items: center; justify-content: center;">
+                    @if(file_exists(public_path('TGIF.png')))
+                        <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 100px; width: auto;">
+                    @else
+                        <div style="background: white; color: var(--dark-green); font-weight: bold; padding: 4px 8px; border-radius: 6px;">
+                            TGIF
+                        </div>
+                    @endif
+                </div>
+                <div class="logo-text">
+                    <div class="company-name">Thanks G Its Fries Day</div>
+                    <div class="company-tagline">Customer Portal</div>
+                </div>
+            </a>
 
-<!-- Customer Header -->
-<header class="customer-header">
-    <div class="customer-header-content">
-        <button class="customer-menu-toggle" onclick="toggleCustomerMobileMenu()">☰</button>
-        <div class="customer-logo-container">
-            <div class="customer-logo-icon">
-                🍟
-            </div>
-            <div class="customer-logo-text">
-                <div class="customer-company-name">Thanks G Its Fries Day</div>
-                <div class="customer-company-tagline">Customer Portal</div>
-            </div>
+            <!-- Desktop Navigation -->
+            <nav class="desktop-nav">
+                <!-- Shop Link -->
+                <a href="{{ route('customer.products.index') }}" class="nav-item {{ request()->routeIs('customer.products.*') ? 'active' : '' }}">
+                    <i class="fas fa-store text-sm"></i>
+                    Shop
+                </a>
+                
+                <!-- Cart with Badge - FIXED: Using session instead of model method -->
+                <a href="{{ route('customer.cart.index') }}" class="nav-item {{ request()->routeIs('customer.cart.*') ? 'active' : '' }}">
+                    <i class="fas fa-shopping-cart text-sm"></i>
+                    Cart
+                    @php
+                        // Get cart from session instead of calling undefined cartItems() method
+                        $cart = session()->get('cart', []);
+                        $cartCount = array_sum(array_column($cart, 'quantity'));
+                    @endphp
+                    @if($cartCount > 0)
+                        <span class="notification-badge">{{ $cartCount }}</span>
+                    @endif
+                </a>
+                
+                <!-- Orders -->
+                <a href="{{ route('customer.orders.index') }}" class="nav-item {{ request()->routeIs('customer.orders.*') ? 'active' : '' }}">
+                    <i class="fas fa-box text-sm"></i>
+                    Orders
+                </a>
+                
+                <!-- User Dropdown -->
+                <div class="user-dropdown">
+                    <div class="user-dropdown-toggle" id="userDropdownToggle">
+                        <div class="user-avatar">
+                            {{ strtoupper(substr(Auth::user()->name, 0, 1)) }}
+                        </div>
+                        <span>{{ Auth::user()->name }}</span>
+                        <i class="fas fa-chevron-down text-xs"></i>
+                    </div>
+                    
+                    <div class="user-dropdown-menu" id="userDropdownMenu">
+                        <!-- User Info -->
+                        <div class="user-dropdown-header">
+                            <div class="user-name">{{ Auth::user()->name }}</div>
+                            <div class="user-email">{{ Auth::user()->email }}</div>
+                        </div>
+                        
+                        <!-- Dashboard -->
+                        <a href="{{ route('customer.dashboard') }}" class="dropdown-item {{ request()->routeIs('customer.dashboard') ? 'active' : '' }}">
+                            <i class="fas fa-tachometer-alt"></i>
+                            Dashboard
+                        </a>
+                        
+                        <!-- Profile -->
+                        <a href="{{ route('customer.account.profile') }}" class="dropdown-item {{ request()->routeIs('customer.account.*') ? 'active' : '' }}">
+                            <i class="fas fa-user-circle"></i>
+                            My Profile
+                        </a>
+                        
+                        <!-- Orders -->
+                        <a href="{{ route('customer.orders.index') }}" class="dropdown-item">
+                            <i class="fas fa-box"></i>
+                            My Orders
+                        </a>
+                        
+                        <div class="dropdown-divider"></div>
+                        
+                        <!-- Logout -->
+                        <form method="POST" action="{{ route('logout') }}" class="w-full">
+                            @csrf
+                            <button type="submit" class="dropdown-item logout w-full text-left">
+                                <i class="fas fa-sign-out-alt"></i>
+                                Logout
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Mobile Toggle -->
+            <button class="mobile-toggle" id="mobileToggle">
+                <i class="fas fa-bars"></i>
+            </button>
         </div>
-        <div class="customer-user-info">
-            <span class="welcome-text">Welcome back,</span>
-            <div class="customer-user-badge">
-                <span style="color: var(--sky-blue);">👤</span>
-                <span>{{ Auth::user()->name ?? 'Customer' }}</span>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <!-- User Info -->
+        <div class="mobile-user-info">
+            <div class="font-medium text-gray-900">{{ Auth::user()->name }}</div>
+            <div class="text-sm text-gray-600">{{ Auth::user()->email }}</div>
+        </div>
+        
+        <div class="space-y-2">
+            <!-- Dashboard -->
+            <a href="{{ route('customer.dashboard') }}" class="mobile-nav-item {{ request()->routeIs('customer.dashboard') ? 'active' : '' }}">
+                <div class="mobile-nav-left">
+                    <i class="fas fa-tachometer-alt text-green-600"></i>
+                    <span>Dashboard</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </a>
+            
+            <!-- Shop -->
+            <a href="{{ route('customer.products.index') }}" class="mobile-nav-item {{ request()->routeIs('customer.products.*') ? 'active' : '' }}">
+                <div class="mobile-nav-left">
+                    <i class="fas fa-store text-green-600"></i>
+                    <span>Shop</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </a>
+            
+            <!-- Cart -->
+            <a href="{{ route('customer.cart.index') }}" class="mobile-nav-item {{ request()->routeIs('customer.cart.*') ? 'active' : '' }}">
+                <div class="mobile-nav-left">
+                    <i class="fas fa-shopping-cart text-green-600"></i>
+                    <span>Cart</span>
+                    @if($cartCount > 0)
+                        <span class="ml-2 px-2 py-1 text-xs bg-red-500 text-white rounded-full">{{ $cartCount }}</span>
+                    @endif
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </a>
+            
+            <!-- Orders -->
+            <a href="{{ route('customer.orders.index') }}" class="mobile-nav-item {{ request()->routeIs('customer.orders.*') ? 'active' : '' }}">
+                <div class="mobile-nav-left">
+                    <i class="fas fa-box text-green-600"></i>
+                    <span>Orders</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </a>
+            
+            <!-- Profile -->
+            <a href="{{ route('customer.account.profile') }}" class="mobile-nav-item">
+                <div class="mobile-nav-left">
+                    <i class="fas fa-user-circle text-green-600"></i>
+                    <span>Profile</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </a>
+            
+            <!-- Support -->
+            <a href="{{ route('customer.support.tickets') }}" class="mobile-nav-item">
+                <div class="mobile-nav-left">
+                    <i class="fas fa-headset text-green-600"></i>
+                    <span>Support</span>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </a>
+            
+            <!-- Divider -->
+            <div class="border-t border-gray-200 pt-2 mt-2">
+                <form method="POST" action="{{ route('logout') }}" class="w-full">
+                    @csrf
+                    <button type="submit" class="mobile-nav-item text-red-600 w-full text-left">
+                        <div class="mobile-nav-left">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span>Logout</span>
+                        </div>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </form>
             </div>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="customer-logout-btn">
-                    Logout
-                </button>
-            </form>
         </div>
     </div>
-</header>
 
-<!-- Customer Sidebar -->
-<aside class="customer-sidebar" id="customerSidebar">
-    <h3>🏠 My Account</h3>
-    <nav>
-        <ul>
-            <li>
-                <a href="{{ route('customer.dashboard') }}" class="customer-nav-item {{ request()->routeIs('customer.dashboard') ? 'active' : '' }}">
-                    <span class="customer-icon">📊</span>
-                    <span class="customer-nav-text">Dashboard</span>
-                    <span class="customer-tooltip">Dashboard</span>
-                    <span class="customer-badge" style="display: {{ request()->routeIs('customer.dashboard') ? 'block' : 'none' }};">Home</span>
-                </a>
-            </li>
-        </ul>
-    </nav>
-    
-    <div class="section-divider"></div>
-    
-    <h3>🛍️ Shopping</h3>
-    <nav>
-        <ul>
-            <li>
-                <a href="{{ route('customer.products.index') }}" class="customer-nav-item {{ request()->routeIs('customer.products.*') ? 'active' : '' }}">
-                    <span class="customer-icon">📱</span>
-                    <span class="customer-nav-text">Browse Products</span>
-                    <span class="customer-tooltip">Browse Products</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.cart.index') }}" class="customer-nav-item {{ request()->routeIs('customer.cart.*') ? 'active' : '' }}">
-                    <span class="customer-icon">🛒</span>
-                    <span class="customer-nav-text">My Cart</span>
-                    <span class="customer-tooltip">Shopping Cart</span>
-                    <span class="order-notification">3</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.wishlist.index') }}" class="customer-nav-item {{ request()->routeIs('customer.wishlist.*') ? 'active' : '' }}">
-                    <span class="customer-icon">❤️</span>
-                    <span class="customer-nav-text">Wishlist</span>
-                    <span class="customer-tooltip">My Wishlist</span>
-                </a>
-            </li>
-        </ul>
-    </nav>
-    
-    <div class="section-divider"></div>
-    
-    <h3>📦 Orders & Invoices</h3>
-    <nav>
-        <ul>
-            <li>
-                <a href="{{ route('customer.orders.index') }}" class="customer-nav-item {{ request()->routeIs('customer.orders.*') ? 'active' : '' }}">
-                    <span class="customer-icon">📋</span>
-                    <span class="customer-nav-text">My Orders</span>
-                    <span class="customer-tooltip">Order History</span>
-                    <span class="order-notification">2</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.invoices.index') }}" class="customer-nav-item {{ request()->routeIs('customer.invoices.*') ? 'active' : '' }}">
-                    <span class="customer-icon">🧾</span>
-                    <span class="customer-nav-text">Invoices</span>
-                    <span class="customer-tooltip">My Invoices</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.checkout.index') }}" class="customer-nav-item {{ request()->routeIs('customer.checkout.*') ? 'active' : '' }}">
-                    <span class="customer-icon">💳</span>
-                    <span class="customer-nav-text">Checkout</span>
-                    <span class="customer-tooltip">Proceed to Checkout</span>
-                </a>
-            </li>
-        </ul>
-    </nav>
-    
-    <div class="section-divider"></div>
-    
-    <h3>👤 Account</h3>
-    <nav>
-        <ul>
-            <li>
-                <a href="{{ route('customer.account.profile') }}" class="customer-nav-item {{ request()->routeIs('customer.account.*') ? 'active' : '' }}">
-                    <span class="customer-icon">👤</span>
-                    <span class="customer-nav-text">My Profile</span>
-                    <span class="customer-tooltip">Profile Settings</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.account.addresses') }}" class="customer-nav-item {{ request()->routeIs('customer.account.*') ? 'active' : '' }}">
-                    <span class="customer-icon">📍</span>
-                    <span class="customer-nav-text">Addresses</span>
-                    <span class="customer-tooltip">Shipping Addresses</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.account.security') }}" class="customer-nav-item {{ request()->routeIs('customer.account.*') ? 'active' : '' }}">
-                    <span class="customer-icon">🔒</span>
-                    <span class="customer-nav-text">Security</span>
-                    <span class="customer-tooltip">Password & Security</span>
-                </a>
-            </li>
-        </ul>
-    </nav>
-    
-    <div class="section-divider"></div>
-    
-    <h3>💬 Support</h3>
-    <nav>
-        <ul>
-            <li>
-                <a href="{{ route('customer.support.tickets') }}" class="customer-nav-item {{ request()->routeIs('customer.support.*') ? 'active' : '' }}">
-                    <span class="customer-icon">🎫</span>
-                    <span class="customer-nav-text">Support Tickets</span>
-                    <span class="customer-tooltip">Customer Support</span>
-                    <span class="order-notification">1</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.support.faq') }}" class="customer-nav-item {{ request()->routeIs('customer.support.*') ? 'active' : '' }}">
-                    <span class="customer-icon">❓</span>
-                    <span class="customer-nav-text">FAQ</span>
-                    <span class="customer-tooltip">Frequently Asked Questions</span>
-                </a>
-            </li>
-            <li>
-                <a href="{{ route('customer.support.contact') }}" class="customer-nav-item {{ request()->routeIs('customer.support.*') ? 'active' : '' }}">
-                    <span class="customer-icon">📞</span>
-                    <span class="customer-nav-text">Contact Us</span>
-                    <span class="customer-tooltip">Get in Touch</span>
-                </a>
-            </li>
-        </ul>
-    </nav>
-    
-    <div class="section-divider"></div>
-    
-    <h3>⭐ Feedback</h3>
-    <nav>
-        <ul>
-            <li>
-                <a href="{{ route('customer.reviews.index') }}" class="customer-nav-item {{ request()->routeIs('customer.reviews.*') ? 'active' : '' }}">
-                    <span class="customer-icon">⭐</span>
-                    <span class="customer-nav-text">My Reviews</span>
-                    <span class="customer-tooltip">Product Reviews</span>
-                </a>
-            </li>
-        </ul>
-    </nav>
-</aside>
+    <!-- Main Content Area -->
+    <main class="pt-16">
+        {{ $slot }}
+    </main>
 
-<!-- Customer Content -->
-<main class="customer-content" id="customerContent">
-    {{ $slot }}
-</main>
-
-<!-- JavaScript for Interactions -->
-<script>
-    // Toggle mobile menu
-    function toggleCustomerMobileMenu() {
-        const sidebar = document.getElementById('customerSidebar');
-        sidebar.classList.toggle('mobile-open');
-    }
-    
-    // Close mobile menu when clicking outside
-    document.addEventListener('click', function(event) {
-        const sidebar = document.getElementById('customerSidebar');
-        const menuToggle = document.querySelector('.customer-menu-toggle');
-        
-        if (window.innerWidth <= 480 && 
-            !sidebar.contains(event.target) && 
-            !menuToggle.contains(event.target) && 
-            sidebar.classList.contains('mobile-open')) {
-            sidebar.classList.remove('mobile-open');
-        }
-    });
-    
-    // Handle sidebar hover behavior
-    const customerSidebar = document.getElementById('customerSidebar');
-    const customerContent = document.getElementById('customerContent');
-    
-    customerSidebar.addEventListener('mouseenter', function() {
-        if (window.innerWidth > 768) {
-            this.style.width = '220px';
-            customerContent.style.marginLeft = '220px';
-        }
-    });
-    
-    customerSidebar.addEventListener('mouseleave', function() {
-        if (window.innerWidth > 768) {
-            this.style.width = '65px';
-            customerContent.style.marginLeft = '65px';
-        }
-    });
-    
-    // Update active state
-    document.addEventListener('DOMContentLoaded', function() {
-        const currentPath = window.location.pathname;
-        const navItems = document.querySelectorAll('.customer-nav-item');
-        
-        navItems.forEach(item => {
-            const href = item.getAttribute('href');
-            if (href && currentPath.includes(href.replace(/\/$/, '')) && href !== '/') {
-                item.classList.add('active');
-                const badge = item.querySelector('.customer-badge');
-                if (badge) {
-                    badge.style.display = 'block';
-                }
+    <script>
+        // Wrap everything in an IIFE to avoid redeclaration
+        (function() {
+            // Initialize only if not already initialized
+            if (window.customerHeaderInitialized) {
+                return;
             }
-        });
-        
-        // Auto-close mobile menu on item click
-        if (window.innerWidth <= 480) {
-            document.querySelectorAll('.customer-nav-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    customerSidebar.classList.remove('mobile-open');
+            
+            window.customerHeaderInitialized = true;
+            
+            // Mobile menu toggle
+            const mobileToggle = document.getElementById('mobileToggle');
+            const mobileMenu = document.getElementById('mobileMenu');
+            
+            if (mobileToggle) {
+                mobileToggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    mobileMenu.classList.toggle('active');
+                });
+            }
+            
+            // User dropdown toggle
+            const userDropdownToggle = document.getElementById('userDropdownToggle');
+            const userDropdownMenu = document.getElementById('userDropdownMenu');
+            
+            if (userDropdownToggle) {
+                userDropdownToggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    userDropdownMenu.classList.toggle('active');
+                });
+            }
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', (e) => {
+                // Close mobile menu
+                if (mobileToggle && mobileMenu && !mobileToggle.contains(e.target) && !mobileMenu.contains(e.target)) {
+                    mobileMenu.classList.remove('active');
+                }
+                
+                // Close user dropdown
+                if (userDropdownToggle && userDropdownMenu && !userDropdownToggle.contains(e.target) && !userDropdownMenu.contains(e.target)) {
+                    userDropdownMenu.classList.remove('active');
+                }
+            });
+            
+            // Close mobile menu when clicking a link
+            if (mobileMenu) {
+                document.querySelectorAll('#mobileMenu a, #mobileMenu button').forEach(element => {
+                    element.addEventListener('click', () => {
+                        mobileMenu.classList.remove('active');
+                    });
+                });
+            }
+            
+            // Update active nav items based on current URL
+            document.addEventListener('DOMContentLoaded', () => {
+                const currentPath = window.location.pathname;
+                const navItems = document.querySelectorAll('.nav-item, .mobile-nav-item');
+                
+                navItems.forEach(item => {
+                    const href = item.getAttribute('href');
+                    if (href && currentPath.includes(href.replace(/\/$/, '')) && href !== '/') {
+                        item.classList.add('active');
+                    }
                 });
             });
-        }
-        
-        // Add notification counts (these would come from your backend)
-        updateNotificationCounts();
-    });
-    
-    // Simulate notification updates
-    function updateNotificationCounts() {
-        // In a real app, you would fetch these from your API
-        const notifications = {
-            cart: 3,
-            orders: 2,
-            tickets: 1
-        };
-        
-        // Update cart notification
-        const cartNotification = document.querySelector('a[href*="cart"] .order-notification');
-        if (cartNotification) {
-            cartNotification.textContent = notifications.cart;
-        }
-        
-        // Update orders notification
-        const ordersNotification = document.querySelector('a[href*="orders"] .order-notification');
-        if (ordersNotification) {
-            ordersNotification.textContent = notifications.orders;
-        }
-        
-        // Update tickets notification
-        const ticketsNotification = document.querySelector('a[href*="tickets"] .order-notification');
-        if (ticketsNotification) {
-            ticketsNotification.textContent = notifications.tickets;
-        }
-    }
-</script>
-
+            
+            // Listen for cart updates from other components
+            document.addEventListener('cart-updated', function() {
+                // Reload the page or make an AJAX request to update cart count
+                location.reload();
+            });
+        })();
+    </script>
 </body>
 </html>
