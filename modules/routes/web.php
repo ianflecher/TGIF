@@ -12,6 +12,7 @@ Volt::route('/', 'landingpage')->name('landing');
 
 // Authentication Routes
 Volt::route('/login', 'auth.login')->name('login');
+Volt::route('/admin/login', 'auth.adminlogin')->name('admin.login');
 Volt::route('/register', 'auth.register')->name('register');
 Volt::route('/forgot-password', 'auth.forgot-password')->name('password.request');
 Volt::route('/reset-password/{token}', 'auth.reset-password')->name('password.reset');
@@ -52,7 +53,7 @@ Volt::route('customer/products', 'customer.products.index')->name('customer.prod
 // ====================
 
 // Admin Dashboard
-Volt::route('/admin', 'admin.dashboard')->name('admin.dashboard');
+Volt::route('/admin', 'dashboard')->name('admin.dashboard');
 
 // Admin Products
 Volt::route('/admin/products', 'admin.products.index')->name('admin.products.index');
@@ -76,6 +77,26 @@ Volt::route('/admin/reports', 'admin.reports.index')->name('admin.reports.index'
 // Admin Settings
 Volt::route('/admin/settings', 'admin.settings.index')->name('admin.settings.index');
 
+Volt::route('/admin/projects', 'projects.home')->name('projects.home');
+
+Volt::route('/admin/sales', 'sales.home')->name('sales.home');
+
+Volt::route('/admin/inventory', 'inventory.home')->name('inventory.home');
+
+Volt::route('/admin/customerservice', 'customerservice.home')->name('customerservice.home');
+
+Volt::route('/admin/hr', 'hr.home')->name('hr.home');
+
+Volt::route('/admin/procurement', 'procurement.home')->name('procurement.home');
+
+
+Volt::route('/admin/supplychain', 'supplychain.home')->name('supplychain.home');
+
+Volt::route('/admin/finance', 'finance.home')->name('finance.home');
+
+Volt::route('/admin/ecommerce', 'ecommerce.home')->name('ecommerce.home');
+
+Volt::route('/admin/reports', 'reports.home')->name('reports.home');
 // ====================
 // FALLBACK ROUTE
 // ====================

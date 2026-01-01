@@ -431,7 +431,7 @@
         <nav>
             <ul>
                 <li>
-                    <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                    <a href="{{ route('admin.dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
                         <span class="module-icon">📊</span>
                         <span class="nav-text">Dashboard</span>
                         <span class="nav-tooltip">Dashboard</span>
