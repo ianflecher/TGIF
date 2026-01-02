@@ -128,7 +128,7 @@ new #[Layout('components.layouts.app')] class extends Component
     
     public function formatCurrency($amount)
     {
-        return '$' . number_format($amount, 2);
+        return '₱' . number_format($amount, 2);
     }
     
     public function formatNumber($number)
@@ -550,13 +550,6 @@ new #[Layout('components.layouts.app')] class extends Component
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
                 </svg>
                 <span class="font-medium text-gray-800">Manage Products</span>
-            </a>
-            
-            <a href="{{ route('ecommerce.storefront') }}" class="flex flex-col items-center justify-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-purple-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
-                </svg>
-                <span class="font-medium text-gray-800">Storefront</span>
             </a>
             
             <a href="{{ route('ecommerce.orders') }}?view=reports" class="flex flex-col items-center justify-center p-4 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
