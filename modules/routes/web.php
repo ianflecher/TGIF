@@ -13,6 +13,8 @@ Volt::route('/', 'landingpage')->name('landing');
 // Authentication Routes
 Volt::route('/login', 'auth.login')->name('login');
 Volt::route('/admin/login', 'auth.adminlogin')->name('admin.login');
+Volt::route('/employee/login', 'auth.employeelogin')->name('employee.login');
+Volt::route('/applicant/login', 'auth.applicantlogin')->name('applicant.login');
 Volt::route('/register', 'auth.register')->name('register');
 Volt::route('/forgot-password', 'auth.forgot-password')->name('password.request');
 Volt::route('/reset-password/{token}', 'auth.reset-password')->name('password.reset');
@@ -97,6 +99,16 @@ Volt::route('/admin/finance', 'finance.home')->name('finance.home');
 Volt::route('/admin/ecommerce', 'ecommerce.home')->name('ecommerce.home');
 
 Volt::route('/admin/reports', 'reports.home')->name('reports.home');
+
+Volt::route('/employee/dashboard', 'employee.index')->name('employee.dashboard');
+
+
+Volt::route('/employee/tasks', 'employee.tasks')->name('employee.tasks');
+Volt::route('/employee/attendance', 'employee.attendance')->name('employee.attendance');
+Volt::route('/employee/schedule', 'employee.schedule')->name('employee.schedule');
+Volt::route('/employee/payroll', 'employee.payroll')->name('employee.payroll');
+
+Volt::route('/applicant', 'applicant.index')->name('applicant.index');
 // ====================
 // FALLBACK ROUTE
 // ====================

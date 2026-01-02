@@ -27,7 +27,12 @@ class User extends Authenticatable
         'address',
         'loyalty_points',
         'preferences',
-        'status'
+        'status',
+        'role',
+        'email',
+        'password',
+        'full_name',
+        'username',
     ];
 
     /**

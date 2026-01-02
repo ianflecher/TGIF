@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-new #[Layout('components.layouts.employee')] class extends Component
+new #[Layout('components.layouts.landing')] class extends Component
 {
     public string $username = '';
     public string $password = '';
@@ -35,7 +35,7 @@ new #[Layout('components.layouts.employee')] class extends Component
             $credentials['username'] = $this->username;
         }
 
-        // Check if user exists with admin role ONLY
+        // Check if user exists with employee role ONLY
         $userExists = DB::table('users')
             ->where(function($query) use ($credentials) {
                 if (isset($credentials['email'])) {
@@ -44,13 +44,44 @@ new #[Layout('components.layouts.employee')] class extends Component
                     $query->where('username', $credentials['username']);
                 }
             })
-            ->where('role', 'admin') // Only admin role
+            ->where('role', 'employee') // Only employee role
             ->whereNull('deleted_at')
             ->exists();
 
         if (!$userExists) {
             throw ValidationException::withMessages([
-                'username' => __('Access denied. Administrator credentials required.'),
+                'username' => __('Access denied. Employee credentials required.'),
+            ]);
+        }
+
+        // Check if employee record exists
+        $user = DB::table('users')
+            ->where(function($query) use ($credentials) {
+                if (isset($credentials['email'])) {
+                    $query->where('email', $credentials['email']);
+                } else {
+                    $query->where('username', $credentials['username']);
+                }
+            })
+            ->where('role', 'employee')
+            ->whereNull('deleted_at')
+            ->first(['user_id']);
+
+        if (!$user) {
+            throw ValidationException::withMessages([
+                'username' => __('Employee account not found.'),
+            ]);
+        }
+
+        // Check if employee record exists in employees table
+        $employeeExists = DB::table('employees')
+            ->where('user_id', $user->user_id)
+            ->where('status', 'active')
+            ->exists();
+
+        if (!$employeeExists) {
+            throw ValidationException::withMessages([
+                'username' => __('Employee account is inactive or not properly configured.'),
             ]);
         }
 
@@ -61,19 +92,19 @@ new #[Layout('components.layouts.employee')] class extends Component
             ]);
         }
 
-        // Verify the user is an admin
-        $user = Auth::user();
-        if ($user->role !== 'admin') {
+        // Verify the user has employee role
+        $authUser = Auth::user();
+        if ($authUser->role !== 'employee') {
             Auth::logout();
             throw ValidationException::withMessages([
-                'username' => __('Insufficient permissions. Administrator access required.'),
+                'username' => __('Employee access required.'),
             ]);
         }
 
         session()->regenerate();
 
-        // Redirect to admin dashboard using the named route
-        return redirect()->route('admin.dashboard');
+        // Redirect to employee dashboard using the named route
+        return redirect()->route('employee.dashboard');
     }
 }
 ?>
@@ -82,10 +113,10 @@ new #[Layout('components.layouts.employee')] class extends Component
         <!-- Brand Header -->
         <div class="text-center mb-8">
             <div class="mx-auto h-20 w-20 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mb-4 overflow-hidden border-2 border-emerald-200 shadow-lg">
-                <i class="fas fa-crown text-3xl text-white"></i>
+                <i class="fas fa-user-tie text-3xl text-white"></i>
             </div>
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Administrator Portal</h1>
-            <p class="text-gray-600">System Administrator Access Only</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Employee Portal</h1>
+            <p class="text-gray-600">Staff access to work dashboard</p>
         </div>
 
         <!-- Login Card -->
@@ -97,7 +128,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                     <!-- Username/Email -->
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
-                            Admin Username or Email
+                            Employee ID / Email
                         </label>
                         <div class="relative">
                             <input 
@@ -107,11 +138,11 @@ new #[Layout('components.layouts.employee')] class extends Component
                                 x-ref="username"
                                 required
                                 autofocus
-                                placeholder="admin@tgif.local"
+                                placeholder="employee@tgif.local"
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
-                                <i class="fas fa-user-tie"></i>
+                                <i class="fas fa-id-badge"></i>
                             </div>
                         </div>
                         @error('username')
@@ -123,8 +154,11 @@ new #[Layout('components.layouts.employee')] class extends Component
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <label for="password" class="block text-sm font-medium text-gray-700">
-                                Admin Password
+                                Password
                             </label>
+                            <a href="#" class="text-sm text-green-600 hover:text-green-700 font-medium">
+                                Forgot password?
+                            </a>
                         </div>
                         <div class="relative">
                             <input 
@@ -136,7 +170,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                                 class="w-full pl-10 pr-10 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
-                                <i class="fas fa-key"></i>
+                                <i class="fas fa-lock"></i>
                             </div>
                             <button 
                                 type="button" 
@@ -173,64 +207,76 @@ new #[Layout('components.layouts.employee')] class extends Component
                         >
                             <span wire:loading.remove wire:target="login">
                                 <i class="fas fa-sign-in-alt"></i>
-                                Access Control Panel
+                                Clock In & Enter
                             </span>
                             <span wire:loading wire:target="login">
                                 <i class="fas fa-spinner fa-spin"></i>
-                                Verifying Credentials...
+                                Verifying...
                             </span>
                         </button>
                     </div>
                 </form>
 
-                <!-- Admin Only Warning -->
-                <div class="mt-6 p-4 bg-red-50 border border-red-100 rounded-lg">
+                <!-- Employee Features -->
+                <div class="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
                     <div class="flex items-start">
-                        <i class="fas fa-shield-alt text-red-500 mt-0.5 mr-2"></i>
+                        <i class="fas fa-briefcase text-blue-500 mt-0.5 mr-2"></i>
                         <div>
-                            <p class="text-xs font-medium text-red-800 mb-1">🔐 Restricted Access</p>
-                            <p class="text-xs text-red-700">
-                                This portal is for <span class="font-bold">System Administrators only</span>. 
-                                All access attempts are logged and monitored.
-                            </p>
+                            <p class="text-xs font-medium text-blue-800 mb-1">Employee Features</p>
+                            <ul class="text-xs text-blue-700 space-y-1">
+                                <li class="flex items-center gap-1">
+                                    <i class="fas fa-check text-xs"></i>
+                                    <span>Attendance Tracking</span>
+                                </li>
+                                <li class="flex items-center gap-1">
+                                    <i class="fas fa-check text-xs"></i>
+                                    <span>Task Management</span>
+                                </li>
+                                <li class="flex items-center gap-1">
+                                    <i class="fas fa-check text-xs"></i>
+                                    <span>Order Processing</span>
+                                </li>
+                            </ul>
                         </div>
                     </div>
                 </div>
 
-                <!-- Admin Information -->
+                <!-- Employee Badge -->
                 <div class="mt-6 text-center">
                     <div class="inline-flex items-center px-4 py-2 bg-emerald-100 text-emerald-800 rounded-full">
-                        <i class="fas fa-crown mr-2"></i>
-                        <span class="text-sm font-medium">System Administrator Role</span>
+                        <i class="fas fa-user-tie mr-2"></i>
+                        <span class="text-sm font-medium">Employee Access Only</span>
+                    </div>
+                </div>
+
+                <!-- Note -->
+                <div class="mt-6 p-4 bg-yellow-50 border border-yellow-100 rounded-lg">
+                    <div class="flex items-start">
+                        <i class="fas fa-clock text-yellow-500 mt-0.5 mr-2"></i>
+                        <p class="text-xs text-yellow-700">
+                            <span class="font-medium">Note:</span> Login time is automatically recorded for attendance tracking.
+                        </p>
                     </div>
                 </div>
             </div>
             
             <!-- Footer -->
-            <div class="bg-gradient-to-r from-green-50 to-emerald-50 px-8 py-4 border-t border-green-100">
+            <div class="bg-green-50 px-8 py-4 border-t border-green-100">
                 <div class="flex items-center justify-center">
-                    <i class="fas fa-server text-green-600 mr-2"></i>
+                    <i class="fas fa-building text-green-600 mr-2"></i>
                     <p class="text-xs text-center text-green-800 font-medium">
-                        TGIF Admin Control System
+                        TGIF Employee System
                     </p>
                 </div>
             </div>
         </div>
 
-        <!-- Default Admin Credentials (Optional - remove in production) -->
+        <!-- Support Information -->
         <div class="mt-8 text-center">
-            <details class="inline-block">
-                <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Default Admin Credentials
-                </summary>
-                <div class="mt-2 p-3 bg-gray-50 rounded-lg text-left">
-                    <p class="text-xs text-gray-600 mb-1"><strong>Username:</strong> admin</p>
-                    <p class="text-xs text-gray-600 mb-1"><strong>Email:</strong> admin@tgif.local</p>
-                    <p class="text-xs text-gray-600"><strong>Password:</strong> password</p>
-                    <p class="text-xs text-gray-500 mt-2 italic">Change these credentials after first login</p>
-                </div>
-            </details>
+            <div class="inline-flex items-center gap-2 text-sm text-gray-500">
+                <i class="fas fa-headset"></i>
+                <span>Need help? Contact HR: <span class="font-medium">hr@tgif.local</span></span>
+            </div>
         </div>
     </div>
 </div>
