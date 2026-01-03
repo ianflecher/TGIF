@@ -202,7 +202,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
                                     <i class="fas fa-building text-green-600"></i>
                                 </div>
                                 <div>
-                                    <span class="font-medium text-gray-800">{{ $supplier->supplier_name }}</span>
+                                    <span class="font-medium text-gray-800">{{ $supplier->name }}</span>
                                 </div>
                                 @if($supplier->supplier_id === $supplierId)
                                     <div class="ml-auto text-green-600">
@@ -239,7 +239,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
                 <div class="flex items-center justify-between mb-4">
                     <span class="text-gray-700">
                         <i class="fas fa-truck text-green-600 mr-1"></i>
-                        Supplier: <strong>{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->supplier_name ?? '-' }}</strong>
+                        Supplier: <strong>{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->name ?? '-' }}</strong>
                     </span>
                     <span class="text-sm text-gray-500">
                         {{ count(array_filter($selectedProducts, fn($qty) => $qty > 0)) }} product(s) selected
@@ -330,7 +330,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
                                 <i class="fas fa-truck text-green-600 mr-2"></i>
                                 Supplier
                             </h4>
-                            <p class="text-gray-900 font-medium pl-6">{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->supplier_name ?? '-' }}</p>
+                            <p class="text-gray-900 font-medium pl-6">{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->name ?? '-' }}</p>
                         </div>
                         
                         <div class="mb-4">
