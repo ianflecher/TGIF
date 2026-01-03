@@ -126,6 +126,8 @@ Volt::route('/projects/addbudget/{phase_id}', 'projects.addbudget')->name('proje
 
 Volt::route('/projects/viewresources', 'projects.viewresources')->name('projects.viewresources');
 
+Volt::route('/projects/cost/{task}', 'projects.cost')->name('projects.cost');
+
 
 Volt::route('/ecommerce/orders', 'ecommerce.orders')->name('ecommerce.orders');
 

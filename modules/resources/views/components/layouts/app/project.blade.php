@@ -799,6 +799,98 @@
     font-style: italic;
 }
 
+/* Container */
+.task-costs-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+}
+
+/* Task title */
+.task-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #15803d; /* green */
+    margin-bottom: 30px;
+}
+
+/* Cost Card */
+.cost-card {
+    background-color: #ffffff;
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+}
+.cost-card:hover {
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+/* Cost type header */
+.cost-type {
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 10px;
+}
+
+/* Cost list */
+.cost-list {
+    list-style: disc inside;
+    margin-left: 0;
+    padding-left: 0;
+    margin-bottom: 10px;
+}
+.cost-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    color: #374151;
+}
+
+/* Cost value */
+.cost-value {
+    font-weight: 600;
+    color: #15803d;
+}
+
+/* Total per type */
+.cost-total {
+    margin-top: 10px;
+    font-weight: 600;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 8px;
+    color: #111827;
+}
+
+/* Empty message */
+.cost-empty {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+/* Total task cost */
+.total-task-cost {
+    background-color: #f0fdf4;
+    border: 1px solid #dcfce7;
+    padding: 15px 20px;
+    border-radius: 15px;
+    font-weight: 600;
+    font-size: 18px;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 25px;
+    color: #111827;
+}
+.total-task-cost .total-value {
+    color: #15803d;
+    font-size: 20px;
+    font-weight: bold;
+}
+
 /* === Animations === */
 @keyframes fadeIn {
     from { opacity: 0; } to { opacity: 1; }
@@ -895,10 +987,10 @@
             </li>
             <!-- Add more navigation items as needed -->
             <li>
-                <a href="{{ route('projects.viewresources') }}" class="nav-item {{ request()->routeIs('projects.viewresources') ? 'active' : '' }}">
+                <a href="{{ route('projects.budget') }}" class="nav-item {{ request()->routeIs('projects.viewresources') ? 'active' : '' }}">
                     <span class="module-icon">📦</span>
-                    <span class="nav-text">Resources</span>
-                    <span class="nav-tooltip">Resource Management</span>
+                    <span class="nav-text">Budget</span>
+                    <span class="nav-tooltip">Budget Management</span>
                 </a>
             </li>
 

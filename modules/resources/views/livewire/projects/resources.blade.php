@@ -165,10 +165,21 @@ new #[Layout('components.layouts.project')] class extends Component
             'updated_at' => now(),
         ]);
 
-        // 6️⃣ Update local state and close modal
-        $this->editingBudget['budget_id'] = $budgetId;
+        // 6️⃣ UPDATE PROJECT STATUS TO 'on_hold'
+        DB::table('projects')->where('project_id', $task->project_id)->update([
+            'status' => 'on_hold',
+            'updated_at' => now(),
+        ]);
+
+        // 7️⃣ Reset modal and redirect to projects.projects
         $this->showBudgetModal = false;
-        session()->flash('success', 'Budget added successfully! Pending finance approval.');
+        $this->editingBudget = [];
+        
+        // Flash success message
+        session()->flash('success', 'Budget added successfully! Project is now on hold until finance approval.');
+        
+        // Redirect to projects.projects route
+        return redirect()->route('projects.projects');
     }
 
     public function saveBudget()
@@ -182,7 +193,10 @@ new #[Layout('components.layouts.project')] class extends Component
         $actual = $this->editingBudget['actual_cost'] ?? 0;
         $variance = $estimated - $actual;
 
-        // 2️⃣ Update budgets table
+        // 2️⃣ Get project ID from the budget
+        $budget = DB::table('budgets')->where('budget_id', $this->editingBudget['budget_id'])->first();
+        
+        // 3️⃣ Update budgets table
         DB::table('budgets')
             ->where('budget_id', $this->editingBudget['budget_id'])
             ->update([
@@ -191,7 +205,7 @@ new #[Layout('components.layouts.project')] class extends Component
                 'updated_at' => now(),
             ]);
 
-        // 3️⃣ Update journal entry
+        // 4️⃣ Update journal entry
         DB::table('journal_entries')
             ->where('journal_number', 'BUDGET-' . $this->editingBudget['budget_id'])
             ->update([
@@ -200,7 +214,7 @@ new #[Layout('components.layouts.project')] class extends Component
                 'updated_at' => now(),
             ]);
 
-        // 4️⃣ Create new budget approval request
+        // 5️⃣ Create new budget approval request
         DB::table('budget_approvals')->insert([
             'budget_id' => $this->editingBudget['budget_id'],
             'requested_by' => Auth::id(),
@@ -210,10 +224,23 @@ new #[Layout('components.layouts.project')] class extends Component
             'updated_at' => now(),
         ]);
 
-        // 5️⃣ Close modal and reset state
+        // 6️⃣ UPDATE PROJECT STATUS TO 'on_hold'
+        if ($budget && $budget->project_id) {
+            DB::table('projects')->where('project_id', $budget->project_id)->update([
+                'status' => 'on_hold',
+                'updated_at' => now(),
+            ]);
+        }
+
+        // 7️⃣ Reset modal and redirect to projects.projects
         $this->showBudgetModal = false;
         $this->editingBudget = [];
-        session()->flash('success', 'Budget update requested. Pending finance approval.');
+        
+        // Flash success message
+        session()->flash('success', 'Budget update requested! Project is now on hold until finance approval.');
+        
+        // Redirect to projects.projects route
+        return redirect()->route('projects.projects');
     }
 
     private function getProjectIdByTask($taskId)
@@ -316,6 +343,9 @@ new #[Layout('components.layouts.project')] class extends Component
         ]);
 
         session()->flash('success', 'Budget request submitted. Project is now on hold pending approval.');
+        
+        // Redirect to projects.projects route
+        return redirect()->route('projects.projects');
     }
 
     public function updatedAllocatedQuantity($value)
@@ -878,7 +908,7 @@ new #[Layout('components.layouts.project')] class extends Component
 
     <!-- Back Button -->
     <div class="task-header">
-        <a href="javascript:history.back()" class="back-link">← Back</a>
+        <a href="{{ route('projects.projects') }}" class="back-link">← Back to Projects</a>
     </div>
 
     <!-- View Resources Button -->

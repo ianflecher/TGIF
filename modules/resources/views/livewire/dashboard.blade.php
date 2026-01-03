@@ -41,7 +41,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'projects.*',
                 'users.full_name as manager_name',
                 'employees.employee_id',
-                DB::raw('(SELECT AVG(progress) FROM project_tasks WHERE project_tasks.project_id = projects.project_id) as avg_progress')
+                DB::raw('(SELECT AVG(progress_percentage) FROM tasks WHERE tasks.phase_id = projects.project_id) as avg_progress')
             )
             ->leftJoin('employees', 'projects.project_manager_id', '=', 'employees.employee_id')
             ->leftJoin('users', 'employees.user_id', '=', 'users.user_id')

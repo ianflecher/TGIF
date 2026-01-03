@@ -29,7 +29,7 @@ new #[Layout('components.layouts.project')] class extends Component
     public string $description = '';
     public string $start_date = '';
     public string $end_date = '';
-    public string $status = 'planning';
+    public string $status = 'on_hold'; // Default to on_hold
     public float $budget_total = 0.0;
     public float $actual_cost = 0.0;
     public ?int $project_manager_id = null;
@@ -164,7 +164,7 @@ new #[Layout('components.layouts.project')] class extends Component
     {
         $this->managers = DB::table('employees')
             ->join('users', 'employees.user_id', '=', 'users.user_id')
-            ->where('users.role', '!=', 'admin')  // Changed from 'Admin' to match your migration
+            ->where('users.role', '!=', 'admin')
             ->orderBy('users.full_name')
             ->select('employees.employee_id', 'users.full_name')
             ->get()
@@ -187,13 +187,13 @@ new #[Layout('components.layouts.project')] class extends Component
     {
         if (!$this->project_name || !$this->start_date || !$this->end_date) return;
 
-        // Insert project first
+        // Insert project with status always 'on_hold' initially
         $projectId = DB::table('projects')->insertGetId([
             'project_name'       => $this->project_name,
             'description'        => $this->description,
             'start_date'         => $this->start_date,
             'end_date'           => $this->end_date,
-            'status'             => $this->status,
+            'status'             => 'on_hold', // Always on_hold initially
             'budget_total'       => $this->budget_total,
             'actual_cost'        => $this->actual_cost,
             'project_manager_id' => $this->project_manager_id,
@@ -236,7 +236,7 @@ new #[Layout('components.layouts.project')] class extends Component
         $this->description = '';
         $this->start_date = '';
         $this->end_date = '';
-        $this->status = 'planning';
+        $this->status = 'on_hold'; // Reset to on_hold
         $this->budget_total = 0.0;
         $this->actual_cost = 0.0;
         $this->project_manager_id = null;
@@ -250,21 +250,15 @@ new #[Layout('components.layouts.project')] class extends Component
     {
         $project = DB::table('projects')->where('project_id', $projectId)->first();
         if ($project) {
+            // Only allow editing if project is NOT on_hold
+            if ($project->status === 'on_hold') {
+                session()->flash('error', 'Project is on hold. Cannot edit until budget is approved.');
+                return;
+            }
+            
             $this->editProject = (array) $project;
             $this->showEditModal = true;
         }
-    }
-
-    public function resumeProject($projectId)
-    {
-        DB::table('projects')
-            ->where('project_id', $projectId)
-            ->update([
-                'status' => 'in_progress',
-                'updated_at' => now()
-            ]);
-
-        $this->loadProjects();
     }
 
     public function closeEditModal() { 
@@ -287,7 +281,7 @@ new #[Layout('components.layouts.project')] class extends Component
                 'client_id'          => $this->editProject['client_id'] ?? null,
                 'start_date'         => $this->editProject['start_date'] ?? null,
                 'end_date'           => $this->editProject['end_date'] ?? null,
-                'status'             => $this->editProject['status'] ?? 'planning',
+                'status'             => $this->editProject['status'] ?? 'on_hold',
                 'updated_at'         => now(),
             ]);
 
@@ -332,6 +326,7 @@ new #[Layout('components.layouts.project')] class extends Component
     }
 };
 ?>
+<div>
 <div>
 <div class="phase-container" style="padding: 2rem; background: #fffef6; min-height: 100vh;">
     <!-- Top Buttons Container -->
@@ -410,6 +405,8 @@ new #[Layout('components.layouts.project')] class extends Component
                                             class="phase-btn phase-btn-yellow" style="background: #facc15; color: #1f2937; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;">
                                         View Remarks
                                     </button>
+                                @else
+                                    <span style="color: #6b7280; font-style: italic;">Budget pending approval</span>
                                 @endif
                             </td>
                         @else
@@ -690,7 +687,7 @@ new #[Layout('components.layouts.project')] class extends Component
                                         style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
                                     <option value="planning">Planning</option>
                                     <option value="in_progress">In Progress</option>
-                                    <option value="on_hold">On Hold</option>
+                                    <option value="on_hold" selected>On Hold</option>
                                 </select>
                             </label>
                         </div>
@@ -715,9 +712,12 @@ new #[Layout('components.layouts.project')] class extends Component
             </div>
         </div>
     @endif
+
     <!-- Gantt Chart Container -->
     <div id="gantt_here" style="width:100%; height:500px; margin-top: 2rem; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></div>
-                    </div>
+</div>
+</div>
+
 <!-- Include DHTMLX Gantt -->
 <link rel="stylesheet" href="{{ asset('css/dhtmlxgantt.css') }}">
 <script src="{{ asset('js/dhtmlxgantt.js') }}"></script>
