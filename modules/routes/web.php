@@ -15,6 +15,7 @@ Volt::route('/login', 'auth.login')->name('login');
 Volt::route('/admin/login', 'auth.adminlogin')->name('admin.login');
 Volt::route('/employee/login', 'auth.employeelogin')->name('employee.login');
 Volt::route('/applicant/login', 'auth.applicantlogin')->name('applicant.login');
+Volt::route('/supplier/login', 'auth.supplier')->name('supplier.login');
 Volt::route('/register', 'auth.register')->name('register');
 Volt::route('/forgot-password', 'auth.forgot-password')->name('password.request');
 Volt::route('/reset-password/{token}', 'auth.reset-password')->name('password.reset');
@@ -132,6 +133,14 @@ Volt::route('/projects/cost/{task}', 'projects.cost')->name('projects.cost');
 Volt::route('/ecommerce/orders', 'ecommerce.orders')->name('ecommerce.orders');
 
 Volt::route('/ecommerce/products', 'ecommerce.products')->name('ecommerce.products');
+
+Volt::route('/supplier', 'supplier.dashboard')->name('supplier.dashboard');
+
+Volt::route('/supplier/list', 'supplier.list')->name('supplier.list');
+
+Volt::route('/procurement/create', 'procurement.create')->name('procurement.create');
+
+Volt::route('/procurement/status', 'procurement.status')->name('procurement.status');
 // ====================
 // FALLBACK ROUTE
 // ====================
