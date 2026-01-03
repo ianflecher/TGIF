@@ -141,6 +141,8 @@ Volt::route('/supplier/list', 'supplier.list')->name('supplier.list');
 Volt::route('/procurement/create', 'procurement.create')->name('procurement.create');
 
 Volt::route('/procurement/status', 'procurement.status')->name('procurement.status');
+
+Volt::route('/procurement/createpo', 'procurement.createpo')->name('procurement.createpo');
 // ====================
 // FALLBACK ROUTE
 // ====================
