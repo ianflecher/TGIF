@@ -446,7 +446,7 @@
                     </a>
                 </li>
                 <li>
-                    <a href="{{ route('inventory.welcome') }}" class="nav-item {{ request()->routeIs('inventory.*') ? 'active' : '' }}">
+                    <a href="{{ route('inventory.home') }}" class="nav-item {{ request()->routeIs('inventory.*') ? 'active' : '' }}">
                         <span class="module-icon">🏭</span>
                         <span class="nav-text">Inventory</span>
                         <span class="nav-tooltip">Inventory & Warehouse</span>

@@ -142,39 +142,59 @@ new #[Layout('components.layouts.landing')] class extends Component
                     @foreach($products as $product)
                     <div class="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                         <!-- Product Image -->
-                        <div class="relative h-48 overflow-hidden">
-                            @php
-                                $images = $product->images ? json_decode($product->images, true) : [];
-                            @endphp
-                            @if(!empty($images) && isset($images[0]))
-                                <img src="{{ $images[0] }}" 
-                                     alt="{{ $product->product_name }}"
-                                     class="w-full h-full object-cover hover:scale-110 transition-transform duration-500">
-                            @else
-                                <div class="w-full h-full bg-gradient-to-br from-green-100 to-green-50 flex items-center justify-center">
-                                    <div class="text-center">
-                                        <i class="fas fa-french-fries text-5xl text-green-400 mb-2"></i>
-                                        <p class="text-green-600 font-medium">TGIF</p>
-                                    </div>
-                                </div>
-                            @endif
-                            
-                            <!-- Price Badge -->
-                            <div class="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                                ₱{{ number_format($product->price, 2) }}
-                            </div>
-                            
-                            <!-- Stock Status -->
-                            @if($product->stock_quantity <= 0)
-                                <div class="absolute top-4 left-4 bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">
-                                    Out of Stock
-                                </div>
-                            @elseif($product->stock_quantity <= 10)
-                                <div class="absolute top-4 left-4 bg-yellow-500 text-white px-2 py-1 rounded text-xs font-semibold">
-                                    Low Stock
-                                </div>
-                            @endif
-                        </div>
+                        <!-- Product Image -->
+<div class="relative h-48 overflow-hidden">
+    @php
+        $imageUrl = null;
+        
+        // Handle image decoding
+        if (!empty($product->images)) {
+            try {
+                // Try to decode JSON
+                if (is_string($product->images)) {
+                    $images = json_decode($product->images, true);
+                    if (is_array($images) && !empty($images[0])) {
+                        $imageUrl = $images[0];
+                    }
+                } elseif (is_array($product->images)) {
+                    $imageUrl = $product->images[0] ?? null;
+                }
+            } catch (\Exception $e) {
+                $imageUrl = null;
+            }
+        }
+    @endphp
+    
+    @if($imageUrl)
+        <!-- Prepend 'storage/' to the image path -->
+        <img src="{{ asset('storage/' . $imageUrl) }}" 
+             alt="{{ $product->product_name }}"
+             class="w-full h-full object-cover hover:scale-110 transition-transform duration-500">
+    @else
+        <!-- Fallback when no image -->
+        <div class="w-full h-full bg-gradient-to-br from-green-100 to-green-50 flex items-center justify-center">
+            <div class="text-center">
+                <i class="fas fa-french-fries text-5xl text-green-400 mb-2"></i>
+                <p class="text-green-600 font-medium">TGIF</p>
+            </div>
+        </div>
+    @endif
+    
+    <!-- Price Badge and Stock Status remain the same -->
+    <div class="absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
+        ₱{{ number_format($product->price, 2) }}
+    </div>
+    
+    @if($product->stock_quantity <= 0)
+        <div class="absolute top-4 left-4 bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">
+            Out of Stock
+        </div>
+    @elseif($product->stock_quantity <= 10)
+        <div class="absolute top-4 left-4 bg-yellow-500 text-white px-2 py-1 rounded text-xs font-semibold">
+            Low Stock
+        </div>
+    @endif
+</div>
                         
                         <!-- Product Info -->
                         <div class="p-5">

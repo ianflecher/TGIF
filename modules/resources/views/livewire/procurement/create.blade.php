@@ -13,19 +13,18 @@ new #[Layout('components.layouts.procurement')] class extends Component
     public array $suppliers = [];
     public array $products = [];
     public array $selectedProducts = []; // product_id => quantity
-    public string $status = 'Pending';
+    public string $status = 'draft';
     public string $date = '';
     public string $message = '';
 
-    public ?int $employeeId = null; // Can be null for admin users
+    public int $userId = 0; // Changed from employeeId to userId
 
     public function mount(): void
     {
-        // For admin users, we might not have employee_id
-        $user = Auth::user();
-        $this->employeeId = $user->employee_id ?? null;
+        // Get logged in user ID
+        $this->userId = Auth::id(); // This will get the user_id
 
-        // Load suppliers - CORRECTED: Using 'suppliers' (plural)
+        // Load suppliers
         $this->suppliers = DB::table('suppliers')
             ->select('supplier_id', 'name')
             ->orderBy('name')
@@ -42,11 +41,58 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     public function nextStep()
     {
+        // Basic validation before proceeding
+        if ($this->step === 1 && $this->supplierId === 0) {
+            $this->message = '⚠ Please select a supplier first.';
+            return;
+        }
+        
+        if ($this->step === 2) {
+            // Check if any products are selected with quantity > 0
+            $hasSelectedProducts = false;
+            foreach ($this->selectedProducts as $quantity) {
+                if ($quantity > 0) {
+                    $hasSelectedProducts = true;
+                    break;
+                }
+            }
+            
+            if (!$hasSelectedProducts) {
+                $this->message = '⚠ Please select at least one product with quantity.';
+                return;
+            }
+        }
+        
+        $this->message = ''; // Clear any messages
         $this->step++;
     }
 
+    // Add these methods to your component class
+
+public function incrementQuantity($productId)
+{
+    if (!isset($this->selectedProducts[$productId])) {
+        $this->selectedProducts[$productId] = 1;
+    } else {
+        $this->selectedProducts[$productId]++;
+    }
+}
+
+public function decrementQuantity($productId)
+{
+    if (isset($this->selectedProducts[$productId]) && $this->selectedProducts[$productId] > 0) {
+        $this->selectedProducts[$productId]--;
+        
+        // Remove from selection if quantity is 0
+        if ($this->selectedProducts[$productId] == 0) {
+            unset($this->selectedProducts[$productId]);
+        }
+    }
+}
+
     public function previousStep()
     {
+        $this->message = ''; // Clear any messages
         $this->step--;
     }
 
@@ -74,48 +120,21 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     public function submit()
     {
-        // Check if user is authorized (admin or purchasing officer)
-        $user = Auth::user();
-        
-        if (!$user) {
-            $this->message = '⚠ Please log in to continue.';
-            return;
-        }
-
-        // Check if user has access to procurement
-        if (!in_array($user->role, ['admin', 'manager', 'employee', 'purchasing'])) {
-            $this->message = '⚠ You do not have permission to create purchase requisitions.';
-            return;
-        }
-
-        if ($this->supplierId === 0 || empty($this->selectedProducts)) {
+        if ($this->userId === 0 || $this->supplierId === 0 || empty($this->selectedProducts)) {
             $this->message = '⚠ Please complete all steps.';
             return;
         }
 
-        // For admin users, we can use user_id instead of employee_id
-        // or create a default employee record for admin
-        $requisitionData = [
+        // Insert requisition - using user_id instead of employee_id
+        $requisitionId = DB::table('purchase_requisitions')->insertGetId([
+            'requested_by' => $this->userId, // Changed to user_id
             'status' => $this->status,
-            'date' => $this->date,
+            'date_requested' => $this->date,
+            'department_id' => 1,
             'created_at' => Carbon::now(),
             'updated_at' => Carbon::now(),
-        ];
+        ]);
 
-        // Use employee_id if available, otherwise use user_id
-        if ($this->employeeId) {
-            $requisitionData['employee_id'] = $this->employeeId;
-            $requisitionData['requested_by'] = $user->full_name ?? $user->name;
-        } else {
-            // For admin users, store the user_id or create a system entry
-            $requisitionData['user_id'] = $user->user_id;
-            $requisitionData['requested_by'] = $user->full_name ?? $user->name;
-        }
-
-        // Insert requisition - Assuming your table is 'requisitions' (plural)
-        $requisitionId = DB::table('requisitions')->insertGetId($requisitionData);
-
-        // Insert requisition items - Assuming your table is 'requisition_items' (plural)
         foreach ($this->selectedProducts as $productId => $quantity) {
             if ($quantity > 0) {
                 DB::table('requisition_items')->insert([
@@ -151,27 +170,31 @@ new #[Layout('components.layouts.procurement')] class extends Component
         </div>
     @endif
 
-    <!-- Debug: Show current step and supplierId -->
-    <div class="hidden">Debug: Step {{ $step }}, Supplier ID: {{ $supplierId }}</div>
-
     <!-- Stepper Navigation -->
     <div class="flex justify-between mb-6 relative">
+        <!-- Step 1 -->
         <div class="flex flex-col items-center">
             <div class="w-8 h-8 rounded-full {{ $step >= 1 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600' }} flex items-center justify-center font-bold mb-1">
                 1
             </div>
             <span class="text-sm {{ $step >= 1 ? 'text-green-700 font-semibold' : 'text-gray-500' }}">Supplier</span>
         </div>
+        
+        <!-- Connecting Line -->
         <div class="absolute top-4 left-1/4 right-1/4 h-0.5 bg-gray-300 -translate-y-3 {{ $step >= 2 ? 'bg-green-600' : '' }}"></div>
         
+        <!-- Step 2 -->
         <div class="flex flex-col items-center">
             <div class="w-8 h-8 rounded-full {{ $step >= 2 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600' }} flex items-center justify-center font-bold mb-1">
                 2
             </div>
             <span class="text-sm {{ $step >= 2 ? 'text-green-700 font-semibold' : 'text-gray-500' }}">Products</span>
         </div>
+        
+        <!-- Connecting Line -->
         <div class="absolute top-4 left-1/2 right-1/4 h-0.5 bg-gray-300 -translate-y-3 {{ $step >= 3 ? 'bg-green-600' : '' }}"></div>
         
+        <!-- Step 3 -->
         <div class="flex flex-col items-center">
             <div class="w-8 h-8 rounded-full {{ $step >= 3 ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600' }} flex items-center justify-center font-bold mb-1">
                 3
@@ -183,141 +206,115 @@ new #[Layout('components.layouts.procurement')] class extends Component
     <!-- Step 1: Supplier -->
     @if($step === 1)
         <div class="bg-white p-6 rounded-lg shadow max-w-lg mx-auto mb-6">
-            <div class="flex items-center mb-4">
-                <div class="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center mr-3">
-                    <i class="fas fa-truck"></i>
-                </div>
-                <h2 class="text-xl font-semibold text-gray-800">Step 1: Select Supplier</h2>
-            </div>
-            
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Choose a supplier:</label>
-                <div class="grid grid-cols-1 gap-3">
-                    @foreach($suppliers as $supplier)
-                        <div wire:click="$set('supplierId', {{ $supplier->supplier_id }})"
-                            wire:key="supplier-{{ $supplier->supplier_id }}"
-                            class="cursor-pointer border rounded-lg p-4 hover:border-green-500 hover:bg-green-50 transition-colors duration-200 {{ $supplier->supplier_id === $supplierId ? 'border-green-600 bg-green-50' : 'border-gray-300' }}">
-                            <div class="flex items-center">
-                                <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
-                                    <i class="fas fa-building text-green-600"></i>
-                                </div>
-                                <div>
-                                    <span class="font-medium text-gray-800">{{ $supplier->name }}</span>
-                                </div>
-                                @if($supplier->supplier_id === $supplierId)
-                                    <div class="ml-auto text-green-600">
-                                        <i class="fas fa-check-circle"></i>
-                                    </div>
-                                @endif
+            <h2 class="text-xl font-semibold mb-4">Step 1: Select Supplier</h2>
+            <div class="grid grid-cols-1 gap-3 mb-6">
+                @foreach($suppliers as $supplier)
+                    <div wire:click="$set('supplierId', {{ $supplier->supplier_id }})"
+                        class="cursor-pointer border rounded-lg p-4 hover:border-green-500 hover:bg-green-50 transition-colors duration-200 {{ $supplier->supplier_id === $supplierId ? 'border-green-600 bg-green-50' : 'border-gray-300' }}">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                                <i class="fas fa-building text-green-600"></i>
                             </div>
+                            <div>
+                                <span class="font-medium text-gray-800">{{ $supplier->name }}</span>
+                            </div>
+                            @if($supplier->supplier_id === $supplierId)
+                                <div class="ml-auto text-green-600">
+                                    <i class="fas fa-check-circle"></i>
+                                </div>
+                            @endif
                         </div>
-                    @endforeach
-                </div>
+                    </div>
+                @endforeach
             </div>
-            
             <div class="flex justify-end">
                 <button wire:click="nextStep" 
-                        class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition duration-200 shadow hover:shadow-lg">
-                    <span>Next: Select Products</span>
-                    <i class="fas fa-arrow-right"></i>
+                        class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition duration-200">
+                    Next: Select Products
                 </button>
             </div>
         </div>
     @endif
 
     <!-- Step 2: Products -->
-    @if($step === 2)
-        <div class="bg-white p-6 rounded-lg shadow max-w-4xl mx-auto mb-6">
-            <div class="flex items-center mb-4">
-                <div class="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center mr-3">
-                    <i class="fas fa-box"></i>
-                </div>
-                <h2 class="text-xl font-semibold text-gray-800">Step 2: Select Products & Quantities</h2>
+    <!-- Step 2: Products -->
+@if($step === 2)
+    <div class="bg-white p-6 rounded-lg shadow max-w-4xl mx-auto mb-6">
+        <h2 class="text-xl font-semibold mb-4">Step 2: Select Products & Quantities</h2>
+        
+        <div class="mb-4">
+            <div class="flex items-center justify-between mb-4">
+                <span class="text-gray-700">
+                    <i class="fas fa-truck text-green-600 mr-1"></i>
+                    Supplier: <strong>{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->name ?? '-' }}</strong>
+                </span>
+                <span class="text-sm text-gray-500">
+                    {{ count(array_filter($selectedProducts, fn($qty) => $qty > 0)) }} product(s) selected
+                </span>
             </div>
             
-            <div class="mb-4">
-                <div class="flex items-center justify-between mb-4">
-                    <span class="text-gray-700">
-                        <i class="fas fa-truck text-green-600 mr-1"></i>
-                        Supplier: <strong>{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->name ?? '-' }}</strong>
-                    </span>
-                    <span class="text-sm text-gray-500">
-                        {{ count(array_filter($selectedProducts, fn($qty) => $qty > 0)) }} product(s) selected
-                    </span>
-                </div>
-                
-                @if(count($products) > 0)
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto p-2">
-                        @foreach($products as $product)
-                            <div class="border rounded-lg p-4 hover:shadow-md transition-shadow {{ isset($selectedProducts[$product->product_id]) && $selectedProducts[$product->product_id] > 0 ? 'border-green-500 bg-green-50' : 'border-gray-300' }}">
-                                <label class="flex items-start mb-2 w-full cursor-pointer">
-                                    <input type="checkbox" 
-                                           wire:model="selectedProducts.{{ $product->product_id }}" 
-                                           value="1" 
-                                           class="mr-2 mt-1 w-5 h-5 text-green-600">
-                                    <div class="flex-1">
-                                        <span class="font-medium text-gray-800 block">{{ $product->product_name }}</span>
-                                        <span class="text-sm text-gray-600">{{ $product->category }}</span>
-                                    </div>
-                                </label>
-                                
-                                @if(isset($selectedProducts[$product->product_id]) && $selectedProducts[$product->product_id])
-                                    <div class="mt-3">
-                                        <label class="block text-sm font-medium text-gray-700 mb-1">Quantity:</label>
-                                        <div class="flex items-center">
-                                            <button wire:click="$set('selectedProducts.{{ $product->product_id }}', {{ max(1, ($selectedProducts[$product->product_id] ?? 1) - 1) }})"
-                                                    class="w-8 h-8 bg-gray-200 rounded-l-lg flex items-center justify-center hover:bg-gray-300">
-                                                <i class="fas fa-minus text-gray-700"></i>
-                                            </button>
-                                            <input type="number" 
-                                                   min="1" 
-                                                   wire:model="selectedProducts.{{ $product->product_id }}"
-                                                   class="w-16 h-8 border-y border-gray-300 text-center outline-none">
-                                            <button wire:click="$set('selectedProducts.{{ $product->product_id }}', {{ ($selectedProducts[$product->product_id] ?? 0) + 1 }})"
-                                                    class="w-8 h-8 bg-gray-200 rounded-r-lg flex items-center justify-center hover:bg-gray-300">
-                                                <i class="fas fa-plus text-gray-700"></i>
-                                            </button>
-                                        </div>
-                                    </div>
+            @if(count($products) > 0)
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto p-2">
+                    @foreach($products as $product)
+                        <div class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                            <div class="mb-3">
+                                <span class="font-medium text-gray-800 block">{{ $product->product_name }}</span>
+                                <span class="text-sm text-gray-600">{{ $product->category }}</span>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Quantity:</label>
+                                <div class="flex items-center">
+                                    <button type="button"
+                                            wire:click="decrementQuantity({{ $product->product_id }})"
+                                            class="w-8 h-8 bg-gray-200 rounded-l-lg flex items-center justify-center hover:bg-gray-300">
+                                        <i class="fas fa-minus text-gray-700"></i>
+                                    </button>
+                                    <input type="number" 
+                                           min="0"
+                                           wire:model.live="selectedProducts.{{ $product->product_id }}"
+                                           class="w-16 h-8 border-y border-gray-300 text-center outline-none">
+                                    <button type="button"
+                                            wire:click="incrementQuantity({{ $product->product_id }})"
+                                            class="w-8 h-8 bg-gray-200 rounded-r-lg flex items-center justify-center hover:bg-gray-300">
+                                        <i class="fas fa-plus text-gray-700"></i>
+                                    </button>
+                                </div>
+                                @if(isset($selectedProducts[$product->product_id]) && $selectedProducts[$product->product_id] == 1)
+                                    <p class="text-xs text-gray-500 mt-1">Enter 0 to deselect</p>
                                 @endif
                             </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="text-center py-8 text-gray-500">
-                        <i class="fas fa-box-open text-4xl mb-3"></i>
-                        <p>No products available for this supplier.</p>
-                    </div>
-                @endif
-            </div>
-            
-            <div class="flex justify-between mt-6">
-                <button wire:click="previousStep" 
-                        class="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-3 rounded-lg transition duration-200">
-                    <i class="fas fa-arrow-left"></i>
-                    <span>Back</span>
-                </button>
-                
-                @if(count(array_filter($selectedProducts, fn($qty) => $qty > 0)) > 0)
-                    <button wire:click="nextStep" 
-                            class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition duration-200 shadow hover:shadow-lg">
-                        <span>Next: Review & Submit</span>
-                        <i class="fas fa-arrow-right"></i>
-                    </button>
-                @endif
-            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-box-open text-4xl mb-3"></i>
+                    <p>No products available for this supplier.</p>
+                </div>
+            @endif
         </div>
-    @endif
+        
+        <div class="flex justify-between mt-6">
+            <button wire:click="previousStep" 
+                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-3 rounded-lg transition duration-200">
+                Back to Supplier
+            </button>
+            
+            @if(count(array_filter($selectedProducts, fn($qty) => $qty > 0)) > 0)
+                <button wire:click="nextStep" 
+                        class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition duration-200">
+                    Next: Review & Submit
+                </button>
+            @endif
+        </div>
+    </div>
+@endif
 
     <!-- Step 3: Confirm -->
     @if($step === 3)
         <div class="bg-white p-6 rounded-lg shadow max-w-4xl mx-auto mb-6">
-            <div class="flex items-center mb-4">
-                <div class="w-8 h-8 bg-green-600 text-white rounded-full flex items-center justify-center mr-3">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                <h2 class="text-xl font-semibold text-gray-800">Step 3: Review & Submit</h2>
-            </div>
+            <h2 class="text-xl font-semibold mb-4">Step 3: Review & Submit</h2>
 
             <!-- Receipt Preview -->
             <div class="border border-gray-300 rounded-lg p-6 mb-6 bg-gradient-to-r from-green-50 to-emerald-50">
@@ -410,49 +407,30 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
             <div class="flex justify-between mt-6">
                 <button wire:click="previousStep" 
-                        class="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-3 rounded-lg transition duration-200">
-                    <i class="fas fa-arrow-left"></i>
-                    <span>Back to Products</span>
+                        class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 py-3 rounded-lg transition duration-200">
+                    Back to Products
                 </button>
                 
                 <button wire:click="submit" 
-                        wire:loading.attr="disabled"
-                        class="flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-3 rounded-lg font-semibold transition duration-200 shadow-lg hover:shadow-xl">
-                    <span wire:loading.remove wire:target="submit">
-                        <i class="fas fa-paper-plane mr-2"></i>
-                        Submit Requisition
-                    </span>
-                    <span wire:loading wire:target="submit">
-                        <i class="fas fa-spinner fa-spin mr-2"></i>
-                        Submitting...
-                    </span>
+                        class="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-3 rounded-lg font-semibold transition duration-200">
+                    <i class="fas fa-paper-plane mr-2"></i>
+                    Submit Requisition
                 </button>
             </div>
         </div>
     @endif
 </div>
 
-@script
+<!-- Simple JavaScript for smooth scrolling -->
 <script>
-    // Add some interactive features
     document.addEventListener('livewire:initialized', () => {
-        // Auto-scroll to top when changing steps
-        Livewire.hook('commit', ({ component, commit, respond, succeed, fail }) => {
-            // Check if this is a step change
-            if (component.get('step') && document.documentElement) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        });
-        
-        // Debug logging
-        console.log('Livewire component initialized');
-        
-        // Make sure buttons are working
+        // Add smooth scroll when buttons are clicked
         document.addEventListener('click', function(e) {
-            if (e.target.closest('button[wire\\:click]')) {
-                console.log('Button clicked:', e.target.closest('button[wire\\:click]').getAttribute('wire:click'));
+            if (e.target.closest('button[wire\\:click="nextStep"], button[wire\\:click="previousStep"]')) {
+                setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 100);
             }
         });
     });
 </script>
-@endscript

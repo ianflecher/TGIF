@@ -179,11 +179,16 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
 
         // First create inventory record if needed
         $inventoryId = DB::table('inventories')->insertGetId([
-            'stock_level' => $this->newStockQuantity,
-            'low_stock_alert' => 10,
-            'created_at' => now(),
-            'last_updated' => now(),
-        ]);
+    'sku' => 'INV-' . time() . '-' . rand(100, 999), // Generate a unique SKU
+    'product_name' => $product->product_name ?? 'Unknown Product', // You need to get product name
+    'quantity' => $this->newStockQuantity,
+    'min_quantity' => 10,
+    'unit_price' => $product->unit_price ?? 0.00, // You need product unit price
+    'cost_price' => $product->cost_price ?? 0.00, // You need product cost price
+    'status' => 'active',
+    'created_at' => now(),
+    'updated_at' => now(), // Don't forget updated_at
+]);
 
         // Insert product with correct schema
         $productId = DB::table('products')->insertGetId([
