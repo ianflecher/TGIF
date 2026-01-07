@@ -441,21 +441,21 @@
                     <span class="nav-tooltip">Overview</span>
                 </a>
             </li>
-            <li>
+            <!-- <li>
                 <a href="{{ route('ecommerce.products') }}" class="nav-item {{ request()->routeIs('ecommerce.products') ? 'active' : '' }}">
                     <span class="module-icon">🛒</span>
                     <span class="nav-text">Products</span>
                     <span class="nav-tooltip">Manage Products</span>
                 </a>
             </li>
-            <li>
+            <li> -->
                 <a href="{{ route('ecommerce.orders') }}" class="nav-item {{ request()->routeIs('ecommerce.orders') ? 'active' : '' }}">
                     <span class="module-icon">📦</span>
                     <span class="nav-text">Orders</span>
                     <span class="nav-tooltip">Manage Orders</span>
                 </a>
             </li>
-            <li>
+            <!-- <li>
                 <a href="#" class="nav-item {{ request()->routeIs('ecommerce.customers') ? 'active' : '' }}">
                     <span class="module-icon">👥</span>
                     <span class="nav-text">Customers</span>
@@ -468,7 +468,7 @@
                     <span class="nav-text">Reports</span>
                     <span class="nav-tooltip">Sales & Inventory</span>
                 </a>
-            </li>
+            </li> -->
         </ul>
     </nav>
 </aside>

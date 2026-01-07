@@ -10,18 +10,25 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     public $tasks = [];
     public $employeeId;
     public $user;
+    public $debugInfo = '';
 
     public function mount()
     {
         $this->user = Auth::user();
         
-        // Get employee ID from users table (if you have employee_id column)
-        // Or get from employees table based on user_id
+        // Debug info
+        $this->debugInfo = "User: " . ($this->user->username ?? 'Unknown');
+        
+        // In your database, the users table has 'user_id' not 'id'
+        $userId = $this->user->user_id; // This is the correct column name
+        
+        // Get employee ID from employees table based on user_id
         $employee = DB::table('employees')
-            ->where('user_id', $this->user->id ?? $this->user->user_id)
+            ->where('user_id', $userId)
             ->first();
             
         $this->employeeId = $employee->employee_id ?? null;
+        $this->debugInfo .= " | Employee ID: " . ($this->employeeId ?? 'Not found');
 
         if (!$this->employeeId) {
             $this->tasks = [];
@@ -41,23 +48,28 @@ new #[Layout('components.layouts.employeeland')] class extends Component
             ->pluck('project_id');
 
         if ($managerProjectIds->isNotEmpty()) {
-            $managerTasks = DB::table('project_tasks')
+            // Get phase IDs for the manager's projects
+            $managerPhaseIds = DB::table('project_phases')
                 ->whereIn('project_id', $managerProjectIds)
-                ->where('status', 'submitted')
-                ->select('*')
-                ->get()
-                ->map(function ($task) {
-                    $task->role_type = 'Manager';
-                    return $task;
-                });
+                ->pluck('phase_id');
 
-            $allTasks = $allTasks->merge($managerTasks);
+            if ($managerPhaseIds->isNotEmpty()) {
+                $managerTasks = DB::table('tasks')
+                    ->whereIn('phase_id', $managerPhaseIds)
+                    ->where('status', 'submitted') // Only show submitted tasks for managers
+                    ->get()
+                    ->map(function ($task) {
+                        $task->role_type = 'Manager';
+                        return $task;
+                    });
+
+                $allTasks = $allTasks->merge($managerTasks);
+            }
         }
 
         // 2. Employee tasks: tasks assigned to this employee
-        $employeeTasks = DB::table('project_tasks')
+        $employeeTasks = DB::table('tasks')
             ->where('assigned_to', $this->employeeId)
-            ->select('*')
             ->get()
             ->map(function ($task) {
                 $task->role_type = 'Employee';
@@ -66,66 +78,90 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
         $allTasks = $allTasks->merge($employeeTasks);
 
-        // Also get HR tasks if applicable
-        $hrTasks = DB::table('project_tasks')
-            ->where('assigned_to', $this->employeeId)
-            ->orWhere(function($query) use ($managerProjectIds) {
-                if ($managerProjectIds->isNotEmpty()) {
-                    $query->whereIn('project_id', $managerProjectIds)
-                          ->where('status', 'submitted');
-                }
-            })
-            ->get();
+        // Get project names for all tasks
+        $this->tasks = $this->addProjectInfoToTasks($allTasks->sortBy('status')->values());
+    }
 
-        $this->tasks = $allTasks->sortBy('status')->values();
+    private function addProjectInfoToTasks($tasks)
+    {
+        // Get all unique phase IDs from tasks
+        $phaseIds = $tasks->pluck('phase_id')->filter()->unique();
+        
+        if ($phaseIds->isEmpty()) {
+            return $tasks;
+        }
+
+        // Get phases with their projects
+        $phases = DB::table('project_phases')
+            ->join('projects', 'project_phases.project_id', '=', 'projects.project_id')
+            ->whereIn('project_phases.phase_id', $phaseIds)
+            ->select('project_phases.phase_id', 'projects.project_name', 'projects.project_id')
+            ->get()
+            ->keyBy('phase_id');
+
+        // Add project info to each task
+        return $tasks->map(function ($task) use ($phases) {
+            if (isset($phases[$task->phase_id])) {
+                $task->project_name = $phases[$task->phase_id]->project_name;
+                $task->project_id = $phases[$task->phase_id]->project_id;
+            } else {
+                $task->project_name = 'Unknown Project';
+                $task->project_id = null;
+            }
+            return $task;
+        });
     }
 
     public function startTask($taskId)
-    {
-        try {
-            $task = DB::table('project_tasks')->where('task_id', $taskId)->first();
-
-            if (!$task) {
-                $this->dispatch('alert', type: 'error', message: 'Task not found!');
-                return;
-            }
-
-            if ($task->assigned_to != $this->employeeId) {
-                $this->dispatch('alert', type: 'error', message: 'You are not assigned to this task!');
-                return;
-            }
-
-            $allowedStartStatuses = ['not_started', 'pending', 'assigned'];
-
-            if (!in_array($task->status, $allowedStartStatuses)) {
-                $this->dispatch('alert', type: 'error', message: "Cannot start task. Current status: {$task->status}");
-                return;
-            }
-
-            DB::table('project_tasks')->where('task_id', $taskId)->update([
-                'status' => 'in_progress',
-                'progress' => 50,
-                'updated_at' => now(),
-            ]);
-
-            $this->loadTasks();
-            $this->dispatch('alert', type: 'success', message: 'Task started successfully!');
-
-        } catch (\Exception $e) {
-            $this->dispatch('alert', type: 'error', message: 'An error occurred while starting the task.');
-        }
+{
+    $task = DB::table('tasks')->where('task_id', $taskId)->first();
+    if (!$task) {
+        return "Task not found!";
     }
+
+    if ($task->assigned_to != $this->employeeId) {
+        return "You are not assigned to this task!";
+    }
+
+    $allowedStartStatuses = ['not_started','pending','assigned'];
+
+if (!in_array(strtolower($task->status), $allowedStartStatuses)) {
+    return "Cannot start task. Current status: {$task->status}";
+}
+
+
+    DB::table('tasks')->where('task_id', $taskId)->update([
+        'status' => 'in_progress',
+        'progress_percentage' => 50,
+        'updated_at' => now(),
+    ]);
+
+    $this->loadTasks();
+
+    return "Task started successfully!";
+}
+
 
     public function submitTask($taskId)
     {
-        $task = DB::table('project_tasks')->where('task_id', $taskId)->first();
+        \Log::info('submitTask called', ['taskId' => $taskId]);
+        
+        $task = DB::table('tasks')->where('task_id', $taskId)->first();
         if (!$task) return;
 
-        DB::table('project_tasks')->where('task_id', $taskId)->update([
+        // Check if user is assigned to this task
+        if ($task->assigned_to != $this->employeeId) {
+            $this->dispatch('alert', type: 'error', message: 'You are not assigned to this task!');
+            return;
+        }
+
+        $updated = DB::table('tasks')->where('task_id', $taskId)->update([
             'status' => 'submitted',
-            'progress' => 100,
+            'progress_percentage' => 100,
             'updated_at' => now(),
         ]);
+
+        \Log::info('Task submitted', ['rows_affected' => $updated]);
 
         $this->loadTasks();
         $this->dispatch('alert', type: 'success', message: 'Task submitted for review!');
@@ -133,13 +169,29 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
     public function approveTask($taskId)
     {
-        $task = DB::table('project_tasks')->where('task_id', $taskId)->first();
+        \Log::info('approveTask called', ['taskId' => $taskId]);
+        
+        $task = DB::table('tasks')->where('task_id', $taskId)->first();
         if (!$task) return;
 
-        DB::table('project_tasks')->where('task_id', $taskId)->update([
+        // Verify user is manager for this task's project
+        $isManager = DB::table('project_phases')
+            ->join('projects', 'project_phases.project_id', '=', 'projects.project_id')
+            ->where('project_phases.phase_id', $task->phase_id)
+            ->where('projects.project_manager_id', $this->employeeId)
+            ->exists();
+
+        if (!$isManager) {
+            $this->dispatch('alert', type: 'error', message: 'You are not authorized to approve this task!');
+            return;
+        }
+
+        $updated = DB::table('tasks')->where('task_id', $taskId)->update([
             'status' => 'completed',
             'updated_at' => now(),
         ]);
+
+        \Log::info('Task approved', ['rows_affected' => $updated]);
 
         $this->loadTasks();
         $this->dispatch('alert', type: 'success', message: 'Task approved!');
@@ -147,11 +199,30 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
     public function rejectTask($taskId)
     {
-        DB::table('project_tasks')->where('task_id', $taskId)->update([
+        \Log::info('rejectTask called', ['taskId' => $taskId]);
+        
+        $task = DB::table('tasks')->where('task_id', $taskId)->first();
+        if (!$task) return;
+
+        // Verify user is manager for this task's project
+        $isManager = DB::table('project_phases')
+            ->join('projects', 'project_phases.project_id', '=', 'projects.project_id')
+            ->where('project_phases.phase_id', $task->phase_id)
+            ->where('projects.project_manager_id', $this->employeeId)
+            ->exists();
+
+        if (!$isManager) {
+            $this->dispatch('alert', type: 'error', message: 'You are not authorized to reject this task!');
+            return;
+        }
+
+        $updated = DB::table('tasks')->where('task_id', $taskId)->update([
             'status' => 'in_progress',
-            'progress' => 50,
+            'progress_percentage' => 50,
             'updated_at' => now(),
         ]);
+
+        \Log::info('Task rejected', ['rows_affected' => $updated]);
 
         $this->loadTasks();
         $this->dispatch('alert', type: 'info', message: 'Task returned for revision.');
@@ -159,11 +230,24 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
     public function completeTask($taskId)
     {
-        DB::table('project_tasks')->where('task_id', $taskId)->update([
+        \Log::info('completeTask called', ['taskId' => $taskId]);
+        
+        $task = DB::table('tasks')->where('task_id', $taskId)->first();
+        if (!$task) return;
+
+        // Check if user is assigned to this task
+        if ($task->assigned_to != $this->employeeId) {
+            $this->dispatch('alert', type: 'error', message: 'You are not assigned to this task!');
+            return;
+        }
+
+        $updated = DB::table('tasks')->where('task_id', $taskId)->update([
             'status' => 'completed',
-            'progress' => 100,
+            'progress_percentage' => 100,
             'updated_at' => now(),
         ]);
+
+        \Log::info('Task completed', ['rows_affected' => $updated]);
 
         $this->loadTasks();
         $this->dispatch('alert', type: 'success', message: 'Task marked as complete!');
@@ -201,15 +285,6 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     50% {
         opacity: 0.5;
     }
-}
-
-.loading-button {
-    position: relative;
-}
-
-.loading-button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
 }
 
 .status-badge {
@@ -255,6 +330,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 </style>
 
 <div class="min-h-screen bg-gradient-to-b from-gray-50 to-blue-50 p-4 sm:p-6">
+
     <!-- Header -->
     <div class="mb-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -298,6 +374,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         </button>
     </div>
 
+
     <!-- Task Cards Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         @forelse ($tasks as $task)
@@ -314,6 +391,14 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                         </span>
                     </div>
                     <p class="text-gray-600 text-sm line-clamp-2">{{ $task->description }}</p>
+                    @if(isset($task->project_name))
+                        <div class="mt-2 flex items-center text-sm text-gray-500">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                            </svg>
+                            <span>{{ $task->project_name }}</span>
+                        </div>
+                    @endif
                 </div>
 
                 <!-- Task Details -->
@@ -341,11 +426,11 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                         <div>
                             <div class="flex justify-between text-xs text-gray-600 mb-1">
                                 <span>Progress</span>
-                                <span>{{ $task->progress ?? 0 }}%</span>
+                                <span>{{ $task->progress_percentage ?? 0 }}%</span>
                             </div>
                             <div class="progress-bar">
                                 <div class="progress-fill {{ $task->role_type === 'Manager' ? 'bg-purple-600' : 'bg-blue-600' }}" 
-                                     style="width: {{ $task->progress ?? 0 }}%"></div>
+                                     style="width: {{ $task->progress_percentage ?? 0 }}%"></div>
                             </div>
                         </div>
                     </div>
@@ -353,79 +438,64 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                     <!-- Action Buttons -->
                     <div class="pt-4 border-t border-gray-100">
                         @if ($task->role_type === 'Manager')
-                            <!-- Manager Actions -->
-                            <div class="grid grid-cols-2 gap-2">
-                                <button onclick="approveTask({{ $task->task_id }})" 
-                                        class="bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-1">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                                    </svg>
-                                    <span>Approve</span>
-                                </button>
-                                <button onclick="rejectTask({{ $task->task_id }})" 
-                                        class="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-1">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                    </svg>
-                                    <span>Reject</span>
-                                </button>
-                            </div>
+                            <!-- Manager Actions - Show only for submitted tasks -->
+                            @if($task->status === 'submitted')
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button" 
+                                            wire:click="approveTask({{ $task->task_id }})" 
+                                            class="bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                        <span>Approve</span>
+                                    </button>
+                                    <button type="button" 
+                                            wire:click="rejectTask({{ $task->task_id }})" 
+                                            class="bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                        <span>Reject</span>
+                                    </button>
+                                </div>
+                            @else
+                                <div class="text-center text-sm text-gray-500 py-2">
+                                    Awaiting submission from employee
+                                </div>
+                            @endif
                         @else
                             <!-- Employee Actions -->
-                            @switch($task->status)
-                                @case('not_started')
-                                @case('pending')
-                                    <button onclick="startTask({{ $task->task_id }}, this)" 
-                                            class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-2 loading-button">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                        </svg>
-                                        <span>Start Task</span>
-                                    </button>
-                                    @break
+                            @switch(strtolower($task->status))
+    @case('not_started')
+    @case('pending')
+    @case('assigned')
+        <button type="button" wire:click="startTask({{ $task->task_id }})"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg text-sm font-semibold">
+            Start Task
+        </button>
+        @break
 
-                                @case('in_progress')
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <button onclick="submitTask({{ $task->task_id }}, this)" 
-                                                class="bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-2 loading-button">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                            </svg>
-                                            <span>Submit</span>
-                                        </button>
-                                        <button onclick="completeTask({{ $task->task_id }}, this)" 
-                                                class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg text-sm font-semibold transition-colors duration-200 flex items-center justify-center space-x-2 loading-button">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                                            </svg>
-                                            <span>Complete</span>
-                                        </button>
-                                    </div>
-                                    @break
+    @case('in_progress')
+        <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="submitTaskJS({{ $task->task_id }})"
+                    class="bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm font-semibold">
+                Submit
+            </button>
+            <button type="button" wire:click="completeTask({{ $task->task_id }})"
+                    class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg text-sm font-semibold">
+                Complete
+            </button>
+        </div>
+        @break
 
-                                @case('submitted')
-                                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-                                        <div class="flex items-center justify-center space-x-2 text-yellow-800">
-                                            <svg class="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                            </svg>
-                                            <span class="font-semibold">Awaiting Approval</span>
-                                        </div>
-                                    </div>
-                                    @break
+    @case('submitted')
+        <div class="text-center text-sm text-gray-500 py-2 font-medium">
+            Awaiting confirmation
+        </div>
+        @break
+@endswitch
 
-                                @case('completed')
-                                    <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                                        <div class="flex items-center justify-center space-x-2 text-green-800">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                            </svg>
-                                            <span class="font-semibold">Task Completed</span>
-                                        </div>
-                                    </div>
-                                    @break
-                            @endswitch
+
                         @endif
                     </div>
                 </div>
@@ -440,102 +510,39 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                         </svg>
                     </div>
                     <h3 class="text-lg font-medium text-gray-900 mb-2">No tasks found</h3>
-                    <p class="text-gray-500 max-w-md mx-auto">You don't have any tasks assigned to you at the moment. Tasks will appear here when they are assigned.</p>
+                    <p class="text-gray-500 max-w-md mx-auto">
+                        @if(!$employeeId)
+                            No employee record found. Please contact administrator.
+                        @else
+                            You don't have any tasks assigned to you at the moment. Tasks will appear here when they are assigned.
+                        @endif
+                    </p>
                 </div>
             </div>
         @endforelse
     </div>
-
-    <!-- Loading State -->
-    <div wire:loading class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
-        <div class="text-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-600">Loading tasks...</p>
-        </div>
-    </div>
-
-    <!-- JavaScript -->
-    <script>
-        function startTask(taskId, button) {
-            if (button) {
-                const originalHTML = button.innerHTML;
-                button.innerHTML = '<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div><span>Starting...</span>';
-                button.disabled = true;
-            }
-            
-            @this.call('startTask', taskId)
-                .then(result => {
-                    // Button will reset when component re-renders
-                })
-                .catch(error => {
-                    if (button) {
-                        button.innerHTML = originalHTML;
-                        button.disabled = false;
-                    }
-                });
-        }
-
-        function submitTask(taskId, button) {
-            if (button) {
-                const originalHTML = button.innerHTML;
-                button.innerHTML = '<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div><span>Submitting...</span>';
-                button.disabled = true;
-            }
-            
-            @this.call('submitTask', taskId)
-                .then(result => {
-                    // Button will reset when component re-renders
-                })
-                .catch(error => {
-                    if (button) {
-                        button.innerHTML = originalHTML;
-                        button.disabled = false;
-                    }
-                });
-        }
-
-        function approveTask(taskId) {
-            if (confirm('Are you sure you want to approve this task?')) {
-                @this.call('approveTask', taskId);
-            }
-        }
-
-        function rejectTask(taskId) {
-            if (confirm('Are you sure you want to reject this task?')) {
-                @this.call('rejectTask', taskId);
-            }
-        }
-
-        function completeTask(taskId, button) {
-            if (button) {
-                const originalHTML = button.innerHTML;
-                button.innerHTML = '<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div><span>Completing...</span>';
-                button.disabled = true;
-            }
-            
-            @this.call('completeTask', taskId)
-                .then(result => {
-                    // Button will reset when component re-renders
-                })
-                .catch(error => {
-                    if (button) {
-                        button.innerHTML = originalHTML;
-                        button.disabled = false;
-                    }
-                });
-        }
-
-        function filterTasks(type) {
-            const cards = document.querySelectorAll('.task-card');
-            cards.forEach(card => {
-                if (type === 'all') {
-                    card.style.display = 'block';
-                } else if (type === 'employee') {
-                    card.style.display = card.classList.contains('employee') ? 'block' : 'none';
-                } else if (type === 'manager') {
-                    card.style.display = card.classList.contains('manager') ? 'block' : 'none';
-                }
-            });
-        }
-    </script>
 </div>
+
+<script>
+function startTaskJS(taskId) {
+    // Call the Livewire component method
+    @this.startTask(taskId).then((message) => {
+        alert(message); // simple JS alert
+        console.log("Start Task Message:", message);
+    }).catch((err) => {
+        alert("An error occurred!");
+        console.error(err);
+    });
+}
+function submitTaskJS(taskId) {
+    // Call the Livewire submitTask method
+    @this.submitTask(taskId).then((message) => {
+        alert(message || 'Task submitted!'); // show alert
+        console.log("Submit Task Message:", message);
+    }).catch((err) => {
+        alert("An error occurred while submitting the task!");
+        console.error(err);
+    });
+}
+
+</script>

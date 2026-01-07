@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
     <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
     <head>
         @include('partials.head')
@@ -65,7 +65,7 @@
                 background: linear-gradient(180deg, var(--forest-green) 0%, #0f4223 100%);
                 color: white;
                 width: 65px; /* Compact sidebar */
-                min-height: calc(100vh - 60px);
+                height: calc(100vh - 60px); /* Full height */
                 position: fixed;
                 left: 0;
                 top: 60px; /* Below header */
@@ -75,10 +75,12 @@
                 box-shadow: 3px 0 15px rgba(0, 0, 0, 0.1);
                 transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                 z-index: 999;
+                scrollbar-width: thin;
+                scrollbar-color: var(--primary-green) rgba(255, 255, 255, 0.05);
             }
             
             .sidebar:hover {
-                width: 200px; /* Expand on hover */
+                width: 220px; /* Expand on hover */
             }
             
             .sidebar h3 {
@@ -144,7 +146,7 @@
             
             .sidebar:hover + .main-content,
             .main-content:hover {
-                margin-left: 200px; /* Expand when sidebar expands */
+                margin-left: 220px; /* Expand when sidebar expands */
             }
             
             .module-icon {
@@ -300,36 +302,142 @@
                 display: none;
             }
             
-            /* Responsive design */
-            @media (max-width: 768px) {
-                .sidebar {
-                    width: 55px;
-                }
-                
-                .sidebar:hover {
-                    width: 180px;
-                }
-                
-                .main-content {
-                    margin-left: 55px;
-                    padding: 1rem;
-                }
-                
-                .sidebar:hover + .main-content {
-                    margin-left: 180px;
-                }
-                
-                .company-name {
-                    font-size: 1rem;
-                }
-                
-                .company-tagline {
-                    display: none;
-                }
-                
-                .user-badge span:last-child {
-                    display: none;
-                }
+            /* Collapsible category styling */
+            .category-item {
+                margin-bottom: 15px;
+            }
+            
+            .category-header {
+                display: flex;
+                align-items: center;
+                padding: 10px 15px;
+                color: var(--mint-green);
+                font-weight: 600;
+                font-size: 0.8rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                opacity: 0;
+                white-space: nowrap;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                border-radius: 6px;
+                margin: 0 5px;
+                position: relative;
+            }
+            
+            .sidebar:hover .category-header {
+                opacity: 1;
+            }
+            
+            .category-header:hover {
+                background: rgba(255, 255, 255, 0.05);
+            }
+            
+            .category-header .module-icon {
+                margin-right: 12px;
+                font-size: 1rem;
+                min-width: 20px;
+            }
+            
+            .category-text {
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                flex-grow: 1;
+            }
+            
+            .sidebar:hover .category-text {
+                opacity: 1;
+            }
+            
+            .category-arrow {
+                opacity: 0;
+                transition: opacity 0.3s ease, transform 0.3s ease;
+                font-size: 0.8rem;
+                margin-left: 5px;
+            }
+            
+            .sidebar:hover .category-arrow {
+                opacity: 0.7;
+            }
+            
+            .category-header.active .category-arrow {
+                transform: rotate(90deg);
+            }
+            
+            .submenu {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.3s ease-out;
+                opacity: 0;
+            }
+            
+            .sidebar:hover .submenu {
+                opacity: 1;
+            }
+            
+            .category-header.active + .submenu,
+            .submenu.expanded {
+                max-height: 500px;
+                opacity: 1;
+            }
+            
+            .submenu .nav-item {
+                padding: 10px 15px 10px 35px; /* Indent submenu items */
+                margin: 2px 5px;
+                font-size: 0.85rem;
+            }
+            
+            .submenu .module-icon {
+                font-size: 1rem;
+                min-width: 20px;
+            }
+            
+            /* Remove tooltips from categorized items */
+            .category-item .nav-tooltip {
+                display: none;
+            }
+            
+            /* Category tooltip for compact mode */
+            .category-tooltip {
+                position: absolute;
+                left: 100%;
+                top: 50%;
+                transform: translateY(-50%);
+                background: var(--forest-green);
+                color: white;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 0.8rem;
+                white-space: nowrap;
+                opacity: 0;
+                visibility: hidden;
+                transition: all 0.3s ease;
+                box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2);
+                z-index: 1001;
+                margin-left: 10px;
+            }
+            
+            .category-tooltip::before {
+                content: '';
+                position: absolute;
+                right: 100%;
+                top: 50%;
+                transform: translateY(-50%);
+                border-width: 6px;
+                border-style: solid;
+                border-color: transparent var(--forest-green) transparent transparent;
+            }
+            
+            .category-header:hover .category-tooltip {
+                opacity: 1;
+                visibility: visible;
+            }
+            
+            .sidebar:hover .category-tooltip {
+                display: none;
             }
             
             /* Green scrollbar */
@@ -344,6 +452,10 @@
             .sidebar::-webkit-scrollbar-thumb {
                 background: var(--primary-green);
                 border-radius: 2px;
+            }
+            
+            .sidebar::-webkit-scrollbar-thumb:hover {
+                background: var(--dark-green);
             }
             
             /* Animation for active state */
@@ -368,6 +480,37 @@
                 margin-right: 10px;
             }
             
+            @media (max-width: 768px) {
+                .sidebar {
+                    width: 55px;
+                }
+                
+                .sidebar:hover {
+                    width: 200px;
+                }
+                
+                .main-content {
+                    margin-left: 55px;
+                    padding: 1rem;
+                }
+                
+                .sidebar:hover + .main-content {
+                    margin-left: 200px;
+                }
+                
+                .company-name {
+                    font-size: 1rem;
+                }
+                
+                .company-tagline {
+                    display: none;
+                }
+                
+                .user-badge span:last-child {
+                    display: none;
+                }
+            }
+            
             @media (max-width: 480px) {
                 .menu-toggle {
                     display: block;
@@ -375,7 +518,7 @@
                 
                 .sidebar {
                     transform: translateX(-100%);
-                    width: 200px;
+                    width: 250px;
                 }
                 
                 .sidebar.mobile-open {
@@ -384,6 +527,25 @@
                 
                 .main-content {
                     margin-left: 0;
+                }
+                
+                .sidebar:hover {
+                    width: 250px;
+                }
+                
+                .sidebar:hover + .main-content {
+                    margin-left: 0;
+                }
+            }
+            
+            /* Responsive adjustments for categories */
+            @media (max-width: 1024px) {
+                .sidebar:hover {
+                    width: 200px;
+                }
+                
+                .sidebar:hover + .main-content {
+                    margin-left: 200px;
                 }
             }
         </style>
@@ -394,22 +556,21 @@
     <header class="main-header">
         <div class="header-content">
             <button class="menu-toggle" onclick="toggleMobileMenu()">☰</button>
-            <!-- Alternative: Logo with proper image handling -->
-    <div class="logo-container">
-        <div class="logo-icon" style="display: flex; align-items: center; justify-content: center;">
-        @if(file_exists(public_path('TGIF.png')))
-            <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 100px; width: auto;">
-        @else
-            <div style="background: white; color: var(--dark-green); font-weight: bold; padding: 4px 8px; border-radius: 6px;">
-                TGIF
+            <div class="logo-container">
+                <div class="logo-icon" style="display: flex; align-items: center; justify-content: center;">
+                @if(file_exists(public_path('TGIF.png')))
+                    <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 100px; width: auto;">
+                @else
+                    <div style="background: white; color: var(--dark-green); font-weight: bold; padding: 4px 8px; border-radius: 6px;">
+                        TGIF
+                    </div>
+                @endif
             </div>
-        @endif
-    </div>
-        <div class="logo-text">
-            <div class="company-name">Thanks G Its Fries Day</div>
-            <div class="company-tagline">Admin Portal</div>
-        </div>
-    </div>
+                <div class="logo-text">
+                    <div class="company-name">Thanks G Its Fries Day</div>
+                    <div class="company-tagline">Admin Portal</div>
+                </div>
+            </div>
             <div class="user-info">
                 <div class="user-badge">
                     <span style="color: var(--mint-green);">👤</span>
@@ -425,88 +586,135 @@
         </div>
     </header>
 
-    <!-- Sidebar -->
+    <!-- Sidebar with Collapsible Categories -->
     <aside class="sidebar" id="sidebar">
         <h3>🌿 Modules</h3>
         <nav>
             <ul>
-                <li>
-                    <a href="{{ route('admin.dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
-                        <span class="module-icon">📊</span>
-                        <span class="nav-text">Dashboard</span>
-                        <span class="nav-tooltip">Dashboard</span>
-                        <span class="status-badge" style="display: {{ request()->routeIs('dashboard') ? 'block' : 'none' }};">Active</span>
-                    </a>
+                <!-- Core Modules -->
+                <li class="category-item">
+                    <div class="category-header" onclick="toggleCategory(this)">
+                        <span class="module-icon">⭐</span>
+                        <span class="category-text">Core</span>
+                        <span class="category-arrow">▶</span>
+                        <span class="category-tooltip">Core Modules</span>
+                    </div>
+                    <ul class="submenu">
+                        <li>
+                            <a href="{{ route('admin.dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                                <span class="module-icon">📊</span>
+                                <span class="nav-text">Dashboard</span>
+                                <span class="nav-tooltip">Dashboard</span>
+                                <span class="status-badge" style="display: {{ request()->routeIs('dashboard') ? 'block' : 'none' }};">Active</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('ecommerce.home') }}" class="nav-item {{ request()->routeIs('ecommerce.*') ? 'active' : '' }}">
+                                <span class="module-icon">🛒</span>
+                                <span class="nav-text">E-Commerce</span>
+                                <span class="nav-tooltip">E-Commerce</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('sales.home') }}" class="nav-item {{ request()->routeIs('sales.*') ? 'active' : '' }}">
+                                <span class="module-icon">📞</span>
+                                <span class="nav-text">Sales</span>
+                                <span class="nav-tooltip">Sales & CRM</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li>
-                    <a href="{{ route('projects.home') }}" class="nav-item {{ request()->routeIs('projects.*') ? 'active' : '' }}">
-                        <span class="module-icon">📋</span>
-                        <span class="nav-text">Projects</span>
-                        <span class="nav-tooltip">Project Management</span>
-                    </a>
+                
+                <!-- Operations Modules -->
+                <li class="category-item">
+                    <div class="category-header" onclick="toggleCategory(this)">
+                        <span class="module-icon">⚙️</span>
+                        <span class="category-text">Operations</span>
+                        <span class="category-arrow">▶</span>
+                        <span class="category-tooltip">Operations</span>
+                    </div>
+                    <ul class="submenu">
+                        <li>
+                            <a href="{{ route('inventory.home') }}" class="nav-item {{ request()->routeIs('inventory.*') ? 'active' : '' }}">
+                                <span class="module-icon">🏭</span>
+                                <span class="nav-text">Inventory</span>
+                                <span class="nav-tooltip">Inventory & Warehouse</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('procurement.home') }}" class="nav-item {{ request()->routeIs('procurement.*') ? 'active' : '' }}">
+                                <span class="module-icon">📦</span>
+                                <span class="nav-text">Procurement</span>
+                                <span class="nav-tooltip">Procurement</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('supplychain.home') }}" class="nav-item {{ request()->routeIs('supplychain.*') ? 'active' : '' }}">
+                                <span class="module-icon">🔄</span>
+                                <span class="nav-text">Supply Chain</span>
+                                <span class="nav-tooltip">Supply Chain</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li>
-                    <a href="{{ route('inventory.home') }}" class="nav-item {{ request()->routeIs('inventory.*') ? 'active' : '' }}">
-                        <span class="module-icon">🏭</span>
-                        <span class="nav-text">Inventory</span>
-                        <span class="nav-tooltip">Inventory & Warehouse</span>
-                    </a>
+                
+                <!-- Support Modules -->
+                <li class="category-item">
+                    <div class="category-header" onclick="toggleCategory(this)">
+                        <span class="module-icon">💼</span>
+                        <span class="category-text">Support</span>
+                        <span class="category-arrow">▶</span>
+                        <span class="category-tooltip">Support</span>
+                    </div>
+                    <ul class="submenu expanded"> <!-- Expanded by default -->
+                        <li>
+                            <a href="{{ route('customerservice.home') }}" class="nav-item {{ request()->routeIs('customerservice.*') ? 'active' : '' }}">
+                                <span class="module-icon">💬</span>
+                                <span class="nav-text">Customer Service</span>
+                                <span class="nav-tooltip">Customer Service</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('finance.home') }}" class="nav-item {{ request()->routeIs('finance.*') ? 'active' : '' }}">
+                                <span class="module-icon">💰</span>
+                                <span class="nav-text">Finance</span>
+                                <span class="nav-tooltip">Finance & Accounting</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('hr.home') }}" class="nav-item {{ request()->routeIs('hr.*') ? 'active' : '' }}">
+                                <span class="module-icon">👥</span>
+                                <span class="nav-text">Human Resources</span>
+                                <span class="nav-tooltip">Human Resources</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li>
-                    <a href="{{ route('customerservice.home') }}" class="nav-item {{ request()->routeIs('customerservice.*') ? 'active' : '' }}">
-                        <span class="module-icon">💬</span>
-                        <span class="nav-text">Customer Service</span>
-                        <span class="nav-tooltip">Customer Service</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('procurement.home') }}" class="nav-item {{ request()->routeIs('procurement.*') ? 'active' : '' }}">
-                        <span class="module-icon">📦</span>
-                        <span class="nav-text">Procurement</span>
-                        <span class="nav-tooltip">Procurement</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('supplychain.home') }}" class="nav-item {{ request()->routeIs('supplychain.*') ? 'active' : '' }}">
-                        <span class="module-icon">🔄</span>
-                        <span class="nav-text">Supply Chain</span>
-                        <span class="nav-tooltip">Supply Chain</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('finance.home') }}" class="nav-item {{ request()->routeIs('finance.*') ? 'active' : '' }}">
-                        <span class="module-icon">💰</span>
-                        <span class="nav-text">Finance</span>
-                        <span class="nav-tooltip">Finance & Accounting</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('ecommerce.home') }}" class="nav-item {{ request()->routeIs('ecommerce.*') ? 'active' : '' }}">
-                        <span class="module-icon">🛒</span>
-                        <span class="nav-text">E-Commerce</span>
-                        <span class="nav-tooltip">E-Commerce</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('reports.home') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                
+                <!-- Project & Analytics -->
+                <li class="category-item">
+                    <div class="category-header" onclick="toggleCategory(this)">
                         <span class="module-icon">📈</span>
-                        <span class="nav-text">Reports</span>
-                        <span class="nav-tooltip">Reports & BI</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('sales.home') }}" class="nav-item {{ request()->routeIs('sales.*') ? 'active' : '' }}">
-                        <span class="module-icon">📞</span>
-                        <span class="nav-text">Sales</span>
-                        <span class="nav-tooltip">Sales & CRM</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ route('hr.home') }}" class="nav-item {{ request()->routeIs('hr.*') ? 'active' : '' }}">
-                        <span class="module-icon">👥</span>
-                        <span class="nav-text">HR</span>
-                        <span class="nav-tooltip">Human Resources</span>
-                    </a>
+                        <span class="category-text">Analytics</span>
+                        <span class="category-arrow">▶</span>
+                        <span class="category-tooltip">Analytics</span>
+                    </div>
+                    <ul class="submenu">
+                        <li>
+                            <a href="{{ route('projects.home') }}" class="nav-item {{ request()->routeIs('projects.*') ? 'active' : '' }}">
+                                <span class="module-icon">📋</span>
+                                <span class="nav-text">Projects</span>
+                                <span class="nav-tooltip">Project Management</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('reports.home') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                                <span class="module-icon">📈</span>
+                                <span class="nav-text">Reports</span>
+                                <span class="nav-tooltip">Reports & BI</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
             </ul>
         </nav>
@@ -517,71 +725,114 @@
         {{ $slot }}
     </main>
 
-    <!-- JavaScript for Interactions -->
     <script>
-        // Toggle mobile menu
-        function toggleMobileMenu() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('mobile-open');
+    // Toggle mobile menu
+    function toggleMobileMenu() {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('mobile-open');
+    }
+    
+    // Simple category toggle
+    function toggleCategory(categoryHeader) {
+        const submenu = categoryHeader.nextElementSibling;
+        const arrow = categoryHeader.querySelector('.category-arrow');
+        
+        // Toggle active state
+        categoryHeader.classList.toggle('active');
+        
+        // Toggle submenu
+        if (submenu.classList.contains('expanded')) {
+            submenu.classList.remove('expanded');
+            submenu.style.maxHeight = '0';
+            if (arrow) arrow.style.transform = 'rotate(0deg)';
+        } else {
+            submenu.classList.add('expanded');
+            submenu.style.maxHeight = submenu.scrollHeight + 'px';
+            if (arrow) arrow.style.transform = 'rotate(90deg)';
         }
-        
-        // Close mobile menu when clicking outside
-        document.addEventListener('click', function(event) {
-            const sidebar = document.getElementById('sidebar');
-            const menuToggle = document.querySelector('.menu-toggle');
-            
-            if (window.innerWidth <= 480 && 
-                !sidebar.contains(event.target) && 
-                !menuToggle.contains(event.target) && 
-                sidebar.classList.contains('mobile-open')) {
-                sidebar.classList.remove('mobile-open');
-            }
-        });
-        
-        // Handle sidebar hover behavior
+    }
+    
+    // Initialize sidebar
+    document.addEventListener('DOMContentLoaded', function() {
         const sidebar = document.getElementById('sidebar');
         const mainContent = document.getElementById('mainContent');
         
-        sidebar.addEventListener('mouseenter', function() {
-            if (window.innerWidth > 768) {
-                this.style.width = '200px';
-                mainContent.style.marginLeft = '200px';
-            }
-        });
-        
-        sidebar.addEventListener('mouseleave', function() {
-            if (window.innerWidth > 768) {
-                this.style.width = '65px';
-                mainContent.style.marginLeft = '65px';
-            }
-        });
-        
-        // Update active state
-        document.addEventListener('DOMContentLoaded', function() {
-            const currentPath = window.location.pathname;
-            const navItems = document.querySelectorAll('.nav-item');
-            
-            navItems.forEach(item => {
-                const href = item.getAttribute('href');
-                if (href && currentPath.includes(href.replace(/\/$/, '')) && href !== '/') {
-                    item.classList.add('active');
-                    const badge = item.querySelector('.status-badge');
-                    if (badge) {
-                        badge.style.display = 'block';
+        // Set active nav items
+        const currentPath = window.location.pathname;
+        document.querySelectorAll('.nav-item').forEach(item => {
+            const href = item.getAttribute('href');
+            if (href && currentPath.includes(href.replace(/\/$/, '')) && href !== '/') {
+                item.classList.add('active');
+                
+                // Expand parent category
+                const categoryItem = item.closest('.category-item');
+                if (categoryItem) {
+                    const categoryHeader = categoryItem.querySelector('.category-header');
+                    const submenu = categoryItem.querySelector('.submenu');
+                    if (categoryHeader && submenu) {
+                        categoryHeader.classList.add('active');
+                        submenu.classList.add('expanded');
+                        submenu.style.maxHeight = submenu.scrollHeight + 'px';
+                        
+                        // Rotate arrow
+                        const arrow = categoryHeader.querySelector('.category-arrow');
+                        if (arrow) arrow.style.transform = 'rotate(90deg)';
                     }
                 }
-            });
-            
-            // Auto-close mobile menu on item click
-            if (window.innerWidth <= 480) {
-                document.querySelectorAll('.nav-item').forEach(item => {
-                    item.addEventListener('click', () => {
-                        sidebar.classList.remove('mobile-open');
-                    });
-                });
             }
         });
-    </script>
+        
+        // Expand Support category by default
+        const supportCategory = document.querySelector('.category-item:nth-child(3)');
+        if (supportCategory) {
+            const supportHeader = supportCategory.querySelector('.category-header');
+            const supportSubmenu = supportCategory.querySelector('.submenu');
+            if (supportHeader && supportSubmenu) {
+                supportHeader.classList.add('active');
+                supportSubmenu.classList.add('expanded');
+                supportSubmenu.style.maxHeight = supportSubmenu.scrollHeight + 'px';
+                
+                const arrow = supportHeader.querySelector('.category-arrow');
+                if (arrow) arrow.style.transform = 'rotate(90deg)';
+            }
+        }
+        
+        // Desktop hover behavior
+        if (window.innerWidth > 768) {
+            sidebar.addEventListener('mouseenter', function() {
+                this.style.width = '220px';
+                mainContent.style.marginLeft = '220px';
+            });
+            
+            sidebar.addEventListener('mouseleave', function() {
+                this.style.width = '65px';
+                mainContent.style.marginLeft = '65px';
+            });
+        }
+        
+        // Mobile menu close on click
+        if (window.innerWidth <= 480) {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    sidebar.classList.remove('mobile-open');
+                });
+            });
+        }
+    });
+    
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', function(event) {
+        const sidebar = document.getElementById('sidebar');
+        const menuToggle = document.querySelector('.menu-toggle');
+        
+        if (window.innerWidth <= 480 && 
+            !sidebar.contains(event.target) && 
+            !menuToggle.contains(event.target) && 
+            sidebar.classList.contains('mobile-open')) {
+            sidebar.classList.remove('mobile-open');
+        }
+    });
+</script>
 
     </body>
     </html>

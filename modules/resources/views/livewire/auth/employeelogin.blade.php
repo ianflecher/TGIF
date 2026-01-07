@@ -44,7 +44,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                     $query->where('username', $credentials['username']);
                 }
             })
-            ->where('role', 'employee') // Only employee role
+            ->where('role', 'employee','manager') // Only employee role
             ->whereNull('deleted_at')
             ->exists();
 
@@ -183,19 +183,6 @@ new #[Layout('components.layouts.landing')] class extends Component
                         @error('password')
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
-                    </div>
-
-                    <!-- Remember Me -->
-                    <div class="flex items-center">
-                        <input 
-                            type="checkbox" 
-                            wire:model="remember" 
-                            id="remember"
-                            class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                        >
-                        <label for="remember" class="ml-2 block text-sm text-gray-700">
-                            Remember this device
-                        </label>
                     </div>
 
                     <!-- Submit Button -->

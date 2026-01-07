@@ -7,312 +7,453 @@ use Illuminate\Support\Facades\DB;
 new #[Layout('components.layouts.ecommerce')] class extends Component
 {
     public array $orders = [];
-    public array $products = [];
-    public array $customers = [];
+    public array $activeOrders = [];
     public bool $showCompleted = false;
     
-    public string $paymentMethod = '';
-    public float $paymentAmount = 0;
-    public string $paymentStatus = 'Pending';
-    public ?int $currentOrderId = null;
     public ?int $selectedOrderId = null;
     public array $selectedOrder = [];
-    public int $step = 1;
-
-    // Customer input
-    public string $customer = '';
-    public ?int $customerId = null;
-
-    // Order input
-    public array $selectedProducts = [];
-    public float $totalPrice = 0;
+    public string $orderStatus = 'draft';
+    
+    // Map UI statuses to database statuses
+    public array $statusOptions = [
+        'draft' => 'Draft',
+        'confirmed' => 'Confirmed',
+        'processing' => 'Processing',
+        'shipped' => 'Shipped',
+        'delivered' => 'Delivered',
+        'cancelled' => 'Cancelled'
+    ];
+    
+    // Status flow for UI (what status comes next)
+    public array $statusFlow = [
+        'draft' => 'confirmed',
+        'confirmed' => 'processing',
+        'processing' => 'shipped',
+        'shipped' => 'delivered',
+        'delivered' => null, // Final status
+        'cancelled' => null  // Final status
+    ];
 
     public function mount()
     {
-        $this->products = DB::table('products')->orderBy('product_name')->get()->toArray();
-        $this->customers = DB::table('customers')
-            ->select(DB::raw('CONCAT(first_name," ",last_name) as name'), 'customer_id')
-            ->get()
-            ->toArray();
-
         $this->loadOrders();
-    }
-
-    public function viewPayment(int $orderId)
-    {
-        $this->selectedOrderId = $orderId;
-        $this->selectedOrder = collect($this->orders)->first(fn($o) => $o['order_id'] == $orderId) ?? [];
-        $this->step = 2;
-    }
-
-    public function backToOrders()
-    {
-        $this->selectedOrderId = null;
-        $this->selectedOrder = [];
-        $this->step = 1;
     }
 
     public function loadOrders()
     {
+        // First, get aggregated order items
+        $orderItems = DB::table('order_items')
+            ->join('products', 'order_items.product_id', '=', 'products.product_id')
+            ->select(
+                'order_items.order_id',
+                DB::raw('GROUP_CONCAT(CONCAT(order_items.quantity, "x ", products.product_name) SEPARATOR ", ") as items'),
+                DB::raw('SUM(order_items.quantity) as total_quantity')
+            )
+            ->groupBy('order_items.order_id');
+
+        // Main query with left join subquery
         $this->orders = DB::table('sales_orders')
             ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.customer_id')
-            ->leftJoin('order_items', 'sales_orders.order_id', '=', 'order_items.order_id')
-            ->leftJoin('products', 'order_items.product_id', '=', 'products.product_id')
-            ->leftJoin('payments', function($join) {
-                $join->on('sales_orders.order_id', '=', 'payments.reference_id')
-                    ->where('payments.reference_type', 'sales_order');
+            ->leftJoinSub($orderItems, 'order_items_agg', function ($join) {
+                $join->on('sales_orders.order_id', '=', 'order_items_agg.order_id');
             })
             ->select(
                 'sales_orders.order_id',
-                'sales_orders.status',
                 'sales_orders.order_number',
+                'sales_orders.status',
+                'sales_orders.order_date',
                 'sales_orders.grand_total',
-                'sales_orders.payment_method',
                 'sales_orders.payment_status',
+                'sales_orders.payment_method',
                 DB::raw('CONCAT(customers.first_name, " ", customers.last_name) as customer_name'),
-                DB::raw('GROUP_CONCAT(products.product_name SEPARATOR ", ") as items'),
-                DB::raw('SUM(order_items.quantity) as total_quantity'),
-                DB::raw('MAX(payments.payment_date) as payment_date'),
-                DB::raw('SUM(payments.amount) as paid_amount')
-            )
-            ->groupBy(
-                'sales_orders.order_id',
-                'sales_orders.status',
-                'sales_orders.order_number',
-                'sales_orders.grand_total',
-                'sales_orders.payment_method',
-                'sales_orders.payment_status',
-                'customers.first_name',
-                'customers.last_name'
+                'order_items_agg.items',
+                'order_items_agg.total_quantity',
+                'sales_orders.created_at'
             )
             ->orderByDesc('sales_orders.created_at')
             ->get()
             ->map(fn($o) => (array)$o)
             ->toArray();
+        
+        // Filter active orders (not delivered or cancelled)
+        $this->activeOrders = array_filter($this->orders, fn($order) => 
+            !in_array($order['status'] ?? '', ['delivered', 'cancelled'])
+        );
     }
 
-    public function selectCustomer()
+    public function viewOrder(int $orderId)
     {
-        $this->customerId = DB::table('customers')
-            ->where(DB::raw('CONCAT(first_name," ",last_name)'), $this->customer)
-            ->value('customer_id');
+        $this->selectedOrderId = $orderId;
+        $this->selectedOrder = collect($this->orders)->first(fn($o) => $o['order_id'] == $orderId) ?? [];
+        $this->orderStatus = $this->selectedOrder['status'] ?? 'draft';
+    }
 
-        if (!$this->customerId) {
-            $names = explode(' ', $this->customer, 2);
-            $first = $names[0] ?? '';
-            $last = $names[1] ?? '';
-            $this->customerId = DB::table('customers')->insertGetId([
-                'first_name' => $first,
-                'last_name' => $last,
-                'email' => strtolower($first.$last).'@example.com',
-                'date_registered' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
+    public function closeOrderView()
+    {
+        $this->selectedOrderId = null;
+        $this->selectedOrder = [];
+        $this->orderStatus = 'draft';
+    }
+
+    public function updateOrderStatus(string $newStatus)
+    {
+        if (!$this->selectedOrderId) return;
+
+        DB::table('sales_orders')
+            ->where('order_id', $this->selectedOrderId)
+            ->update([
+                'status' => $newStatus,
+                'updated_at' => now()
             ]);
-        }
 
-        $this->step = 2;
-    }
-
-    public function calculateTotal()
-    {
-        $this->totalPrice = 0;
-        foreach ($this->selectedProducts as $productId => $qty) {
-            $product = collect($this->products)->first(fn($p) => $p->product_id == $productId);
-            if ($product && $qty > 0) {
-                $this->totalPrice += $product->price * $qty;
-            }
-        }
-        $this->step = 3;
-    }
-
-    public function confirmOrder()
-    {
-        if (!$this->customerId || empty($this->selectedProducts)) return;
-
-        // Generate order number
-        $orderNumber = 'SO-' . date('Ymd') . '-' . str_pad(DB::table('sales_orders')->count() + 1, 4, '0', STR_PAD_LEFT);
-
-        $orderId = DB::table('sales_orders')->insertGetId([
-            'customer_id' => $this->customerId,
-            'order_number' => $orderNumber,
-            'order_date' => now(),
-            'total_amount' => $this->totalPrice,
-            'grand_total' => $this->totalPrice,
-            'status' => 'draft',
-            'payment_status' => 'pending',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        foreach ($this->selectedProducts as $productId => $qty) {
-            $product = collect($this->products)->first(fn($p) => $p->product_id == $productId);
-            if ($product) {
-                DB::table('order_items')->insert([
-                    'order_id' => $orderId,
-                    'product_id' => $productId,
-                    'quantity' => $qty,
-                    'price_per_unit' => $product->price,
-                    'subtotal' => $product->price * $qty,
-                    'total' => $product->price * $qty,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+        // If status is delivered, update payment status if not already paid
+        if ($newStatus === 'delivered') {
+            $order = DB::table('sales_orders')->where('order_id', $this->selectedOrderId)->first();
+            if ($order->payment_status === 'pending') {
+                DB::table('sales_orders')
+                    ->where('order_id', $this->selectedOrderId)
+                    ->update([
+                        'payment_status' => 'paid',
+                        'payment_method' => 'cash',
+                        'updated_at' => now()
+                    ]);
             }
         }
 
-        // Move to Step 4: Payment
-        $this->step = 4;
-        $this->currentOrderId = $orderId;
-        $this->customer = '';
-        $this->selectedProducts = [];
-        $this->customerId = $orderId;
+        $this->loadOrders();
+        
+        // Close the modal after updating
+        $this->closeOrderView();
+        
+        session()->flash('message', 'Order status updated to ' . ($this->statusOptions[$newStatus] ?? $newStatus) . '!');
     }
 
-    public function addPayment()
+    public function markNextStatus()
     {
-        if (!$this->currentOrderId || $this->paymentAmount <= 0 || !$this->paymentMethod) return;
-
-        // Generate payment number
-        $paymentNumber = 'PAY-' . date('Ymd') . '-' . str_pad(DB::table('payments')->count() + 1, 4, '0', STR_PAD_LEFT);
-
-        DB::table('payments')->insert([
-            'payment_number' => $paymentNumber,
-            'reference_type' => 'sales_order',
-            'reference_id' => $this->currentOrderId,
-            'amount' => $this->paymentAmount,
-            'payment_date' => now(),
-            'method' => $this->paymentMethod,
-            'status' => 'completed',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // Update order payment status
-        $order = DB::table('sales_orders')->where('order_id', $this->currentOrderId)->first();
-        $totalPaid = DB::table('payments')
-            ->where('reference_type', 'sales_order')
-            ->where('reference_id', $this->currentOrderId)
-            ->where('status', 'completed')
-            ->sum('amount');
-
-        $paymentStatus = 'partial';
-        if ($totalPaid >= $order->grand_total) {
-            $paymentStatus = 'paid';
+        if (!$this->selectedOrderId || !$this->selectedOrder) return;
+        
+        $currentStatus = $this->selectedOrder['status'] ?? 'draft';
+        $nextStatus = $this->statusFlow[$currentStatus] ?? null;
+        
+        if ($nextStatus) {
+            $this->updateOrderStatus($nextStatus);
         }
-
-        DB::table('sales_orders')->where('order_id', $this->currentOrderId)->update([
-            'payment_status' => $paymentStatus,
-            'payment_method' => $this->paymentMethod,
-            'status' => 'confirmed',
-            'updated_at' => now()
-        ]);
-
-        // Reset fields
-        $this->step = 1;
-        $this->customer = '';
-        $this->currentOrderId = null;
-        $this->totalPrice = 0;
-        $this->paymentAmount = 0;
-        $this->paymentMethod = '';
-        $this->paymentStatus = 'Pending';
-
-        // Reload orders
-        $this->loadOrders();
     }
 
-    public function updateStatus(int $orderId, string $newStatus)
+    public function cancelOrder(int $orderId)
     {
-        DB::table('sales_orders')->where('order_id', $orderId)->update([
-            'status' => $newStatus,
-            'updated_at' => now()
-        ]);
+        DB::table('sales_orders')
+            ->where('order_id', $orderId)
+            ->update([
+                'status' => 'cancelled',
+                'updated_at' => now()
+            ]);
 
         $this->loadOrders();
+        
+        // If we're in the modal for this order, close it
+        if ($this->selectedOrderId == $orderId) {
+            $this->closeOrderView();
+        }
+        
+        session()->flash('message', 'Order cancelled successfully!');
+    }
+
+    public function markAsPaid(int $orderId)
+    {
+        DB::table('sales_orders')
+            ->where('order_id', $orderId)
+            ->update([
+                'payment_status' => 'paid',
+                'payment_method' => 'cash',
+                'updated_at' => now()
+            ]);
+
+        $this->loadOrders();
+        
+        // If we're in the modal for this order, close it
+        if ($this->selectedOrderId == $orderId) {
+            $this->closeOrderView();
+        }
+        
+        session()->flash('message', 'Payment marked as paid!');
+    }
+
+    public function getStatusColor(string $status): string
+    {
+        return match($status) {
+            'draft' => 'bg-gray-100 text-gray-800',
+            'confirmed' => 'bg-blue-100 text-blue-800',
+            'processing' => 'bg-yellow-100 text-yellow-800',
+            'shipped' => 'bg-purple-100 text-purple-800',
+            'delivered' => 'bg-green-100 text-green-800',
+            'cancelled' => 'bg-red-100 text-red-800',
+            default => 'bg-gray-100 text-gray-800'
+        };
+    }
+    
+    // Helper to get next status button label
+    public function getNextStatusLabel(string $currentStatus): ?string
+    {
+        $nextStatus = $this->statusFlow[$currentStatus] ?? null;
+        return $nextStatus ? ($this->statusOptions[$nextStatus] ?? $nextStatus) : null;
     }
 };
 ?>
+
 <div class="p-6 bg-gray-100 min-h-screen">
-
-    <div class="mb-4 flex justify-start max-w-6xl mx-auto gap-2">
-    <button wire:click="$toggle('showCompleted')" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">
-        {{ $showCompleted ? 'Hide Completed Orders' : 'Show Completed Orders' }}
-    </button>
-
-    <!-- Back to Orders -->
-    <button onclick="window.location='{{ route('inventory.home') }}'" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
-        Back to Orders
-    </button>
+    <!-- Header -->
+    <div class="mb-6 max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold text-green-800 mb-2">Restaurant Orders Dashboard</h1>
+        <p class="text-gray-600">Manage and process customer orders</p>
     </div>
 
+    <!-- Flash Message -->
+    @if(session('message'))
+        <div class="max-w-6xl mx-auto mb-4">
+            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+                {{ session('message') }}
+            </div>
+        </div>
+    @endif
 
+    <!-- Controls -->
+    <div class="mb-4 flex justify-start max-w-6xl mx-auto gap-2">
+        <button wire:click="$toggle('showCompleted')" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">
+            {{ $showCompleted ? 'Hide Completed Orders' : 'Show Completed Orders' }}
+        </button>
+        <!-- <button onclick="window.location='{{ route('inventory.home') }}'" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm">
+            Back to Inventory
+        </button> -->
+    </div>
+
+    <!-- Active Orders Section -->
+    <div class="mb-8 max-w-6xl mx-auto">
+        <h2 class="text-xl font-semibold text-green-700 mb-3">Active Orders ({{ count($activeOrders) }})</h2>
+        @if(count($activeOrders) > 0)
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                @foreach($activeOrders as $order)
+                    <div class="bg-white rounded-lg shadow border hover:shadow-md transition-shadow">
+                        <div class="p-4 border-b">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-bold text-lg">Order #{{ $order['order_number'] }}</h3>
+                                    <p class="text-sm text-gray-600">{{ $order['customer_name'] ?? 'Walk-in Customer' }}</p>
+                                </div>
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold {{ $this->getStatusColor($order['status']) }}">
+                                    {{ $statusOptions[$order['status']] ?? ucfirst($order['status']) }}
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-500 mt-1">
+                                {{ date('h:i A', strtotime($order['order_date'])) }}
+                            </p>
+                        </div>
+                        
+                        <div class="p-4">
+                            <p class="text-gray-700 mb-2"><strong>Items:</strong> {{ $order['items'] }}</p>
+                            <p class="text-gray-700 mb-2"><strong>Quantity:</strong> {{ $order['total_quantity'] }} items</p>
+                            <p class="text-gray-700 mb-3"><strong>Total:</strong> ₱{{ number_format($order['grand_total'], 2) }}</p>
+                            
+                            <div class="flex flex-wrap gap-2">
+                                <button wire:click="viewOrder({{ $order['order_id'] }})" 
+                                        class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm flex-1">
+                                    View Details
+                                </button>
+                                @if($order['payment_status'] !== 'paid')
+                                    <button wire:click="markAsPaid({{ $order['order_id'] }})" 
+                                            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                                        Mark Paid
+                                    </button>
+                                @endif
+                                @if($order['status'] !== 'cancelled' && $order['status'] !== 'delivered')
+                                    <button wire:click="cancelOrder({{ $order['order_id'] }})" 
+                                            class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
+                                        Cancel
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <div class="bg-white rounded-lg shadow p-8 text-center">
+                <p class="text-gray-500 text-lg">No active orders at the moment.</p>
+            </div>
+        @endif
+    </div>
+
+    <!-- All Orders Table -->
     <div class="bg-white shadow rounded-lg overflow-x-auto max-w-6xl mx-auto">
+        <div class="p-4 border-b">
+            <h2 class="text-xl font-semibold text-green-700">All Orders</h2>
+        </div>
         <table class="min-w-full table-auto border-collapse">
             <thead class="bg-green-700 text-white">
                 <tr class="text-left">
-                    @foreach(['Order ID','Customer','Items','Quantity','Total','Status','Actions'] as $th)
-                        <th class="px-4 py-2">{{ $th }}</th>
-                    @endforeach
+                    <th class="px-4 py-3">Order #</th>
+                    <th class="px-4 py-3">Customer</th>
+                    <th class="px-4 py-3">Items</th>
+                    <th class="px-4 py-3">Qty</th>
+                    <th class="px-4 py-3">Total</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Payment</th>
+                    <th class="px-4 py-3">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($orders as $order)
-                    @if($order['status'] !== 'Completed' || $showCompleted)
+                    @if($showCompleted || $order['status'] !== 'delivered')
                         <tr class="border-b hover:bg-gray-50">
-                            <td class="px-4 py-2">#{{ $order['order_id'] }}</td>
-                            <td class="px-4 py-2">{{ $order['customer_name'] }}</td>
-                            <td class="px-4 py-2">{{ $order['items'] }}</td>
-                            <td class="px-4 py-2">{{ $order['total_quantity'] }}</td>
-                            <td class="px-4 py-2">₱{{ number_format($order['total_amount'],2) }}</td>
-                            <td class="px-4 py-2">{{ $order['status'] }}</td>
-                            <td class="px-4 py-2">
-                                <button wire:click="viewPayment({{ $order['order_id'] }})" class="bg-green-700 hover:bg-green-800 text-white px-2 py-1 rounded text-xs">Payment</button>
+                            <td class="px-4 py-3 font-medium">#{{ $order['order_number'] }}</td>
+                            <td class="px-4 py-3">{{ $order['customer_name'] ?? 'Walk-in' }}</td>
+                            <td class="px-4 py-3 text-sm">{{ Str::limit($order['items'] ?? 'No items', 50) }}</td>
+                            <td class="px-4 py-3">{{ $order['total_quantity'] ?? 0 }}</td>
+                            <td class="px-4 py-3">₱{{ number_format($order['grand_total'], 2) }}</td>
+                            <td class="px-4 py-3">
+                               <span class="px-2 py-1 rounded-full text-xs font-semibold {{ $this->getStatusColor($order['status']) }}">
+                                    {{ $statusOptions[$order['status']] ?? ucfirst($order['status']) }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3">
+                                @if($order['payment_status'] === 'paid')
+                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                                        Paid ({{ $order['payment_method'] ?? 'cash' }})
+                                    </span>
+                                @else
+                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                                        Pending
+                                    </span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3">
+                                <button wire:click="viewOrder({{ $order['order_id'] }})" 
+                                        class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm">
+                                    View
+                                </button>
                             </td>
                         </tr>
                     @endif
                 @empty
                     <tr>
-                        <td colspan="7" class="px-4 py-4 text-center text-gray-500">No orders yet.</td>
+                        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                            No orders found.
+                        </td>
                     </tr>
                 @endforelse
             </tbody>
         </table>
     </div>
 
-@if($selectedOrder)
-    <div class="bg-white shadow-lg rounded-lg p-6 max-w-md mx-auto mt-4">
-        <h2 class="text-2xl font-bold text-green-800 mb-4">Payment Details for Order #{{ $selectedOrder['order_id'] }}</h2>
-        <p><strong>Customer:</strong> {{ $selectedOrder['customer_name'] }}</p>
-        <p><strong>Total Amount:</strong> ₱{{ number_format($selectedOrder['total_amount'], 2) }}</p>
-        <p><strong>Amount Paid:</strong> ₱{{ number_format($selectedOrder['paid_amount'] ?? 0, 2) }}</p>
-        <p><strong>Balance:</strong> ₱{{ number_format($selectedOrder['total_amount'] - ($selectedOrder['paid_amount'] ?? 0), 2) }}</p>
-        <p><strong>Payment Method:</strong> {{ $selectedOrder['payment_method'] ?? '-' }}</p>
-        <p><strong>Payment Status:</strong> {{ $selectedOrder['payment_status'] ?? '-' }}</p>
-        <p><strong>Payment Date:</strong> {{ $selectedOrder['payment_date'] ?? '-' }}</p>
+    <!-- Order Details Modal -->
+    @if($selectedOrder)
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="p-6 border-b">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h2 class="text-2xl font-bold text-green-800">Order #{{ $selectedOrder['order_number'] }}</h2>
+                            <p class="text-gray-600">{{ $selectedOrder['customer_name'] ?? 'Walk-in Customer' }}</p>
+                            <p class="text-sm text-gray-500">{{ date('F j, Y h:i A', strtotime($selectedOrder['order_date'])) }}</p>
+                        </div>
+                        <button wire:click="closeOrderView" class="text-gray-400 hover:text-gray-600">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
 
-        @if($selectedOrder['status'] !== 'Completed')
-            @php
-                $nextStatus = $selectedOrder['status'] === 'Pending' ? 'Processing' : ($selectedOrder['status'] === 'Processing' ? 'Completed' : null);
-                $btnClass = match($nextStatus) {
-                    'Processing' => 'bg-blue-600 hover:bg-blue-700',
-                    'Completed' => 'bg-green-700 hover:bg-green-800',
-                    default => '',
-                };
-            @endphp
-            @if($nextStatus)
-                <button wire:click="updateStatus({{ $selectedOrder['order_id'] }}, '{{ $nextStatus }}')" class="px-4 py-2 rounded text-white font-semibold {{ $btnClass }} mb-4 w-full">
-                    {{ $nextStatus }}
-                </button>
-            @endif
-        @endif
+                <!-- Order Details -->
+                <div class="p-6">
+                    <!-- Items List -->
+                    <div class="mb-6">
+                        <h3 class="font-semibold text-lg text-gray-700 mb-3">Order Items</h3>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            @php
+                                $items = explode(', ', $selectedOrder['items'] ?? '');
+                            @endphp
+                            @foreach($items as $item)
+                                @if(!empty($item))
+                                    <div class="flex justify-between py-2 border-b last:border-b-0">
+                                        <span class="text-gray-700">{{ $item }}</span>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
 
+                    <!-- Order Summary -->
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div>
+                            <p class="text-sm text-gray-600">Total Quantity</p>
+                            <p class="font-semibold">{{ $selectedOrder['total_quantity'] }} items</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">Order Total</p>
+                            <p class="font-semibold text-green-700">₱{{ number_format($selectedOrder['grand_total'], 2) }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">Payment Status</p>
+                            <p class="font-semibold">
+                                @if($selectedOrder['payment_status'] === 'paid')
+                                    <span class="text-green-600">Paid ({{ $selectedOrder['payment_method'] ?? 'cash' }})</span>
+                                @else
+                                    <span class="text-yellow-600">Pending</span>
+                                    <button wire:click="markAsPaid({{ $selectedOrder['order_id'] }})" 
+                                            class="ml-2 bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">
+                                        Mark as Paid
+                                    </button>
+                                @endif
+                            </p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">Current Status</p>
+                            <p class="font-semibold {{ $this->getStatusColor($selectedOrder['status']) }} px-2 py-1 rounded inline-block">
+                                {{ $statusOptions[$selectedOrder['status']] ?? ucfirst($selectedOrder['status']) }}
+                            </p>
+                        </div>
+                    </div>
 
-        <!-- New button: Back to Home -->
-        <button onclick="window.location='{{ route('pages.home') }}'" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded w-full">
-            Back to Orders
-        </button>
-    </div>
-@endif
+                    <!-- Status Update -->
+                    <div class="mb-6">
+                        <h3 class="font-semibold text-lg text-gray-700 mb-3">Update Order Status</h3>
+                        
+                        <!-- Quick Action: Mark Next Status -->
+                        @if($this->getNextStatusLabel($selectedOrder['status']))
+                            <button wire:click="markNextStatus" 
+                                    class="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold mb-4">
+                                Mark as {{ $this->getNextStatusLabel($selectedOrder['status']) }}
+                            </button>
+                        @endif
+                        
+                        <!-- All Status Options -->
+                        <div class="flex flex-wrap gap-2">
+                            @foreach($statusOptions as $key => $label)
+                                <button wire:click="updateOrderStatus('{{ $key }}')" 
+                                        class="px-4 py-2 rounded-lg border {{ $selectedOrder['status'] === $key ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50' }}">
+                                    {{ $label }}
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
 
-
+                    <!-- Actions -->
+                    <div class="flex justify-end gap-3 pt-4 border-t">
+                        <button wire:click="closeOrderView" 
+                                class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">
+                            Close
+                        </button>
+                        @if($selectedOrder['status'] !== 'cancelled' && $selectedOrder['status'] !== 'delivered')
+                            <button wire:click="cancelOrder({{ $selectedOrder['order_id'] }})" 
+                                    class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg">
+                                Cancel Order
+                            </button>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 </div>

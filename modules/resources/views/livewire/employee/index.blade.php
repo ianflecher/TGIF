@@ -79,22 +79,21 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     
     private function loadRecentTasks()
     {
-        $this->recentTasks = DB::table('project_tasks')
-            ->leftJoin('projects', 'project_tasks.project_id', '=', 'projects.project_id')
-            ->where('project_tasks.assigned_to', $this->employee->employee_id)
-            ->whereIn('project_tasks.status', ['not_started', 'in_progress'])
+        $this->recentTasks = DB::table('tasks')
+            ->leftJoin('project_phases', 'tasks.phase_id', '=', 'project_phases.phase_id')
+            ->leftJoin('projects', 'project_phases.project_id', '=', 'projects.project_id')
+            ->where('tasks.assigned_to', $this->employee->employee_id)
+            ->whereIn('tasks.status', ['not_started', 'in_progress'])
             ->select(
-                'project_tasks.task_id',
-                'project_tasks.task_name',
-                'project_tasks.description',
-                'project_tasks.status',
-                'project_tasks.priority',
-                'project_tasks.end_date',
-                'project_tasks.progress',
+                'tasks.task_id',
+                'tasks.task_name',
+                'tasks.description',
+                'tasks.status',
+                'tasks.end_date',
+                'tasks.progress_percentage',
                 'projects.project_name'
             )
-            ->orderBy('project_tasks.priority', 'desc')
-            ->orderBy('project_tasks.end_date', 'asc')
+            ->orderBy('tasks.end_date', 'asc')
             ->limit(5)
             ->get();
     }
@@ -104,19 +103,19 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         $today = Carbon::today();
         $nextWeek = $today->copy()->addWeek();
         
-        $this->upcomingDeadlines = DB::table('project_tasks')
-            ->leftJoin('projects', 'project_tasks.project_id', '=', 'projects.project_id')
-            ->where('project_tasks.assigned_to', $this->employee->employee_id)
-            ->whereBetween('project_tasks.end_date', [$today, $nextWeek])
-            ->whereIn('project_tasks.status', ['not_started', 'in_progress'])
+        $this->upcomingDeadlines = DB::table('tasks')
+            ->leftJoin('project_phases', 'tasks.phase_id', '=', 'project_phases.phase_id')
+            ->leftJoin('projects', 'project_phases.project_id', '=', 'projects.project_id')
+            ->where('tasks.assigned_to', $this->employee->employee_id)
+            ->whereBetween('tasks.end_date', [$today, $nextWeek])
+            ->whereIn('tasks.status', ['not_started', 'in_progress'])
             ->select(
-                'project_tasks.task_id',
-                'project_tasks.task_name',
-                'project_tasks.end_date',
-                'project_tasks.priority',
+                'tasks.task_id',
+                'tasks.task_name',
+                'tasks.end_date',
                 'projects.project_name'
             )
-            ->orderBy('project_tasks.end_date', 'asc')
+            ->orderBy('tasks.end_date', 'asc')
             ->get();
     }
     
@@ -212,10 +211,10 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     
     public function updateTaskProgress($taskId, $progress)
     {
-        DB::table('project_tasks')
+        DB::table('tasks')
             ->where('task_id', $taskId)
             ->update([
-                'progress' => $progress,
+                'progress_percentage' => $progress,
                 'status' => $progress == 100 ? 'completed' : 'in_progress',
                 'updated_at' => now()
             ]);
@@ -359,12 +358,6 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                             <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">{{ $task->project_name }}</p>
                                             <div class="flex items-center mt-2 space-x-4">
                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                                    {{ $task->priority == 'high' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 
-                                                       ($task->priority == 'medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 
-                                                       'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200') }}">
-                                                    {{ ucfirst($task->priority) }}
-                                                </span>
-                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
                                                     {{ $task->status == 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
                                                        ($task->status == 'in_progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 
                                                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200') }}">
@@ -376,8 +369,8 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                             </div>
                                         </div>
                                         <div class="text-right">
-                                            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ $task->progress }}%</p>
-                                            <input type="range" min="0" max="100" value="{{ $task->progress }}" 
+                                            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ $task->progress_percentage }}%</p>
+                                            <input type="range" min="0" max="100" value="{{ $task->progress_percentage }}" 
                                                    wire:change="updateTaskProgress({{ $task->task_id }}, $event.target.value)"
                                                    class="w-full mt-2">
                                         </div>
@@ -402,14 +395,8 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                             @foreach($upcomingDeadlines as $deadline)
                                 <div class="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg">
                                     <div class="flex items-center">
-                                        <div class="p-2 rounded-lg 
-                                            {{ $deadline->priority == 'high' ? 'bg-red-100 dark:bg-red-900' : 
-                                               ($deadline->priority == 'medium' ? 'bg-yellow-100 dark:bg-yellow-900' : 
-                                               'bg-blue-100 dark:bg-blue-900') }}">
-                                            <svg class="w-5 h-5 
-                                                {{ $deadline->priority == 'high' ? 'text-red-600 dark:text-red-400' : 
-                                                   ($deadline->priority == 'medium' ? 'text-yellow-600 dark:text-yellow-400' : 
-                                                   'text-blue-600 dark:text-blue-400') }}" 
+                                        <div class="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                                            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" 
                                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                                                       d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -492,6 +479,13 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                             </svg>
                             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Payroll</span>
                         </a>
+                        <a href="{{ route('employee.leave') }}" 
+                           class="flex flex-col items-center justify-center p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                            <svg class="w-6 h-6 text-gray-600 dark:text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Leave</span>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -522,12 +516,14 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                             </div>
                             @if($attendanceStats['today']->time_in && $attendanceStats['today']->time_out)
                                 @php
-                                    $hours = \Carbon\Carbon::parse($attendanceStats['today']->time_out)
-                                        ->diffInHours(\Carbon\Carbon::parse($attendanceStats['today']->time_in));
+                                    $totalMinutes = \Carbon\Carbon::parse($attendanceStats['today']->time_out)
+                                        ->diffInMinutes(\Carbon\Carbon::parse($attendanceStats['today']->time_in));
+                                    $hours = floor($totalMinutes / 60);
+                                    $minutes = $totalMinutes % 60;
                                 @endphp
                                 <div class="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
                                     <p class="text-sm text-gray-600 dark:text-gray-400">Total Hours Today</p>
-                                    <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ $hours }} hours</p>
+                                    <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ $hours }}h {{ $minutes }}m</p>
                                 </div>
                             @endif
                         </div>

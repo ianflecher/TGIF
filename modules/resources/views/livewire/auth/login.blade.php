@@ -31,152 +31,76 @@ new #[Layout('components.layouts.landing')] class extends Component
     }
 
     public function login()
-    {
-        $this->validate();
+{
+    $this->validate();
 
-        // Debug: Log input
-        logger()->info('Login attempt started', [
-            'username' => $this->username,
-            'remember' => $this->remember,
-            'ip' => request()->ip()
+    $credentials = ['password' => $this->password];
+
+    if (filter_var($this->username, FILTER_VALIDATE_EMAIL)) {
+        $credentials['email'] = $this->username;
+    } else {
+        $credentials['username'] = $this->username;
+    }
+
+    // Check if user exists with employee OR manager role
+    $userExists = DB::table('users')
+        ->where(function($query) use ($credentials) {
+            if (isset($credentials['email'])) {
+                $query->where('email', $credentials['email']);
+            } else {
+                $query->where('username', $credentials['username']);
+            }
+        })
+        ->whereIn('role', ['employee', 'manager']) // allow both roles
+        ->whereNull('deleted_at')
+        ->exists();
+
+    if (!$userExists) {
+        throw ValidationException::withMessages([
+            'username' => __('Access denied. Employee or Manager credentials required.'),
         ]);
+    }
 
-        // Prepare credentials for authentication
-        $credentials = ['password' => $this->password];
-        
-        // Determine if input is email or username
-        if (filter_var($this->username, FILTER_VALIDATE_EMAIL)) {
-            $credentials['email'] = $this->username;
-            logger()->info('Using email for authentication');
-        } else {
-            $credentials['username'] = $this->username;
-            logger()->info('Using username for authentication');
-        }
-
-        // Debug: Log credentials (except password)
-        logger()->info('Auth credentials prepared', [
-            'auth_field' => isset($credentials['email']) ? 'email' : 'username',
-            'auth_value' => $this->username
+    // Attempt authentication
+    if (!Auth::attempt($credentials, $this->remember)) {
+        throw ValidationException::withMessages([
+            'username' => __('Invalid credentials.'),
         ]);
+    }
 
-        // First, check if user exists in users table with customer role
-        $userExists = DB::table('users')
-            ->where(function($query) use ($credentials) {
-                if (isset($credentials['email'])) {
-                    $query->where('email', $credentials['email']);
-                } else {
-                    $query->where('username', $credentials['username']);
-                }
-            })
-            ->where('role', 'customer')
-            ->whereNull('deleted_at')
+    session()->regenerate();
+
+    $authUser = Auth::user();
+
+    // Optional: Check employee-specific table only if role is employee
+    if ($authUser->role === 'employee') {
+        $employeeExists = DB::table('employees')
+            ->where('user_id', $authUser->user_id)
+            ->where('status', 'active')
             ->exists();
 
-        logger()->info('User exists check', ['user_exists' => $userExists]);
-
-        if (!$userExists) {
-            logger()->warning('User not found or not a customer', ['username' => $this->username]);
+        if (!$employeeExists) {
+            Auth::logout();
             throw ValidationException::withMessages([
-                'username' => __('Invalid credentials or account not found. Please check your username/email and try again.'),
+                'username' => __('Employee account is inactive or not properly configured.'),
             ]);
-        }
-
-        // Then check if customer record exists in customers table
-        if (isset($credentials['email'])) {
-            $customerExists = DB::table('customers')
-                ->join('users', 'customers.user_id', '=', 'users.user_id')
-                ->where('users.email', $credentials['email'])
-                ->where('users.role', 'customer')
-                ->exists();
-        } else {
-            $customerExists = DB::table('customers')
-                ->join('users', 'customers.user_id', '=', 'users.user_id')
-                ->where('users.username', $credentials['username'])
-                ->where('users.role', 'customer')
-                ->exists();
-        }
-
-        logger()->info('Customer record check', ['customer_exists' => $customerExists]);
-
-        if (!$customerExists) {
-            logger()->error('Customer record missing', ['username' => $this->username]);
-            throw ValidationException::withMessages([
-                'username' => __('Customer account not properly configured. Please contact support.'),
-            ]);
-        }
-
-        // Debug: Check the actual user record
-        $userRecord = DB::table('users')
-            ->where(function($query) use ($credentials) {
-                if (isset($credentials['email'])) {
-                    $query->where('email', $credentials['email']);
-                } else {
-                    $query->where('username', $credentials['username']);
-                }
-            })
-            ->where('role', 'customer')
-            ->whereNull('deleted_at')
-            ->first(['user_id', 'email', 'username', 'password']);
-
-        logger()->info('User record found', [
-            'user_id' => $userRecord?->user_id,
-            'email' => $userRecord?->email,
-            'username' => $userRecord?->username,
-            'has_password' => !empty($userRecord?->password)
-        ]);
-
-        // Now attempt authentication
-        logger()->info('Attempting Auth::attempt', ['credentials_keys' => array_keys($credentials)]);
-        
-        if (!Auth::attempt($credentials, $this->remember)) {
-            logger()->warning('Auth::attempt failed', ['username' => $this->username]);
-            
-            // Additional debug: Check password manually
-            if ($userRecord) {
-                $isPasswordValid = password_verify($this->password, $userRecord->password);
-                logger()->info('Manual password check', [
-                    'password_match' => $isPasswordValid,
-                    'password_provided_length' => strlen($this->password),
-                    'hashed_password_exists' => !empty($userRecord->password)
-                ]);
-            }
-            
-            throw ValidationException::withMessages([
-                'username' => __('These credentials do not match our records.'),
-            ]);
-        }
-
-        logger()->info('Auth::attempt successful', ['user_id' => Auth::id()]);
-
-        session()->regenerate();
-        
-        logger()->info('Session regenerated', ['session_id' => session()->getId()]);
-
-        // Get authenticated user
-        $user = Auth::user();
-        logger()->info('User authenticated', [
-            'user_id' => $user->id ?? null,
-            'name' => $user->name ?? null,
-            'email' => $user->email ?? null
-        ]);
-
-        // Debug: Check if we're actually authenticated
-        logger()->info('Auth check after login', ['is_authenticated' => Auth::check()]);
-
-        // Use Livewire's redirect method with more debugging
-        logger()->info('Attempting redirect to /dashboard');
-        
-        try {
-            $this->redirect('/dashboard', navigate: true);
-            logger()->info('Redirect method called successfully');
-        } catch (\Exception $e) {
-            logger()->error('Redirect failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            throw $e;
         }
     }
+
+    // Redirect based on role
+    if ($authUser->role === 'employee') {
+        return redirect()->route('employee.dashboard');
+    } elseif ($authUser->role === 'manager') {
+        return redirect()->route('manager.dashboard'); // make sure this route exists
+    }
+
+    // Default fallback
+    Auth::logout();
+    throw ValidationException::withMessages([
+        'username' => __('Unauthorized access.'),
+    ]);
+}
+
 }
 ?>
 <div class="min-h-screen bg-gradient-to-b from-white to-green-50 py-12 px-4 sm:px-6 lg:px-8" x-data="{ showPassword: false }" x-init="$refs.username.focus()">
@@ -262,18 +186,6 @@ new #[Layout('components.layouts.landing')] class extends Component
                         @enderror
                     </div>
 
-                    <!-- Remember Me -->
-                    <div class="flex items-center">
-                        <input 
-                            type="checkbox" 
-                            wire:model="remember" 
-                            id="remember"
-                            class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                        >
-                        <label for="remember" class="ml-2 block text-sm text-gray-700">
-                            Remember me
-                        </label>
-                    </div>
 
                     <!-- Submit Button -->
                     <div>
