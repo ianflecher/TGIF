@@ -98,6 +98,11 @@ Volt::route('/admin/inventory', 'inventory.home')->name('inventory.home');
 Volt::route('/admin/customerservice', 'customerservice.home')->name('customerservice.home');
 
 Volt::route('/admin/hr', 'hr.home')->name('hr.home');
+Volt::route('/hr/applications', 'hr.applications')->name('hr.applications');
+Volt::route('/hr/attendance', 'hr.attendance')->name('hr.attendance');
+Volt::route('/hr/leave', 'hr.leave')->name('hr.leave');
+Volt::route('/hr/payroll', 'hr.payroll')->name('hr.payroll');
+
 
 Volt::route('/admin/procurement', 'procurement.home')->name('procurement.home');
 

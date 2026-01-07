@@ -13,28 +13,27 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- HR-specific theme -->
+    <!-- Green theme for HR -->
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
                         hr: {
-                            50: '#f0f9ff',
-                            100: '#e0f2fe',
-                            200: '#bae6fd',
-                            300: '#7dd3fc',
-                            400: '#38bdf8',
-                            500: '#0ea5e9',
-                            600: '#0284c7',
-                            700: '#0369a1',
-                            800: '#075985',
-                            900: '#0c4a6e',
-                        },
-                        green: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
                             500: '#22c55e',
                             600: '#16a34a',
                             700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        },
+                        accent: {
+                            500: '#0ea5e9',
+                            600: '#0284c7',
                         }
                     }
                 }
@@ -44,30 +43,30 @@
     
     <style>
         :root {
-            --hr-blue: #0ea5e9;
-            --hr-dark-blue: #0369a1;
-            --hr-light-blue: #e0f2fe;
             --hr-green: #22c55e;
+            --hr-dark-green: #15803d;
+            --hr-light-green: #dcfce7;
+            --hr-blue: #0ea5e9;
             --hr-amber: #f59e0b;
+            --hr-purple: #8b5cf6;
         }
         
         body {
             margin: 0;
             padding: 0;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #f8fafc 0%, #f0f9ff 50%);
+            background: linear-gradient(135deg, #f8fafc 0%, #f0fdf4 50%);
             min-height: 100vh;
         }
         
-        /* HR Header */
+        /* HR Header - Green Theme */
         .hr-header {
-            background: linear-gradient(135deg, var(--hr-dark-blue) 0%, #0c4a6e 100%);
+            background: linear-gradient(135deg, var(--hr-dark-green) 0%, #14532d 100%);
             color: white;
             padding: 1rem 2rem;
-            box-shadow: 0 2px 12px rgba(14, 165, 233, 0.2);
+            box-shadow: 0 2px 12px rgba(34, 197, 94, 0.2);
             position: sticky;
             top: 0;
-            z-index: 100;
         }
         
         .header-content {
@@ -106,7 +105,7 @@
         .company-tagline {
             font-size: 0.85rem;
             opacity: 0.9;
-            color: #bae6fd;
+            color: #bbf7d0;
         }
         
         /* HR Navigation */
@@ -139,13 +138,13 @@
         }
         
         .nav-link.active {
-            background: var(--hr-blue);
+            background: var(--hr-green);
             color: white;
-            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
         }
         
         .nav-badge {
-            background: var(--hr-green);
+            background: var(--hr-purple);
             color: white;
             padding: 0.1rem 0.4rem;
             border-radius: 10px;
@@ -214,12 +213,12 @@
             padding: 1.5rem;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-            border-top: 4px solid var(--hr-blue);
+            border-top: 4px solid var(--hr-green);
         }
         
         .dashboard-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            box-shadow: 0 8px 30px rgba(34, 197, 94, 0.15);
         }
         
         .card-header {
@@ -237,12 +236,14 @@
             align-items: center;
             justify-content: center;
             font-size: 1.5rem;
+            background: var(--hr-light-green);
+            color: var(--hr-green);
         }
         
         .card-stat {
             font-size: 2rem;
             font-weight: 700;
-            color: var(--hr-dark-blue);
+            color: var(--hr-dark-green);
         }
         
         .card-title {
@@ -281,9 +282,9 @@
         }
         
         .action-btn:hover {
-            border-color: var(--hr-blue);
+            border-color: var(--hr-green);
             transform: translateY(-3px);
-            box-shadow: 0 4px 15px rgba(14, 165, 233, 0.1);
+            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.1);
         }
         
         .action-icon {
@@ -294,8 +295,8 @@
             align-items: center;
             justify-content: center;
             font-size: 1.5rem;
-            background: var(--hr-light-blue);
-            color: var(--hr-blue);
+            background: var(--hr-light-green);
+            color: var(--hr-green);
         }
         
         .action-title {
@@ -388,11 +389,11 @@
         }
         
         .data-table th {
-            background: var(--hr-light-blue);
+            background: var(--hr-light-green);
             padding: 1rem;
             text-align: left;
             font-weight: 600;
-            color: var(--hr-dark-blue);
+            color: var(--hr-dark-green);
             border-bottom: 2px solid #e2e8f0;
         }
         
@@ -403,6 +404,62 @@
         
         .data-table tr:hover {
             background: #f8fafc;
+        }
+        
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--hr-green) 0%, var(--hr-dark-green) 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: var(--hr-dark-green);
+            border: 2px solid var(--hr-green);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            background: var(--hr-light-green);
+        }
+        
+        /* Form Elements */
+        .form-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--hr-green);
+            box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #374151;
         }
         
         /* Responsive Design */
@@ -472,7 +529,6 @@
             height: 100vh;
             background: white;
             box-shadow: -5px 0 25px rgba(0, 0, 0, 0.1);
-            z-index: 1000;
             transition: right 0.3s ease;
             padding: 2rem 1.5rem;
             overflow-y: auto;
@@ -508,13 +564,13 @@
             text-decoration: none;
             border-radius: 8px;
             margin-bottom: 0.5rem;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
         }
         
         .mobile-nav-link:hover,
         .mobile-nav-link.active {
-            background: var(--hr-light-blue);
-            color: var(--hr-blue);
+            background: var(--hr-light-green);
+            color: var(--hr-green);
         }
         
         .mobile-overlay {
@@ -524,12 +580,44 @@
             right: 0;
             bottom: 0;
             background: rgba(0, 0, 0, 0.5);
-            z-index: 999;
             display: none;
         }
         
         .mobile-overlay.show {
             display: block;
+        }
+        
+        /* Chart colors */
+        .chart-green {
+            background: var(--hr-green);
+        }
+        
+        .chart-blue {
+            background: var(--hr-blue);
+        }
+        
+        .chart-purple {
+            background: var(--hr-purple);
+        }
+        
+        .chart-amber {
+            background: var(--hr-amber);
+        }
+        
+        /* Progress bars */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--hr-green) 0%, var(--hr-dark-green) 100%);
+            border-radius: 4px;
+            transition: width 0.3s ease;
         }
     </style>
 </head>
@@ -539,12 +627,12 @@
 <header class="hr-header">
     <div class="header-content">
         <!-- Logo -->
-        <a href="{{ route('hr.dashboard') }}" class="logo-container">
+        <a href="{{ route('hr.home') }}" class="logo-container">
             <div class="logo-icon">
                 @if(file_exists(public_path('TGIF.png')))
                     <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 50px; width: auto;">
                 @else
-                    <div style="background: white; color: var(--hr-dark-blue); font-weight: bold; padding: 8px 12px; border-radius: 8px; font-size: 1.2rem;">
+                    <div style="background: white; color: var(--hr-dark-green); font-weight: bold; padding: 8px 12px; border-radius: 8px; font-size: 1.2rem;">
                         TGIF HR
                     </div>
                 @endif
@@ -557,12 +645,8 @@
 
         <!-- Desktop Navigation -->
         <nav class="hr-nav">
-            <a href="{{ route('hr.dashboard') }}" class="nav-link {{ request()->routeIs('hr.dashboard') ? 'active' : '' }}">
+            <a href="{{ route('hr.home') }}" class="nav-link {{ request()->routeIs('hr.dashboard') ? 'active' : '' }}">
                 <i class="fas fa-tachometer-alt"></i>Dashboard
-            </a>
-            <a href="{{ route('hr.employees') }}" class="nav-link {{ request()->routeIs('hr.employees') ? 'active' : '' }}">
-                <i class="fas fa-users"></i>Employees
-                <span class="nav-badge">24</span>
             </a>
             <a href="{{ route('hr.attendance') }}" class="nav-link {{ request()->routeIs('hr.attendance') ? 'active' : '' }}">
                 <i class="fas fa-clock"></i>Attendance
@@ -570,12 +654,11 @@
             <a href="{{ route('hr.payroll') }}" class="nav-link {{ request()->routeIs('hr.payroll') ? 'active' : '' }}">
                 <i class="fas fa-money-bill-wave"></i>Payroll
             </a>
-            <a href="{{ route('hr.recruitment') }}" class="nav-link {{ request()->routeIs('hr.recruitment') ? 'active' : '' }}">
-                <i class="fas fa-briefcase"></i>Recruitment
-                <span class="nav-badge">5</span>
+            <a href="{{ route('hr.applications') }}" class="nav-link {{ request()->routeIs('hr.applications') ? 'active' : '' }}">
+                <i class="fas fa-briefcase"></i>Applications
             </a>
-            <a href="{{ route('hr.reports') }}" class="nav-link {{ request()->routeIs('hr.reports') ? 'active' : '' }}">
-                <i class="fas fa-chart-bar"></i>Reports
+            <a href="{{ route('hr.leave') }}" class="nav-link {{ request()->routeIs('hr.leave') ? 'active' : '' }}">
+                <i class="fas fa-chart-bar"></i>Leave
             </a>
         </nav>
 
@@ -588,7 +671,7 @@
             
             @auth
                 <div class="user-badge hidden md:flex">
-                    <i class="fas fa-user-tie text-hr-200"></i>
+                    <i class="fas fa-user-tie"></i>
                     <span>{{ Auth::user()->name ?? 'HR Manager' }}</span>
                 </div>
                 <form method="POST" action="{{ route('logout') }}">
@@ -614,19 +697,15 @@
 <!-- Mobile Menu -->
 <div class="mobile-menu" id="mobileMenu">
     <div class="mobile-menu-header">
-        <h3 style="font-weight: 600; color: var(--hr-dark-blue);">HR Menu</h3>
+        <h3 style="font-weight: 600; color: var(--hr-dark-green);">HR Menu</h3>
         <button class="mobile-menu-close" onclick="toggleMobileMenu()">
             <i class="fas fa-times"></i>
         </button>
     </div>
     
     <nav>
-        <a href="{{ route('hr.dashboard') }}" class="mobile-nav-link {{ request()->routeIs('hr.dashboard') ? 'active' : '' }}">
+        <a href="{{ route('hr.home') }}" class="mobile-nav-link {{ request()->routeIs('hr.home') ? 'active' : '' }}">
             <i class="fas fa-tachometer-alt"></i>Dashboard
-        </a>
-        <a href="{{ route('hr.employees') }}" class="mobile-nav-link {{ request()->routeIs('hr.employees') ? 'active' : '' }}">
-            <i class="fas fa-users"></i>Employees
-            <span style="margin-left: auto; background: var(--hr-green); color: white; padding: 0.1rem 0.4rem; border-radius: 10px; font-size: 0.7rem;">24</span>
         </a>
         <a href="{{ route('hr.attendance') }}" class="mobile-nav-link {{ request()->routeIs('hr.attendance') ? 'active' : '' }}">
             <i class="fas fa-clock"></i>Attendance
@@ -634,12 +713,12 @@
         <a href="{{ route('hr.payroll') }}" class="mobile-nav-link {{ request()->routeIs('hr.payroll') ? 'active' : '' }}">
             <i class="fas fa-money-bill-wave"></i>Payroll
         </a>
-        <a href="{{ route('hr.recruitment') }}" class="mobile-nav-link {{ request()->routeIs('hr.recruitment') ? 'active' : '' }}">
-            <i class="fas fa-briefcase"></i>Recruitment
-            <span style="margin-left: auto; background: var(--hr-green); color: white; padding: 0.1rem 0.4rem; border-radius: 10px; font-size: 0.7rem;">5</span>
+        <a href="{{ route('hr.applications') }}" class="mobile-nav-link {{ request()->routeIs('hr.applications') ? 'active' : '' }}">
+            <i class="fas fa-briefcase"></i>Applications
+            <span style="margin-left: auto; background: var(--hr-purple); color: white; padding: 0.1rem 0.4rem; border-radius: 10px; font-size: 0.7rem;">5</span>
         </a>
-        <a href="{{ route('hr.reports') }}" class="mobile-nav-link {{ request()->routeIs('hr.reports') ? 'active' : '' }}">
-            <i class="fas fa-chart-bar"></i>Reports
+        <a href="{{ route('hr.leave') }}" class="mobile-nav-link {{ request()->routeIs('hr.leave') ? 'active' : '' }}">
+            <i class="fas fa-chart-bar"></i>Leave
         </a>
         
         @auth

@@ -35,81 +35,79 @@ new #[Layout('components.layouts.employee')] class extends Component
     }
     
     public function login()
-    {
-        $this->validate([
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
-        ]);
-        
-        if (Auth::attempt(['email' => $this->email, 'password' => $this->password], $this->remember)) {
-            $user = Auth::user();
-            
-            // Check if user is an applicant (has applicant role)
-            if ($user->role !== 'customer') { // Using 'customer' role for applicants
-                Auth::logout();
-                $this->addError('email', 'This account is not authorized as an applicant.');
-                return;
-            }
-            
-            session()->regenerate();
-            return redirect()->route('applicant.index');
-        }
-        
-        $this->addError('email', 'The provided credentials are incorrect.');
-    }
+{
+    $this->validate([
+        'email' => ['required', 'string', 'email'],
+        'password' => ['required', 'string'],
+    ]);
     
-    public function register()
-    {
-        $this->validate([
-            'full_name' => ['required', 'string', 'max:150'],
-            'username' => ['required', 'string', 'max:100', 'unique:users'],
-            'email' => ['required', 'string', 'email', 'max:150', 'unique:users'],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'phone' => ['required', 'string', 'max:50'],
-            'address' => ['required', 'string', 'max:500'],
-            'position' => ['required', 'string', 'max:100'],
-            'experience' => ['required', 'string', 'max:50'],
-        ]);
+    if (Auth::attempt(['email' => $this->email, 'password' => $this->password], $this->remember)) {
+        $user = Auth::user();
         
-        // Create user
-        $user = User::create([
-            'full_name' => $this->full_name,
-            'username' => $this->username,
-            'email' => $this->email,
-            'password' => Hash::make($this->password),
-            'role' => 'customer', // Using customer role for applicants
-        ]);
-        
-        // Create customer record (applicant)
-        DB::table('customers')->insert([
-            'first_name' => explode(' ', $this->full_name)[0],
-            'last_name' => explode(' ', $this->full_name)[1] ?? '',
-            'email' => $this->email,
-            'phone' => $this->phone,
-            'address' => $this->address,
-            'user_id' => $user->user_id,
-            'date_registered' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        
-        // Create job application record
-        DB::table('job_applications')->insert([
-            'user_id' => $user->user_id,
-            'position_applied' => $this->position,
-            'years_experience' => $this->experience,
-            'status' => 'pending',
-            'application_date' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        
-        // Auto login after registration
-        Auth::login($user);
-        
-        session()->flash('success', 'Registration successful! Welcome to our job portal.');
+        // Check if user is an employee (not customer anymore)
+        if ($user->role !== 'employee') { // Changed from 'customer' to 'employee'
+            Auth::logout();
+            $this->addError('email', 'This account is not authorized as an employee.');
+            return;
+        }
+               
+        session()->regenerate();
         return redirect()->route('applicant.index');
     }
+    
+    $this->addError('email', 'The provided credentials are incorrect.');
+}
+    
+    public function register()
+{
+    $this->validate([
+        'full_name' => ['required', 'string', 'max:150'],
+        'username' => ['required', 'string', 'max:100', 'unique:users'],
+        'email' => ['required', 'string', 'email', 'max:150', 'unique:users'],
+        'password' => ['required', 'confirmed', Rules\Password::defaults()],
+        'phone' => ['required', 'string', 'max:50'],
+        'address' => ['required', 'string', 'max:500'],
+        'position' => ['required', 'string', 'max:100'],
+        'experience' => ['required', 'string', 'max:50'],
+    ]);
+    
+    // Create user - role defaults to 'employee' according to your schema
+    $user = User::create([
+        'full_name' => $this->full_name,
+        'username' => $this->username,
+        'email' => $this->email,
+        'password' => Hash::make($this->password),
+        // role will default to 'employee' as per your DB schema
+    ]);
+    
+    // Create employee record
+    DB::table('employees')->insert([
+        'user_id' => $user->user_id,
+        'job_title' => $this->position,
+        'hire_date' => now(),
+        'salary' => 0.00, // Default salary
+        'status' => 'inactive', // Default status
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    
+    // Create job application record (optional - for tracking)
+    DB::table('job_applications')->insert([
+        'user_id' => $user->user_id,
+        'position_applied' => $this->position,
+        'years_experience' => $this->experience,
+        'status' => 'pending', // Since we're creating employee immediately
+        'application_date' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    
+    // Auto login after registration
+    Auth::login($user);
+    
+    session()->flash('success', 'Registration successful! You are now registered as an employee.');
+    return redirect()->route('applicant.index');
+}
 }
 ?>
 

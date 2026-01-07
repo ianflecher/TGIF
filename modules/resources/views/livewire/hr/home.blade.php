@@ -644,7 +644,7 @@ class extends Component
     <div class="p-6">
         <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
             <!-- Attendance Summary -->
-            <a href="#" class="group">
+            <a href="{{ route('hr.attendance') }}" class="group">
                 <div class="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-emerald-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                     <div class="w-16 h-16 mx-auto mb-4 bg-emerald-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-md">
                         <svg class="w-8 h-8 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">

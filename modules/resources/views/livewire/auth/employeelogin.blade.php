@@ -35,7 +35,7 @@ new #[Layout('components.layouts.landing')] class extends Component
             $credentials['username'] = $this->username;
         }
 
-        // Check if user exists with employee role ONLY
+        // Check if user exists with employee or manager role
         $userExists = DB::table('users')
             ->where(function($query) use ($credentials) {
                 if (isset($credentials['email'])) {
@@ -44,17 +44,17 @@ new #[Layout('components.layouts.landing')] class extends Component
                     $query->where('username', $credentials['username']);
                 }
             })
-            ->where('role', 'employee','manager') // Only employee role
+            ->whereIn('role', ['employee', 'manager']) // Allow both employee and manager roles
             ->whereNull('deleted_at')
             ->exists();
 
         if (!$userExists) {
             throw ValidationException::withMessages([
-                'username' => __('Access denied. Employee credentials required.'),
+                'username' => __('Access denied. Employee or Manager credentials required.'),
             ]);
         }
 
-        // Check if employee record exists
+        // Get the user
         $user = DB::table('users')
             ->where(function($query) use ($credentials) {
                 if (isset($credentials['email'])) {
@@ -63,27 +63,32 @@ new #[Layout('components.layouts.landing')] class extends Component
                     $query->where('username', $credentials['username']);
                 }
             })
-            ->where('role', 'employee')
+            ->whereIn('role', ['employee', 'manager'])
             ->whereNull('deleted_at')
-            ->first(['user_id']);
+            ->first(['user_id', 'role']);
 
         if (!$user) {
             throw ValidationException::withMessages([
-                'username' => __('Employee account not found.'),
+                'username' => __('Account not found.'),
             ]);
         }
 
-        // Check if employee record exists in employees table
-        $employeeExists = DB::table('employees')
-            ->where('user_id', $user->user_id)
-            ->where('status', 'active')
-            ->exists();
+        // For employees, check if they have an active employee record
+        if ($user->role === 'employee') {
+            $employeeExists = DB::table('employees')
+                ->where('user_id', $user->user_id)
+                ->where('status', 'active')
+                ->exists();
 
-        if (!$employeeExists) {
-            throw ValidationException::withMessages([
-                'username' => __('Employee account is inactive or not properly configured.'),
-            ]);
+            if (!$employeeExists) {
+                throw ValidationException::withMessages([
+                    'username' => __('Employee account is inactive or not properly configured.'),
+                ]);
+            }
         }
+
+        // For managers, check if they have an active status (you might want to add a managers table)
+        // For now, we'll just verify they exist in users table with manager role
 
         // Attempt authentication
         if (!Auth::attempt($credentials, $this->remember)) {
@@ -92,18 +97,18 @@ new #[Layout('components.layouts.landing')] class extends Component
             ]);
         }
 
-        // Verify the user has employee role
+        // Verify the user has employee or manager role
         $authUser = Auth::user();
-        if ($authUser->role !== 'employee') {
+        if (!in_array($authUser->role, ['employee', 'manager'])) {
             Auth::logout();
             throw ValidationException::withMessages([
-                'username' => __('Employee access required.'),
+                'username' => __('Employee or Manager access required.'),
             ]);
         }
 
         session()->regenerate();
-
-        // Redirect to employee dashboard using the named route
+        
+        // Default to employee dashboard
         return redirect()->route('employee.dashboard');
     }
 }
@@ -112,11 +117,11 @@ new #[Layout('components.layouts.landing')] class extends Component
     <div class="max-w-md mx-auto">
         <!-- Brand Header -->
         <div class="text-center mb-8">
-            <div class="mx-auto h-20 w-20 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mb-4 overflow-hidden border-2 border-emerald-200 shadow-lg">
-                <i class="fas fa-user-tie text-3xl text-white"></i>
+            <div class="mx-auto h-20 w-20 bg-gradient-to-r from-green-500 to-indigo-600 rounded-full flex items-center justify-center mb-4 overflow-hidden border-2 border-green-200 shadow-lg">
+                <i class="fas fa-users text-3xl text-white"></i>
             </div>
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Employee Portal</h1>
-            <p class="text-gray-600">Staff access to work dashboard</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Staff Portal</h1>
+            <p class="text-gray-600">Employee & Manager Access</p>
         </div>
 
         <!-- Login Card -->
@@ -128,7 +133,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                     <!-- Username/Email -->
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
-                            Employee ID / Email
+                            Staff ID / Email
                         </label>
                         <div class="relative">
                             <input 
@@ -138,7 +143,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                                 x-ref="username"
                                 required
                                 autofocus
-                                placeholder="employee@tgif.local"
+                                placeholder="staff@tgif.local"
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
@@ -190,11 +195,11 @@ new #[Layout('components.layouts.landing')] class extends Component
                         <button 
                             type="submit" 
                             wire:loading.attr="disabled"
-                            class="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-emerald-700 transition font-medium flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+                            class="w-full bg-gradient-to-r from-green-600 to-indigo-600 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-indigo-700 transition font-medium flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
                         >
                             <span wire:loading.remove wire:target="login">
                                 <i class="fas fa-sign-in-alt"></i>
-                                Clock In & Enter
+                                Sign In
                             </span>
                             <span wire:loading wire:target="login">
                                 <i class="fas fa-spinner fa-spin"></i>
@@ -204,55 +209,90 @@ new #[Layout('components.layouts.landing')] class extends Component
                     </div>
                 </form>
 
-                <!-- Employee Features -->
-                <div class="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
-                    <div class="flex items-start">
-                        <i class="fas fa-briefcase text-blue-500 mt-0.5 mr-2"></i>
-                        <div>
-                            <p class="text-xs font-medium text-blue-800 mb-1">Employee Features</p>
-                            <ul class="text-xs text-blue-700 space-y-1">
-                                <li class="flex items-center gap-1">
-                                    <i class="fas fa-check text-xs"></i>
-                                    <span>Attendance Tracking</span>
-                                </li>
-                                <li class="flex items-center gap-1">
-                                    <i class="fas fa-check text-xs"></i>
-                                    <span>Task Management</span>
-                                </li>
-                                <li class="flex items-center gap-1">
-                                    <i class="fas fa-check text-xs"></i>
-                                    <span>Order Processing</span>
-                                </li>
-                            </ul>
+                <!-- Role Information -->
+                <div class="mt-6 grid grid-cols-2 gap-4">
+                    <!-- Employee Features -->
+                    <div class="p-4 bg-green-50 border border-green-100 rounded-lg">
+                        <div class="flex items-start">
+                            <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center mr-2">
+                                <i class="fas fa-user-tie text-green-600 text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-green-800 mb-1">Employee</p>
+                                <ul class="text-xs text-green-700 space-y-0.5">
+                                    <li class="flex items-center gap-1">
+                                        <i class="fas fa-check text-xs"></i>
+                                        <span>Attendance</span>
+                                    </li>
+                                    <li class="flex items-center gap-1">
+                                        <i class="fas fa-check text-xs"></i>
+                                        <span>Tasks</span>
+                                    </li>
+                                    <li class="flex items-center gap-1">
+                                        <i class="fas fa-check text-xs"></i>
+                                        <span>Orders</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manager Features -->
+                    <div class="p-4 bg-purple-50 border border-purple-100 rounded-lg">
+                        <div class="flex items-start">
+                            <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center mr-2">
+                                <i class="fas fa-user-cog text-purple-600 text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-purple-800 mb-1">Manager</p>
+                                <ul class="text-xs text-purple-700 space-y-0.5">
+                                    <li class="flex items-center gap-1">
+                                        <i class="fas fa-check text-xs"></i>
+                                        <span>Reports</span>
+                                    </li>
+                                    <li class="flex items-center gap-1">
+                                        <i class="fas fa-check text-xs"></i>
+                                        <span>Approvals</span>
+                                    </li>
+                                    <li class="flex items-center gap-1">
+                                        <i class="fas fa-check text-xs"></i>
+                                        <span>Team</span>
+                                    </li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Employee Badge -->
-                <div class="mt-6 text-center">
-                    <div class="inline-flex items-center px-4 py-2 bg-emerald-100 text-emerald-800 rounded-full">
-                        <i class="fas fa-user-tie mr-2"></i>
-                        <span class="text-sm font-medium">Employee Access Only</span>
+                <!-- Access Badges -->
+                <div class="mt-6 flex justify-center gap-3">
+                    <div class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                        <i class="fas fa-user-tie mr-1"></i>
+                        <span class="font-medium">Employee</span>
+                    </div>
+                    <div class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                        <i class="fas fa-user-cog mr-1"></i>
+                        <span class="font-medium">Manager</span>
                     </div>
                 </div>
 
                 <!-- Note -->
-                <div class="mt-6 p-4 bg-yellow-50 border border-yellow-100 rounded-lg">
+                <div class="mt-6 p-4 bg-green-50 border border-green-100 rounded-lg">
                     <div class="flex items-start">
-                        <i class="fas fa-clock text-yellow-500 mt-0.5 mr-2"></i>
-                        <p class="text-xs text-yellow-700">
-                            <span class="font-medium">Note:</span> Login time is automatically recorded for attendance tracking.
+                        <i class="fas fa-info-circle text-green-500 mt-0.5 mr-2"></i>
+                        <p class="text-xs text-green-700">
+                            <span class="font-medium">Note:</span> Login grants access based on your role permissions.
                         </p>
                     </div>
                 </div>
             </div>
             
             <!-- Footer -->
-            <div class="bg-green-50 px-8 py-4 border-t border-green-100">
+            <div class="bg-gradient-to-r from-green-50 to-indigo-50 px-8 py-4 border-t border-green-100">
                 <div class="flex items-center justify-center">
                     <i class="fas fa-building text-green-600 mr-2"></i>
                     <p class="text-xs text-center text-green-800 font-medium">
-                        TGIF Employee System
+                        TGIF Staff Portal v2.0
                     </p>
                 </div>
             </div>
@@ -262,7 +302,7 @@ new #[Layout('components.layouts.landing')] class extends Component
         <div class="mt-8 text-center">
             <div class="inline-flex items-center gap-2 text-sm text-gray-500">
                 <i class="fas fa-headset"></i>
-                <span>Need help? Contact HR: <span class="font-medium">hr@tgif.local</span></span>
+                <span>Support: <span class="font-medium">hr@tgif.local</span> | IT: <span class="font-medium">it@tgif.local</span></span>
             </div>
         </div>
     </div>
