@@ -123,6 +123,7 @@ Volt::route('/employee/attendance', 'employee.attendance')->name('employee.atten
 Volt::route('/employee/schedule', 'employee.schedule')->name('employee.schedule');
 Volt::route('/employee/payroll', 'employee.payroll')->name('employee.payroll');
 Volt::route('/employee/leave', 'employee.leave')->name('employee.leave');
+Volt::route('/employee/support', 'employee.support')->name('employee.support');
 
 Volt::route('/applicant', 'applicant.index')->name('applicant.index');
 

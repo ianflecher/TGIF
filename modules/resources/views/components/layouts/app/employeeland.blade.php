@@ -583,6 +583,16 @@
                 </a>
             </li>
 
+            <!-- Tasks -->
+            <li>
+                <a href="{{ route('employee.support') }}"
+                   class="nav-item {{ request()->routeIs('employee.support') ? 'active' : '' }}">
+                    <span class="module-icon">✅</span>
+                    <span class="nav-text">Support Page</span>
+                    <span class="nav-tooltip">Assigned Tickets</span>
+                </a>
+            </li>
+
             <!-- Attendance -->
             <li>
                 <a href="{{ route('employee.attendance') }}"

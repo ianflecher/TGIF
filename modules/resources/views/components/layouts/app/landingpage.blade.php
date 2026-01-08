@@ -279,11 +279,7 @@
                     Shop
                 </a>
                 
-                <!-- Support Link -->
-                <a href="{{ route('customer.support.index') }}" class="nav-item {{ request()->routeIs('customer.support.*') ? 'active' : '' }}">
-                    <i class="fas fa-headset text-sm"></i>
-                    Support
-                </a>
+
                 
                 <!-- Login Button -->
                 <a href="{{ route('login') }}" class="btn-auth btn-login">

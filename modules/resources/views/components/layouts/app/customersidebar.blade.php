@@ -415,6 +415,12 @@
                     <i class="fas fa-box text-sm"></i>
                     Orders
                 </a>
+
+                <!-- Support Link -->
+                <a href="{{ route('customer.support.index') }}" class="nav-item {{ request()->routeIs('customer.support.*') ? 'active' : '' }}">
+                    <i class="fas fa-headset text-sm"></i>
+                    Support
+                </a>
                 
                 <!-- User Dropdown -->
                 <div class="user-dropdown">

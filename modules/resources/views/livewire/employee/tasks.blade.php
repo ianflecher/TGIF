@@ -93,12 +93,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     // Get project names for all tasks
     $this->tasks = $this->addProjectInfoToTasks($allTasks->sortBy('status')->values());
     
-    // Debug info to help troubleshoot
-    \Log::info("====== TASK LOADING DEBUG ======");
-    \Log::info("Employee ID: {$this->employeeId}");
-    \Log::info("User Role: {$this->userRole}");
-    \Log::info("Managed Project IDs: " . json_encode($managedProjectIds->toArray()));
-    \Log::info("Total tasks loaded: " . count($this->tasks));
+
     foreach ($this->tasks as $task) {
         \Log::info("Task ID: {$task->task_id}, Name: {$task->task_name}, Role Type: {$task->role_type}, Status: {$task->status}");
     }
@@ -469,12 +464,7 @@ public function rejectTask($taskId)
             </div>
             @endif
             
-            <!-- Debug Info (Visible only during development) -->
-            @if(config('app.debug'))
-            <div class="text-xs text-gray-500 bg-gray-100 p-2 rounded">
-                Debug: {{ $debugInfo }}
-            </div>
-            @endif
+ 
         </div>
     </div>
 
@@ -684,13 +674,8 @@ public function rejectTask($taskId)
                             @endif
                         @endif
                     </p>
-                    <!-- Debug Info -->
-                    @if(config('app.debug') && $employeeId)
-                        <div class="mt-4 text-xs text-gray-500">
-                            <p>Employee ID: {{ $employeeId }}</p>
-                            <p>Role: {{ $userRole }}</p>
-                        </div>
-                    @endif
+
+\
                 </div>
             </div>
         @endforelse
