@@ -660,7 +660,7 @@ class extends Component
             </a>
 
             <!-- Applications -->
-            <a href="#" class="group">
+            <a href="{{ route('hr.applications') }}" class="group">
                 <div class="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-blue-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                     <div class="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-md">
                         <svg class="w-8 h-8 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -676,7 +676,7 @@ class extends Component
             </a>
 
             <!-- Process Payroll -->
-            <a href="#" class="group">
+            <a href="{{ route('hr.payroll') }}" class="group">
                 <div class="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-teal-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                     <div class="w-16 h-16 mx-auto mb-4 bg-teal-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-md">
                         <svg class="w-8 h-8 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -686,13 +686,13 @@ class extends Component
                     <h3 class="font-bold text-gray-900 mb-2">Payroll</h3>
                     <p class="text-sm text-gray-700 font-medium">Process salaries</p>
                     <div class="mt-2 text-teal-600 text-xs font-bold">
-                        ${{ number_format($payrollStats['total_net'] ?? 0, 0) }} total
+                        ₱{{ number_format($payrollStats['total_net'] ?? 0, 0) }} total
                     </div>
                 </div>
             </a>
 
             <!-- Manage Leave -->
-            <a href="#" class="group">
+            <a href="{{ route('hr.leave') }}" class="group">
                 <div class="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-purple-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                     <div class="w-16 h-16 mx-auto mb-4 bg-purple-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-md">
                         <svg class="w-8 h-8 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">

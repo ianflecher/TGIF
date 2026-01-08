@@ -24,10 +24,12 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     public $showInterviewModal = false;
     public $showInterviewResultModal = false;
     public $showDepartmentModal = false;
+    public $showNewDepartmentModal = false;
     public $showDocumentsModal = false;
     public $selectedUserForRoleChange = null;
     public $newRole = 'employee';
     public $newDepartment = '';
+    public $newDepartmentName = '';
     public $documents = [];
     
     // Interview scheduling
@@ -122,28 +124,42 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     }
 
     public function loadEmployees()
-    {
-        $this->employees = DB::table('employees as e')
-            ->select(
-                'e.employee_id',
-                'e.job_title',
-                'e.hire_date',
-                'e.status as emp_status',
-                'e.department_id',
-                'u.user_id',
-                'u.full_name',
-                'u.username',
-                'u.email',
-                'u.role',
-                'd.department_name'
-            )
-            ->join('users as u', 'e.user_id', '=', 'u.user_id')
-            ->leftJoin('departments as d', 'e.department_id', '=', 'd.department_id')
-            ->where('u.role', 'employee')
-            ->where('e.status', '!=', 'inactive')
-            ->orderBy('u.full_name')
-            ->get();
-    }
+{
+    // First, let's debug what's happening
+    $allUsers = DB::table('users')->get();
+    $hiredUsers = DB::table('users')->where('role', 'employee')->get();
+    
+    \Log::info('Total users: ' . $allUsers->count());
+    \Log::info('Employees (role=employee): ' . $hiredUsers->count());
+    
+    // Get all users with employee records OR who should have employee records
+    $this->employees = DB::table('users as u')
+        ->select(
+            'u.user_id',
+            'u.full_name',
+            'u.username',
+            'u.email',
+            'u.role',
+            'e.employee_id',
+            'e.job_title',
+            'e.hire_date',
+            'e.status as emp_status',
+            'e.department_id',
+            'd.department_name'
+        )
+        ->leftJoin('employees as e', 'u.user_id', '=', 'e.user_id')
+        ->leftJoin('departments as d', 'e.department_id', '=', 'd.department_id')
+        ->where(function($query) {
+            // Include users who have role 'employee'
+            $query->where('u.role', 'employee')
+                  // OR users who have an employee record (even if role is different)
+                  ->orWhereNotNull('e.employee_id');
+        })
+        ->orderBy('u.full_name')
+        ->get();
+    
+    \Log::info('Employees loaded: ' . $this->employees->count());
+}
 
     public function loadDepartments()
     {
@@ -246,15 +262,18 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                 ->first();
 
             if ($application) {
+                // Update user role to employee
                 DB::table('users')
                     ->where('user_id', $application->user_id)
                     ->update(['role' => 'employee']);
 
+                // Check if employee record already exists
                 $existingEmployee = DB::table('employees')
                     ->where('user_id', $application->user_id)
                     ->first();
                 
                 if (!$existingEmployee) {
+                    // Create employee record for new hire
                     DB::table('employees')->insert([
                         'user_id' => $application->user_id,
                         'job_title' => $application->position_applied,
@@ -264,6 +283,16 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                         'created_at' => now(),
                         'updated_at' => now()
                     ]);
+                } else {
+                    // Update existing employee record for re-hire
+                    DB::table('employees')
+                        ->where('user_id', $application->user_id)
+                        ->update([
+                            'job_title' => $application->position_applied,
+                            'hire_date' => date('Y-m-d'),
+                            'status' => 'active',
+                            'updated_at' => now()
+                        ]);
                 }
             }
         }
@@ -407,6 +436,42 @@ new #[Layout('components.layouts.humanresource')] class extends Component
         session()->flash('success', 'Interview result saved!');
     }
 
+    public function openNewDepartmentModal()
+    {
+        $this->newDepartmentName = '';
+        $this->showNewDepartmentModal = true;
+    }
+
+    public function createNewDepartment()
+    {
+        $this->validate([
+            'newDepartmentName' => 'required|string|min:3|max:100|unique:departments,department_name'
+        ]);
+
+        DB::table('departments')->insert([
+            'department_name' => $this->newDepartmentName,
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+
+        // Log the action
+        DB::table('audit_logs')->insert([
+            'action' => 'create',
+            'table_name' => 'departments',
+            'record_id' => DB::getPdo()->lastInsertId(),
+            'old_values' => json_encode([]),
+            'new_values' => json_encode(['department_name' => $this->newDepartmentName]),
+            'user_id' => auth()->id() ?? 1,
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+
+        $this->showNewDepartmentModal = false;
+        $this->newDepartmentName = '';
+        $this->loadData();
+        session()->flash('success', 'Department created successfully!');
+    }
+
     public function openDepartmentModal($employeeId)
     {
         $this->selectedEmployee = DB::table('employees as e')
@@ -461,53 +526,54 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     }
 
     public function changeUserRole()
-    {
-        if (!$this->selectedUserForRoleChange) {
-            return;
-        }
+{
+    if (!$this->selectedUserForRoleChange) {
+        return;
+    }
 
-        $userId = $this->selectedUserForRoleChange->user_id;
-        $oldRole = $this->selectedUserForRoleChange->role ?? 'employee';
-        
-        DB::table('users')
-            ->where('user_id', $userId)
-            ->update([
-                'role' => $this->newRole,
-                'updated_at' => now()
-            ]);
-
-        if ($oldRole === 'employee' && $this->newRole !== 'employee') {
-            DB::table('employees')->where('user_id', $userId)->delete();
-        } elseif ($oldRole !== 'employee' && $this->newRole === 'employee') {
-            $employee = DB::table('employees')->where('user_id', $userId)->first();
-            if (!$employee) {
-                DB::table('employees')->insert([
-                    'user_id' => $userId,
-                    'job_title' => 'New Employee',
-                    'hire_date' => date('Y-m-d'),
-                    'salary' => 0.00,
-                    'status' => 'active',
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
-        }
-
-        DB::table('audit_logs')->insert([
-            'action' => 'update',
-            'table_name' => 'users',
-            'record_id' => $userId,
-            'old_values' => json_encode(['role' => $oldRole]),
-            'new_values' => json_encode(['role' => $this->newRole]),
-            'user_id' => auth()->id() ?? 1,
-            'created_at' => now(),
+    $userId = $this->selectedUserForRoleChange->user_id;
+    $oldRole = $this->selectedUserForRoleChange->role ?? 'employee';
+    
+    DB::table('users')
+        ->where('user_id', $userId)
+        ->update([
+            'role' => $this->newRole,
             'updated_at' => now()
         ]);
 
-        $this->showRoleChangeModal = false;
-        $this->loadData();
-        session()->flash('success', 'User role changed successfully!');
+    // Only create employee record when changing TO employee role
+    if ($oldRole !== 'employee' && $this->newRole === 'employee') {
+        $employee = DB::table('employees')->where('user_id', $userId)->first();
+        if (!$employee) {
+            DB::table('employees')->insert([
+                'user_id' => $userId,
+                'job_title' => 'New Employee',
+                'hire_date' => date('Y-m-d'),
+                'salary' => 0.00,
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+        }
     }
+    // REMOVED: Don't delete when changing from employee to other roles
+
+    // Log the change
+    DB::table('audit_logs')->insert([
+        'action' => 'update',
+        'table_name' => 'users',
+        'record_id' => $userId,
+        'old_values' => json_encode(['role' => $oldRole]),
+        'new_values' => json_encode(['role' => $this->newRole]),
+        'user_id' => auth()->id() ?? 1,
+        'created_at' => now(),
+        'updated_at' => now()
+    ]);
+
+    $this->showRoleChangeModal = false;
+    $this->loadData();
+    session()->flash('success', 'User role changed successfully!');
+}
 
     public function deleteApplication($applicationId)
     {
@@ -556,6 +622,31 @@ new #[Layout('components.layouts.humanresource')] class extends Component
             session()->flash('info', 'Document download would start here.');
         }
     }
+
+    public function deleteDepartment($departmentId)
+    {
+        if (confirm('Are you sure you want to delete this department? This will remove the department assignment from all employees.')) {
+            // First, remove department from all employees
+            DB::table('employees')
+                ->where('department_id', $departmentId)
+                ->update(['department_id' => null]);
+            
+            // Then delete the department
+            DB::table('departments')->where('department_id', $departmentId)->delete();
+            
+            $this->loadData();
+            session()->flash('success', 'Department deleted successfully!');
+        }
+    }
+
+    public function formatFileSize($bytes)
+    {
+        if ($bytes === 0) return '0 Bytes';
+        $k = 1024;
+        $sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        $i = floor(log($bytes) / log($k));
+        return number_format($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
+    }
 }
 ?>
 
@@ -570,8 +661,8 @@ new #[Layout('components.layouts.humanresource')] class extends Component
             <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
                 {{ $stats['total'] ?? 0 }} Total Applications
             </span>
-            <button class="btn-primary" onclick="openNewApplication()">
-                <i class="fas fa-plus mr-2"></i>New Application
+            <button wire:click="openNewDepartmentModal" class="btn-primary">
+                <i class="fas fa-plus mr-2"></i>New Department
             </button>
         </div>
     </div>
@@ -655,6 +746,52 @@ new #[Layout('components.layouts.humanresource')] class extends Component
             <div class="card-title">Hired</div>
             <div class="card-subtitle">Successfully hired</div>
         </div>
+    </div>
+
+    <!-- Department List Section -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-800">Departments</h2>
+                <p class="text-sm text-gray-600">Manage company departments</p>
+            </div>
+            <div class="text-sm text-gray-600">
+                {{ count($departments) }} Departments
+            </div>
+        </div>
+        
+        @if(count($departments) > 0)
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-6">
+                @foreach($departments as $department)
+                    @php
+                        // Count employees in this department
+                        $employeeCount = DB::table('employees')
+                            ->where('department_id', $department->department_id)
+                            ->count();
+                    @endphp
+                    <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="font-medium text-gray-900">{{ $department->department_name }}</h3>
+                            <button wire:click="deleteDepartment('{{ $department->department_id }}')" 
+                                    onclick="return confirm('Delete {{ $department->department_name }} department?')"
+                                    class="text-red-400 hover:text-red-600">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-500 mb-3">
+                            <i class="fas fa-users mr-2"></i>
+                            <span>{{ $employeeCount }} {{ Str::plural('employee', $employeeCount) }}</span>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <div class="text-center py-8">
+                <i class="fas fa-building text-4xl text-gray-300 mb-3"></i>
+                <p class="text-lg text-gray-500">No departments created yet</p>
+                <p class="text-sm text-gray-400 mt-1">Create your first department using the button above.</p>
+            </div>
+        @endif
     </div>
 
     <!-- Filters -->
@@ -895,49 +1032,71 @@ new #[Layout('components.layouts.humanresource')] class extends Component
         </div>
     </div>
 
-    <!-- Current Employees Section -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-            <div>
-                <h2 class="text-lg font-semibold text-gray-800">Current Employees</h2>
-                <p class="text-sm text-gray-600">Manage employee roles and information</p>
-            </div>
-            <div class="text-sm text-gray-600">
-                {{ count($employees) }} Employees
-            </div>
+    <!-- Current Employees Section (Updated) -->
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div>
+            <h2 class="text-lg font-semibold text-gray-800">Active Employees (All Roles)</h2>
+            <p class="text-sm text-gray-600">Manage employees across all roles and departments</p>
         </div>
-        
-        <div class="overflow-x-auto">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Employee</th>
-                        <th>Department</th>
-                        <th>Job Title</th>
-                        <th>Hire Date</th>
-                        <th>Current Role</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if(count($employees) > 0)
-                        @foreach($employees as $employee)
+        <div class="text-sm text-gray-600">
+            {{ count($employees) }} Active Employees
+        </div>
+    </div>
+    
+    <div class="overflow-x-auto">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Role Information</th>
+                    <th>Hire Date</th>
+                    <th>Current Role</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if(count($employees) > 0)
+                    @php
+                        // Group employees by role for better organization
+                        $groupedEmployees = $employees->groupBy('role');
+                    @endphp
+                    
+                    @foreach($groupedEmployees as $role => $employeesByRole)
+                        <!-- Role Header -->
+                        <tr class="bg-gray-50">
+                            <td colspan="5" class="px-4 py-3">
+                                <div class="flex items-center">
+                                    @php
+                                        $roleColors = [
+                                            'admin' => 'text-red-700 bg-red-50',
+                                            'manager' => 'text-orange-700 bg-orange-50',
+                                            'hr' => 'text-purple-700 bg-purple-50',
+                                            'employee' => 'text-green-700 bg-green-50',
+                                            'customer' => 'text-blue-700 bg-blue-50',
+                                            'supplier' => 'text-indigo-700 bg-indigo-50',
+                                        ];
+                                    @endphp
+                                    <span class="px-3 py-1 rounded-full text-sm font-medium {{ $roleColors[$role] ?? 'bg-gray-100 text-gray-800' }}">
+                                        <i class="fas fa-user-shield mr-2"></i>
+                                        {{ ucfirst($role) }}s ({{ count($employeesByRole) }})
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                        
+                        @foreach($employeesByRole as $employee)
                             @php
-                                $statusColors = [
-                                    'active' => 'bg-green-100 text-green-800',
-                                    'inactive' => 'bg-gray-100 text-gray-800',
-                                    'terminated' => 'bg-red-100 text-red-800',
-                                    'on_leave' => 'bg-blue-100 text-blue-800',
-                                ];
-
                                 $roleColors = [
                                     'admin' => 'bg-red-100 text-red-800',
                                     'manager' => 'bg-orange-100 text-orange-800',
+                                    'hr' => 'bg-purple-100 text-purple-800',
                                     'employee' => 'bg-green-100 text-green-800',
                                     'customer' => 'bg-blue-100 text-blue-800',
-                                    'supplier' => 'bg-purple-100 text-purple-800',
+                                    'supplier' => 'bg-indigo-100 text-indigo-800',
                                 ];
+                                
+                                $isSystemRole = in_array($employee->role, ['admin', 'manager', 'hr']);
                             @endphp
                             <tr>
                                 <td>
@@ -952,57 +1111,194 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                                     </div>
                                 </td>
                                 <td>
+                                    @if($isSystemRole)
+                                        <!-- System Role Information -->
+                                        <div class="flex flex-col space-y-1">
+                                            @if($employee->role === 'admin')
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                    <i class="fas fa-shield-alt mr-1"></i>Full System Access
+                                                </span>
+                                            @elseif($employee->role === 'manager')
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                                    <i class="fas fa-tasks mr-1"></i>Management Access
+                                                </span>
+                                            @elseif($employee->role === 'hr')
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                                    <i class="fas fa-users-cog mr-1"></i>HR System Access
+                                                </span>
+                                            @endif
+                                            <div class="text-xs text-gray-500">
+                                                @if($employee->department_name)
+                                                    <div class="flex items-center mt-1">
+                                                        <i class="fas fa-building mr-1"></i>
+                                                        {{ $employee->department_name }}
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @else
+                                        <!-- Regular Employee Information -->
+                                        <div class="flex flex-col space-y-1">
+                                            @if($employee->job_title)
+                                                <span class="font-medium text-sm text-gray-900">
+                                                    {{ $employee->job_title }}
+                                                </span>
+                                            @endif
+                                            @if($employee->department_name)
+                                                <div class="flex items-center">
+                                                    <i class="fas fa-building text-gray-400 text-xs mr-1"></i>
+                                                    <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                        {{ $employee->department_name }}
+                                                    </span>
+                                                </div>
+                                            @else
+                                                <span class="text-gray-400 text-xs">No Department</span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                </td>
+                                <td>{{ date('M d, Y', strtotime($employee->hire_date ?? now())) }}</td>
+                                <td>
                                     <div class="flex items-center">
-                                        @if($employee->department_name)
-                                            <span class="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                {{ $employee->department_name }}
+                                        <span class="px-3 py-1 rounded-full text-xs font-medium {{ $roleColors[$employee->role] ?? 'bg-gray-100 text-gray-800' }}">
+                                            <i class="fas fa-user-tag mr-1"></i>
+                                            {{ ucfirst($employee->role) }}
+                                        </span>
+                                        @if($employee->role !== 'employee')
+                                            <span class="ml-2 text-xs text-gray-500">
+                                                (System Staff)
                                             </span>
-                                        @else
-                                            <span class="text-gray-400 text-sm">No Department</span>
                                         @endif
                                     </div>
                                 </td>
-                                <td class="font-medium">{{ $employee->job_title ?? 'N/A' }}</td>
-                                <td>{{ date('M d, Y', strtotime($employee->hire_date ?? now())) }}</td>
-                                <td>
-                                    <span class="px-3 py-1 rounded-full text-xs font-medium {{ $roleColors[$employee->role] ?? 'bg-gray-100 text-gray-800' }}">
-                                        {{ ucfirst($employee->role) }}
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="px-3 py-1 rounded-full text-xs font-medium {{ $statusColors[$employee->emp_status] ?? 'bg-gray-100 text-gray-800' }}">
-                                        {{ ucfirst(str_replace('_', ' ', $employee->emp_status)) }}
-                                    </span>
-                                </td>
                                 <td>
                                     <div class="flex gap-2">
-                                        <button wire:click="openDepartmentModal('{{ $employee->employee_id }}')" 
-                                                class="px-3 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100">
-                                            <i class="fas fa-building mr-1"></i>Department
-                                        </button>
+                                        @if($employee->role === 'employee' && $employee->employee_id)
+                                            <button wire:click="openDepartmentModal('{{ $employee->employee_id }}')" 
+                                                    class="px-3 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100">
+                                                <i class="fas fa-building mr-1"></i>Department
+                                            </button>
+                                        @endif
                                         <button wire:click="openRoleChangeModal('{{ $employee->user_id }}')" 
                                                 class="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
-                                            <i class="fas fa-user-cog mr-1"></i>Role
+                                            <i class="fas fa-user-cog mr-1"></i>Change Role
                                         </button>
                                     </div>
                                 </td>
                             </tr>
                         @endforeach
-                    @else
-                        <tr>
-                            <td colspan="7" class="text-center py-8 text-gray-500">
-                                <div class="flex flex-col items-center">
-                                    <i class="fas fa-users text-4xl text-gray-300 mb-3"></i>
-                                    <p class="text-lg">No employees found</p>
-                                    <p class="text-sm mt-1">Hire applicants to add employees.</p>
+                    @endforeach
+                    
+                    <!-- Summary Statistics -->
+                    <tr class="bg-gray-50">
+                        <td colspan="5" class="px-4 py-3">
+                            <div class="flex items-center justify-between text-sm">
+                                <div class="font-medium text-gray-700">
+                                    <i class="fas fa-chart-pie mr-2"></i>Role Distribution
                                 </div>
-                            </td>
-                        </tr>
-                    @endif
-                </tbody>
-            </table>
+                                <div class="flex items-center gap-4">
+                                    @foreach($groupedEmployees as $role => $employeesByRole)
+                                        @php
+                                            $roleColors = [
+                                                'admin' => 'text-red-600',
+                                                'manager' => 'text-orange-600',
+                                                'hr' => 'text-purple-600',
+                                                'employee' => 'text-green-600',
+                                                'customer' => 'text-blue-600',
+                                                'supplier' => 'text-indigo-600',
+                                            ];
+                                        @endphp
+                                        <div class="flex items-center">
+                                            <span class="w-3 h-3 rounded-full {{ str_replace('text', 'bg', $roleColors[$role] ?? 'bg-gray-500') }} mr-1"></span>
+                                            <span class="{{ $roleColors[$role] ?? 'text-gray-600' }} font-medium">
+                                                {{ ucfirst($role) }}: {{ count($employeesByRole) }}
+                                            </span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                @else
+                    <tr>
+                        <td colspan="5" class="text-center py-8 text-gray-500">
+                            <div class="flex flex-col items-center">
+                                <i class="fas fa-users text-4xl text-gray-300 mb-3"></i>
+                                <p class="text-lg">No active employees found</p>
+                                <p class="text-sm mt-1">Hire applicants to add employees.</p>
+                            </div>
+                        </td>
+                    </tr>
+                @endif
+            </tbody>
+        </table>
+    </div>
+</div>
+
+    <!-- New Department Modal -->
+    @if($showNewDepartmentModal)
+    <div class="fixed inset-0 z-50 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center">
+            <!-- Overlay -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+                 wire:click="$set('showNewDepartmentModal', false)"></div>
+            
+            <!-- Modal content -->
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">Create New Department</h3>
+                            <p class="text-sm text-gray-500">Add a new department to the system</p>
+                        </div>
+                        <button wire:click="$set('showNewDepartmentModal', false)" 
+                                class="text-gray-400 hover:text-gray-500">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="form-label">Department Name</label>
+                            <input type="text" 
+                                   wire:model="newDepartmentName" 
+                                   class="form-input"
+                                   placeholder="Enter department name (e.g., Marketing, Engineering, HR)">
+                            @error('newDepartmentName') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+                        </div>
+                        
+                        <!-- Information -->
+                        <div class="bg-blue-50 p-3 rounded-lg">
+                            <div class="flex">
+                                <i class="fas fa-info-circle text-blue-500 mt-1 mr-3"></i>
+                                <div class="text-sm text-blue-700">
+                                    <p><strong>Note:</strong></p>
+                                    <ul class="mt-1 space-y-1">
+                                        <li>• Departments help organize employees by function</li>
+                                        <li>• You can assign employees to departments later</li>
+                                        <li>• Department names must be unique</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button wire:click="createNewDepartment" 
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        <i class="fas fa-plus mr-2"></i>
+                        Create Department
+                    </button>
+                    <button wire:click="$set('showNewDepartmentModal', false)" 
+                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
+    @endif
 
     <!-- Application Details Modal -->
     @if($showApplicationModal && $selectedApplication)
@@ -1130,52 +1426,11 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                     </div>
                 </div>
                 
-                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                    <div class="flex gap-2">
-                        <button wire:click="$set('showApplicationModal', false)" 
-                                class="btn-secondary">
-                            Close
-                        </button>
-                        
-                        @if(($selectedApplication->status ?? '') === 'pending')
-                            <button wire:click="markAsReviewed('{{ $selectedApplication->application_id }}')" 
-                                    class="btn-primary">
-                                <i class="fas fa-check mr-2"></i>Mark as Reviewed
-                            </button>
-                        @endif
-                        
-                        @if(($selectedApplication->status ?? '') === 'reviewed' && $selectedApplication->interview_date && $selectedApplication->interview_status !== 'completed')
-                            <button wire:click="markInterviewCompleted('{{ $selectedApplication->application_id }}')" 
-                                    class="btn-indigo">
-                                <i class="fas fa-clipboard-check mr-2"></i>Complete Interview
-                            </button>
-                        @endif
-                        
-                        @if(in_array($selectedApplication->status, ['shortlisted', 'reviewed']) && ($selectedApplication->interview_status === 'completed' || $selectedApplication->status === 'shortlisted'))
-                            <button wire:click="updateApplicationStatus('{{ $selectedApplication->application_id }}', 'hired')" 
-                                    class="btn-success"
-                                    onclick="return confirm('Hire {{ $selectedApplication->full_name }} as {{ $selectedApplication->position_applied }}?')">
-                                <i class="fas fa-user-tie mr-2"></i>Hire Applicant
-                            </button>
-                            <button wire:click="updateApplicationStatus('{{ $selectedApplication->application_id }}', 'rejected')" 
-                                    class="btn-danger"
-                                    onclick="return confirm('Reject {{ $selectedApplication->full_name }}?')">
-                                <i class="fas fa-times mr-2"></i>Reject
-                            </button>
-                        @endif
-                        
-                        @if(($selectedApplication->status ?? '') === 'reviewed' && !$selectedApplication->interview_date)
-                            <button wire:click="openInterviewModal('{{ $selectedApplication->application_id }}')" 
-                                    class="btn-purple">
-                                <i class="fas fa-calendar-alt mr-2"></i>Schedule Interview
-                            </button>
-                        @endif
-
-                        <button wire:click="viewDocuments('{{ $selectedApplication->application_id }}')" 
-                                class="btn-gray">
-                            <i class="fas fa-file-alt mr-2"></i>View Documents
-                        </button>
-                    </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6">
+                    <button wire:click="$set('showApplicationModal', false)" 
+                            class="btn-secondary">
+                        Close
+                    </button>
                 </div>
             </div>
         </div>
@@ -1517,7 +1772,7 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     </div>
     @endif
 
-    <!-- Role Change Modal -->
+    <!-- Role Change Modal (Updated with all roles) -->
     @if($showRoleChangeModal && $selectedUserForRoleChange)
     <div class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center">
@@ -1546,9 +1801,10 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                                 <span class="px-3 py-1 rounded-full text-sm font-medium 
                                     {{ $selectedUserForRoleChange->role === 'admin' ? 'bg-red-100 text-red-800' : 
                                        ($selectedUserForRoleChange->role === 'manager' ? 'bg-orange-100 text-orange-800' : 
+                                       ($selectedUserForRoleChange->role === 'hr' ? 'bg-purple-100 text-purple-800' : 
                                        ($selectedUserForRoleChange->role === 'employee' ? 'bg-green-100 text-green-800' : 
                                        ($selectedUserForRoleChange->role === 'customer' ? 'bg-blue-100 text-blue-800' : 
-                                       'bg-purple-100 text-purple-800'))) }}">
+                                       'bg-indigo-100 text-indigo-800')))) }}">
                                     {{ ucfirst($selectedUserForRoleChange->role ?? 'employee') }}
                                 </span>
                             </div>
@@ -1557,12 +1813,37 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                         <div>
                             <label class="form-label">New Role</label>
                             <select wire:model="newRole" class="form-input">
-                                <option value="admin">Admin</option>
-                                <option value="manager">Manager</option>
-                                <option value="employee">Employee</option>
-                                <option value="customer">Customer</option>
-                                <option value="supplier">Supplier</option>
+                                <option value="admin">Admin (Full System Access)</option>
+                                <option value="manager">Manager (Department Management)</option>
+                                <option value="hr">HR (Human Resources)</option>
+                                <option value="employee">Employee (Regular Staff)</option>
+                                <option value="customer">Customer (External Client)</option>
+                                <option value="supplier">Supplier (Vendor/Supplier)</option>
                             </select>
+                            
+                            <!-- Role descriptions -->
+                            <div class="mt-2 text-sm text-gray-600 space-y-1">
+                                <div class="flex items-center">
+                                    <span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                                    <span class="font-medium text-red-600">Admin:</span>
+                                    <span class="ml-1">Full system access and management</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
+                                    <span class="font-medium text-orange-600">Manager:</span>
+                                    <span class="ml-1">Team and project management</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                                    <span class="font-medium text-purple-600">HR:</span>
+                                    <span class="ml-1">Human resources and recruitment</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                    <span class="font-medium text-green-600">Employee:</span>
+                                    <span class="ml-1">Regular staff with assigned tasks</span>
+                                </div>
+                            </div>
                         </div>
                         
                     </div>
@@ -1584,10 +1865,6 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     @endif
 
     <script>
-        function openNewApplication() {
-            alert('New application form would open here.');
-        }
-        
         function viewEmployeeDetails(employeeId) {
             alert('Employee details for ID: ' + employeeId);
         }
@@ -1607,6 +1884,7 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                 @this.set('showDocumentsModal', false);
                 @this.set('showInterviewModal', false);
                 @this.set('showInterviewResultModal', false);
+                @this.set('showNewDepartmentModal', false);
                 @this.set('showDepartmentModal', false);
                 @this.set('showRoleChangeModal', false);
             }

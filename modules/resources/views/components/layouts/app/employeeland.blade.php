@@ -524,7 +524,10 @@
             </div>
             <div class="logo-text">
                 <div class="company-name">Thanks G Its Fries Day</div>
-                <div class="company-tagline">Employee Portal 🌱</div>
+                <div class="company-tagline">
+    {{ ucfirst(Auth::user()->role) }} Portal 🌱
+</div>
+
             </div>
         </div>
         <!-- User info and logout -->
@@ -532,7 +535,10 @@
             <div class="user-badge">
                 <span style="color: var(--mint-green);">👤</span>
                 <span>{{ Auth::user()->name ?? 'Employee' }}</span>
-                <span class="employee-role">EMPLOYEE</span>
+                <span class="employee-role">
+    {{ strtoupper(Auth::user()->role) }}
+</span>
+
             </div>
             
             <form method="POST" action="{{ route('logout') }}">
@@ -546,50 +552,86 @@
 </header>
 
 <!-- Sidebar -->
+<!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
     <h3>👨‍💼 Employee Modules</h3>
+
     <nav>
         <ul>
+
+            <!-- Dashboard -->
             <li>
-                <a href="{{ route('employee.dashboard') }}" class="nav-item {{ request()->routeIs('employee.dashboard') ? 'active' : '' }}">
+                <a href="{{ route('employee.dashboard') }}"
+                   class="nav-item {{ request()->routeIs('employee.dashboard') ? 'active' : '' }}">
                     <span class="module-icon">📊</span>
                     <span class="nav-text">Dashboard</span>
                     <span class="nav-tooltip">Dashboard</span>
-                    <span class="employee-badge" style="display: {{ request()->routeIs('employee.dashboard') ? 'block' : 'none' }};">Live</span>
+                    <span class="employee-badge"
+                          style="display: {{ request()->routeIs('employee.dashboard') ? 'block' : 'none' }}">
+                        Live
+                    </span>
                 </a>
             </li>
+
+            <!-- Tasks -->
             <li>
-                <a href="{{ route('employee.tasks') }}" class="nav-item {{ request()->routeIs('employee.tasks.*') ? 'active' : '' }}">
+                <a href="{{ route('employee.tasks') }}"
+                   class="nav-item {{ request()->routeIs('employee.tasks.*') ? 'active' : '' }}">
                     <span class="module-icon">✅</span>
                     <span class="nav-text">My Tasks</span>
                     <span class="nav-tooltip">Task Management</span>
-                    <span class="task-indicator"></span>
                 </a>
             </li>
+
+            <!-- Attendance -->
             <li>
-                <a href="{{ route('employee.attendance') }}" class="nav-item {{ request()->routeIs('employee.attendance.*') ? 'active' : '' }}">
+                <a href="{{ route('employee.attendance') }}"
+                   class="nav-item {{ request()->routeIs('employee.attendance.*') ? 'active' : '' }}">
                     <span class="module-icon">🕒</span>
                     <span class="nav-text">Attendance</span>
                     <span class="nav-tooltip">Attendance Tracking</span>
                 </a>
             </li>
+
+            <!-- Payroll -->
             <li>
-                <a href="{{ route('employee.payroll') }}" class="nav-item {{ request()->routeIs('employee.payroll.*') ? 'active' : '' }}">
+                <a href="{{ route('employee.payroll') }}"
+                   class="nav-item {{ request()->routeIs('employee.payroll.*') ? 'active' : '' }}">
                     <span class="module-icon">💰</span>
                     <span class="nav-text">Payroll</span>
                     <span class="nav-tooltip">Payroll & Payslips</span>
                 </a>
             </li>
+
+            <!-- SECTION TITLE -->
+            <li class="mt-5">
+                <h3>📦 Requisition</h3>
+            </li>
+
+            <!-- Purchase Requisition -->
             <li>
-                <a href="#" class="nav-item {{ request()->routeIs('employee.profile.*') ? 'active' : '' }}">
+                <a href="{{ route('procurement.create') }}"
+                   class="nav-item {{ request()->routeIs('procurement.create') ? 'active' : '' }}">
+                    <span class="module-icon">📝</span>
+                    <span class="nav-text">Purchase Request</span>
+                    <span class="nav-tooltip">Create Purchase Requisition</span>
+                </a>
+            </li>
+
+            <!-- Profile -->
+            <li>
+                <a href="#"
+                   class="nav-item {{ request()->routeIs('employee.profile.*') ? 'active' : '' }}">
                     <span class="module-icon">👤</span>
                     <span class="nav-text">Profile</span>
                     <span class="nav-tooltip">My Profile</span>
                 </a>
             </li>
+
         </ul>
     </nav>
 </aside>
+
 
 <!-- Main Content -->
 <main class="main-content" id="mainContent">

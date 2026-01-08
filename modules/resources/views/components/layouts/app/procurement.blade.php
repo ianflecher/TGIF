@@ -377,13 +377,6 @@
             <i class="fas fa-home"></i>
             Procurement Dashboard
         </a>
-
-        <p class="section-title">Requisition</p>
-        <a href="{{ route('procurement.create') }}" class="{{ request()->routeIs('procurement.create') ? 'active' : '' }}">
-            <i class="fas fa-file-alt"></i>
-            Create Purchase Requisition
-        </a>
-
         <p class="section-title">Tracking</p>
         <a href="{{ route('procurement.status') }}" class="{{ request()->routeIs('purchasing.status') ? 'active' : '' }}">
             <i class="fas fa-chart-bar"></i>

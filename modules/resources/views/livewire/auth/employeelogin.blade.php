@@ -22,95 +22,88 @@ new #[Layout('components.layouts.landing')] class extends Component
     }
 
     public function login()
-    {
-        $this->validate();
+{
+    $this->validate();
 
-        // Prepare credentials for authentication
-        $credentials = ['password' => $this->password];
-        
-        // Determine if input is email or username
-        if (filter_var($this->username, FILTER_VALIDATE_EMAIL)) {
-            $credentials['email'] = $this->username;
-        } else {
-            $credentials['username'] = $this->username;
-        }
+    // Clean inputs
+    $usernameInput = trim($this->username);
+    $password = $this->password;
+    
+    // Debug: Let's see what we're looking for
+    \Log::info('Login attempt', [
+        'input' => $this->username,
+        'trimmed' => $usernameInput,
+        'is_email' => filter_var($usernameInput, FILTER_VALIDATE_EMAIL)
+    ]);
 
-        // Check if user exists with employee or manager role
-        $userExists = DB::table('users')
-            ->where(function($query) use ($credentials) {
-                if (isset($credentials['email'])) {
-                    $query->where('email', $credentials['email']);
-                } else {
-                    $query->where('username', $credentials['username']);
-                }
-            })
-            ->whereIn('role', ['employee', 'manager']) // Allow both employee and manager roles
-            ->whereNull('deleted_at')
-            ->exists();
+    // Find user by checking both email and username
+    $user = DB::table('users')
+        ->where(function($query) use ($usernameInput) {
+            // Try email first
+            $query->where('email', $usernameInput);
+            
+            // Also try username (in case user entered username instead of email)
+            $query->orWhere('username', $usernameInput);
+        })
+        ->first(); // Remove role filter temporarily for debugging
 
-        if (!$userExists) {
-            throw ValidationException::withMessages([
-                'username' => __('Access denied. Employee or Manager credentials required.'),
-            ]);
-        }
-
-        // Get the user
-        $user = DB::table('users')
-            ->where(function($query) use ($credentials) {
-                if (isset($credentials['email'])) {
-                    $query->where('email', $credentials['email']);
-                } else {
-                    $query->where('username', $credentials['username']);
-                }
-            })
-            ->whereIn('role', ['employee', 'manager'])
-            ->whereNull('deleted_at')
-            ->first(['user_id', 'role']);
-
-        if (!$user) {
-            throw ValidationException::withMessages([
-                'username' => __('Account not found.'),
-            ]);
-        }
-
-        // For employees, check if they have an active employee record
-        if ($user->role === 'employee') {
-            $employeeExists = DB::table('employees')
-                ->where('user_id', $user->user_id)
-                ->where('status', 'active')
-                ->exists();
-
-            if (!$employeeExists) {
-                throw ValidationException::withMessages([
-                    'username' => __('Employee account is inactive or not properly configured.'),
-                ]);
-            }
-        }
-
-        // For managers, check if they have an active status (you might want to add a managers table)
-        // For now, we'll just verify they exist in users table with manager role
-
-        // Attempt authentication
-        if (!Auth::attempt($credentials, $this->remember)) {
-            throw ValidationException::withMessages([
-                'username' => __('Invalid credentials.'),
-            ]);
-        }
-
-        // Verify the user has employee or manager role
-        $authUser = Auth::user();
-        if (!in_array($authUser->role, ['employee', 'manager'])) {
-            Auth::logout();
-            throw ValidationException::withMessages([
-                'username' => __('Employee or Manager access required.'),
-            ]);
-        }
-
-        session()->regenerate();
-        
-        // Default to employee dashboard
-        return redirect()->route('employee.dashboard');
+    if (!$user) {
+        \Log::warning('User not found', ['username' => $usernameInput]);
+        throw ValidationException::withMessages([
+            'username' => __('No account found with these credentials.'),
+        ]);
     }
+
+    \Log::info('User found', [
+        'user_id' => $user->user_id,
+        'email' => $user->email,
+        'username' => $user->username,
+        'role' => $user->role
+    ]);
+
+    // Check if user has employee or manager role
+    if (!in_array($user->role, ['employee', 'manager'])) {
+        \Log::warning('User role not allowed', ['role' => $user->role]);
+        throw ValidationException::withMessages([
+            'username' => __('Access denied. Employee or Manager credentials required.'),
+        ]);
+    }
+
+    // Check if they have an active employee record
+    $employee = DB::table('employees')
+        ->where('user_id', $user->user_id)
+        ->where('status', 'active')
+        ->first();
+
+    if (!$employee) {
+        \Log::warning('No active employee record', ['user_id' => $user->user_id]);
+        throw ValidationException::withMessages([
+            'username' => __('Employee/Manager account is not active. Please contact HR.'),
+        ]);
+    }
+
+    // For authentication, we MUST use the email field
+    // Laravel's Auth::attempt() looks for 'email' by default
+    $authCredentials = [
+        'email' => $user->email, // Use the exact email from database
+        'password' => $password
+    ];
+
+    \Log::info('Attempting authentication', ['email' => $user->email]);
+
+    if (!Auth::attempt($authCredentials, $this->remember)) {
+        \Log::warning('Authentication failed', ['email' => $user->email]);
+        throw ValidationException::withMessages([
+            'username' => __('Invalid password.'),
+        ]);
+    }
+
+    \Log::info('Login successful', ['user_id' => $user->user_id]);
+    
+    session()->regenerate();
+    
+    return redirect()->route('employee.dashboard');
+}
 }
 ?>
 <div class="min-h-screen bg-gradient-to-b from-white to-green-50 py-12 px-4 sm:px-6 lg:px-8" x-data="{ showPassword: false }" x-init="$refs.username.focus()">

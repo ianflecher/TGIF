@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 
-new #[Layout('components.layouts.procurement')] class extends Component
+new #[Layout('components.layouts.employeeland')] class extends Component
 {
     public int $step = 1; // current step
     public int $supplierId = 0;

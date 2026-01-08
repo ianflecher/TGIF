@@ -718,6 +718,10 @@ new #[Layout('components.layouts.applicant')] class extends Component
                             <i class="fas fa-check-circle mt-1 mr-2 text-career-500"></i>
                             <span>Please prepare the necessary documents for employment</span>
                         </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-check-circle mt-1 mr-2 text-career-500"></i>
+                            <span>You Can now login to Employee Portal Using the same login Details</span>
+                        </li>
                     @endif
                 </ul>
             </div>

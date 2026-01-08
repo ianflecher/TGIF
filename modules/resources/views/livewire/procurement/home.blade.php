@@ -487,14 +487,7 @@ new #[Layout('components.layouts.app')] class extends Component
     <!-- Quick Actions -->
     <div class="bg-white rounded-xl shadow-md p-6">
         <h2 class="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h2>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <a href="{{ route('procurement.create') }}" class="flex flex-col items-center justify-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-green-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                </svg>
-                <span class="font-medium text-gray-800">New Requisition</span>
-            </a>
-            
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">            
             <a href="{{ route('procurement.createpo') }}" class="flex flex-col items-center justify-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                 <svg class="w-8 h-8 text-blue-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
