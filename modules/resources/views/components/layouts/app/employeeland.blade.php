@@ -603,6 +603,15 @@
                 </a>
             </li>
 
+            <li>
+                <a href="{{ route('employee.leave') }}"
+                   class="nav-item {{ request()->routeIs('employee.leave.*') ? 'active' : '' }}">
+                    <span class="module-icon">💰</span>
+                    <span class="nav-text">Leave</span>
+                    <span class="nav-tooltip">Leave Management</span>
+                </a>
+            </li>
+
             <!-- SECTION TITLE -->
             <li class="mt-5">
                 <h3>📦 Requisition</h3>

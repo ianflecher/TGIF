@@ -46,6 +46,12 @@ new #[Layout('components.layouts.employeeland')] class extends Component
             ->orderBy('year', 'desc')
             ->pluck('year')
             ->toArray();
+            
+        // Add current year if not in list
+        if (!in_array($this->year, $this->years)) {
+            $this->years[] = $this->year;
+            rsort($this->years);
+        }
     }
     
     public function loadPayrollRecords()
@@ -74,6 +80,11 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         }
     }
     
+    public function updatedYear()
+    {
+        $this->loadPayrollRecords();
+    }
+    
     public function viewPayrollDetails($payrollId)
     {
         $this->selectedPeriod = $payrollId;
@@ -87,27 +98,60 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     
     public function loadPayrollBreakdown()
     {
-        // This would come from a payroll_breakdowns table
-        // For now, we'll simulate the breakdown
-        if ($this->currentPayroll) {
-            $gross = $this->currentPayroll->gross_pay;
-            $deductions = $this->currentPayroll->deductions;
-            
-            $this->payrollBreakdown = [
-                'earnings' => [
-                    ['name' => 'Basic Salary', 'amount' => $gross * 0.7, 'type' => 'fixed'],
-                    ['name' => 'Overtime', 'amount' => $gross * 0.1, 'type' => 'variable'],
-                    ['name' => 'Allowances', 'amount' => $gross * 0.15, 'type' => 'fixed'],
-                    ['name' => 'Bonus', 'amount' => $gross * 0.05, 'type' => 'variable'],
-                ],
-                'deductions' => [
-                    ['name' => 'Income Tax', 'amount' => $deductions * 0.4, 'type' => 'tax'],
-                    ['name' => 'Social Security', 'amount' => $deductions * 0.3, 'type' => 'statutory'],
-                    ['name' => 'Health Insurance', 'amount' => $deductions * 0.2, 'type' => 'benefit'],
-                    ['name' => 'Provident Fund', 'amount' => $deductions * 0.1, 'type' => 'savings'],
-                ]
-            ];
+        if (!$this->currentPayroll) return;
+        
+        // Parse notes to get breakdown
+        $notes = $this->currentPayroll->notes ?? '';
+        $breakdown = [
+            'earnings' => [],
+            'deductions' => []
+        ];
+        
+        // If notes contain breakdown information
+        if (strpos($notes, 'SSS:') !== false || strpos($notes, 'PhilHealth:') !== false) {
+            // Parse the notes string
+            $parts = explode(' | ', $notes);
+            foreach ($parts as $part) {
+                if (strpos($part, 'SSS:') !== false) {
+                    $amount = floatval(preg_replace('/[^0-9.]/', '', $part));
+                    $breakdown['deductions'][] = [
+                        'name' => 'SSS Contribution',
+                        'amount' => $amount,
+                        'type' => 'government'
+                    ];
+                } elseif (strpos($part, 'PhilHealth:') !== false) {
+                    $amount = floatval(preg_replace('/[^0-9.]/', '', $part));
+                    $breakdown['deductions'][] = [
+                        'name' => 'PhilHealth Contribution',
+                        'amount' => $amount,
+                        'type' => 'government'
+                    ];
+                } elseif (strpos($part, 'Pag-IBIG:') !== false) {
+                    $amount = floatval(preg_replace('/[^0-9.]/', '', $part));
+                    $breakdown['deductions'][] = [
+                        'name' => 'Pag-IBIG Contribution',
+                        'amount' => $amount,
+                        'type' => 'government'
+                    ];
+                } elseif (strpos($part, 'Tax:') !== false) {
+                    $amount = floatval(preg_replace('/[^0-9.]/', '', $part));
+                    $breakdown['deductions'][] = [
+                        'name' => 'Tax Withheld',
+                        'amount' => $amount,
+                        'type' => 'tax'
+                    ];
+                }
+            }
         }
+        
+        // Add basic salary as earnings
+        $breakdown['earnings'][] = [
+            'name' => 'Basic Salary',
+            'amount' => floatval($this->currentPayroll->gross_pay),
+            'type' => 'salary'
+        ];
+        
+        $this->payrollBreakdown = $breakdown;
     }
     
     public function downloadPayslip($payrollId)
@@ -122,18 +166,71 @@ new #[Layout('components.layouts.employeeland')] class extends Component
             return;
         }
         
-        // In a real app, you would generate a PDF here
-        // For now, we'll just show a success message
-        session()->flash('success', 'Payslip download started. Please check your downloads folder.');
-        
-        // You can implement PDF generation using DomPDF or similar
-        // return response()->download($pdfPath);
+        // Generate PDF payslip
+        try {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('payslip.pdf', [
+                'employee' => $this->employee,
+                'payroll' => $payroll,
+                'breakdown' => $this->payrollBreakdown,
+                'date' => Carbon::now()
+            ]);
+            
+            $filename = "payslip-{$payroll->period_start}-to-{$payroll->period_end}.pdf";
+            
+            return response()->streamDownload(function () use ($pdf) {
+                echo $pdf->output();
+            }, $filename);
+            
+        } catch (\Exception $e) {
+            session()->flash('error', 'Error generating payslip: ' . $e->getMessage());
+        }
     }
     
     public function requestCorrection($payrollId)
     {
-        // This would typically create a ticket or notification
-        session()->flash('success', 'Payroll correction request has been submitted for review.');
+        $payroll = DB::table('hr_payroll')
+            ->where('payroll_id', $payrollId)
+            ->where('employee_id', $this->employee->employee_id)
+            ->first();
+            
+        if (!$payroll) {
+            session()->flash('error', 'Payroll record not found!');
+            return;
+        }
+        
+        // Create a payroll correction request
+        try {
+            DB::table('payroll_corrections')->insert([
+                'payroll_id' => $payrollId,
+                'employee_id' => $this->employee->employee_id,
+                'requested_by' => $this->employee->user_id,
+                'status' => 'pending',
+                'description' => 'Payroll correction requested by employee',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            session()->flash('success', 'Payroll correction request has been submitted for review.');
+        } catch (\Exception $e) {
+            session()->flash('error', 'Error submitting request: ' . $e->getMessage());
+        }
+    }
+    
+    // Calculate Philippines-specific deductions from your HR code
+    private function calculateSSS($salary)
+    {
+        if ($salary <= 10000) return 450;
+        if ($salary <= 20000) return 900;
+        if ($salary <= 30000) return 1350;
+        if ($salary <= 40000) return 1800;
+        if ($salary <= 50000) return 2250;
+        return 2700;
+    }
+    
+    private function calculatePhilHealth($salary)
+    {
+        $premium = $salary * 0.04;
+        return $premium / 2;
     }
 }
 ?>
@@ -149,7 +246,8 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                 </p>
             </div>
             <div class="flex items-center space-x-4">
-                <select wire:model.live="year" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg px-4 py-2">
+                <select wire:model.live="year" wire:change="updatedYear" 
+                        class="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg px-4 py-2">
                     @foreach($years as $yearOption)
                         <option value="{{ $yearOption }}">{{ $yearOption }}</option>
                     @endforeach
@@ -186,7 +284,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                 <div>
                     <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Average Monthly Net</p>
                     <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                        ₱{{ number_format($payrollRecords->avg('net_pay') ?? 0, 2) }}
+                        ₱{{ $payrollRecords->count() > 0 ? number_format($payrollRecords->avg('net_pay'), 2) : '0.00' }}
                     </p>
                 </div>
                 <div class="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
@@ -216,7 +314,12 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                 </div>
             </div>
             <p class="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                {{ $payrollRecords->count() > 0 ? round(($payrollRecords->sum('deductions') / $payrollRecords->sum('gross_pay')) * 100, 1) : 0 }}% of gross
+                @php
+                    $gross = $payrollRecords->sum('gross_pay');
+                    $deductions = $payrollRecords->sum('deductions');
+                    $percentage = $gross > 0 ? ($deductions / $gross) * 100 : 0;
+                @endphp
+                {{ number_format($percentage, 1) }}% of gross
             </p>
         </div>
     </div>
@@ -265,24 +368,25 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <div class="text-sm text-gray-900 dark:text-white">
-                                                    ${{ number_format($record->gross_pay, 2) }}
+                                                    ₱{{ number_format($record->gross_pay, 2) }}
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <div class="text-sm text-red-600 dark:text-red-400">
-                                                    -${{ number_format($record->deductions, 2) }}
+                                                    -₱{{ number_format($record->deductions, 2) }}
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <div class="text-sm font-bold text-green-600 dark:text-green-400">
-                                                    ${{ number_format($record->net_pay, 2) }}
+                                                    ₱{{ number_format($record->net_pay, 2) }}
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
                                                     {{ $record->status == 'paid' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
                                                        ($record->status == 'approved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 
-                                                       'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200') }}">
+                                                       ($record->status == 'calculated' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 
+                                                       'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200')) }}">
                                                     {{ ucfirst($record->status) }}
                                                 </span>
                                             </td>
@@ -291,10 +395,12 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                                         class="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 mr-3">
                                                     View
                                                 </button>
+                                                @if($record->status == 'paid')
                                                 <button wire:click="downloadPayslip({{ $record->payroll_id }})" 
                                                         class="text-green-600 dark:text-green-400 hover:text-green-900 dark:hover:text-green-300">
                                                     Download
                                                 </button>
+                                                @endif
                                             </td>
                                         </tr>
                                     @endforeach
@@ -332,26 +438,27 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                             <div class="flex justify-between items-center">
                                 <span class="text-sm text-gray-600 dark:text-gray-400">Gross Salary</span>
                                 <span class="text-lg font-bold text-gray-900 dark:text-white">
-                                    ${{ number_format($currentPayroll->gross_pay, 2) }}
+                                    ₱{{ number_format($currentPayroll->gross_pay, 2) }}
                                 </span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-sm text-gray-600 dark:text-gray-400">Total Deductions</span>
                                 <span class="text-lg font-bold text-red-600 dark:text-red-400">
-                                    -${{ number_format($currentPayroll->deductions, 2) }}
+                                    -₱{{ number_format($currentPayroll->deductions, 2) }}
                                 </span>
                             </div>
                             <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
                                 <div class="flex justify-between items-center">
                                     <span class="text-lg font-bold text-gray-900 dark:text-white">Net Pay</span>
                                     <span class="text-2xl font-bold text-green-600 dark:text-green-400">
-                                        ${{ number_format($currentPayroll->net_pay, 2) }}
+                                        ₱{{ number_format($currentPayroll->net_pay, 2) }}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Earnings Breakdown -->
+                        @if(count($payrollBreakdown['earnings'] ?? []) > 0)
                         <div class="mt-6">
                             <h3 class="text-md font-semibold text-gray-900 dark:text-white mb-3">Earnings</h3>
                             <div class="space-y-2">
@@ -359,14 +466,16 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                     <div class="flex justify-between items-center">
                                         <span class="text-sm text-gray-600 dark:text-gray-400">{{ $earning['name'] }}</span>
                                         <span class="text-sm font-medium text-gray-900 dark:text-white">
-                                            ${{ number_format($earning['amount'], 2) }}
+                                            ₱{{ number_format($earning['amount'], 2) }}
                                         </span>
                                     </div>
                                 @endforeach
                             </div>
                         </div>
+                        @endif
 
                         <!-- Deductions Breakdown -->
+                        @if(count($payrollBreakdown['deductions'] ?? []) > 0)
                         <div class="mt-6">
                             <h3 class="text-md font-semibold text-gray-900 dark:text-white mb-3">Deductions</h3>
                             <div class="space-y-2">
@@ -374,16 +483,18 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                     <div class="flex justify-between items-center">
                                         <span class="text-sm text-gray-600 dark:text-gray-400">{{ $deduction['name'] }}</span>
                                         <span class="text-sm font-medium text-red-600 dark:text-red-400">
-                                            -${{ number_format($deduction['amount'], 2) }}
+                                            -₱{{ number_format($deduction['amount'], 2) }}
                                         </span>
                                     </div>
                                 @endforeach
                             </div>
                         </div>
+                        @endif
 
                         <!-- Actions -->
                         <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                            <div class="flex space-x-3">
+                            <div class="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                                @if($currentPayroll->status === 'paid')
                                 <button wire:click="downloadPayslip({{ $currentPayroll->payroll_id }})" 
                                         class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center">
                                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -391,8 +502,11 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                     </svg>
                                     Download Payslip
                                 </button>
+                                @endif
+                                
                                 @if($currentPayroll->status === 'paid')
                                     <button wire:click="requestCorrection({{ $currentPayroll->payroll_id }})" 
+                                            onclick="return confirm('Are you sure you want to request a correction for this payroll?')"
                                             class="flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
                                         Request Correction
                                     </button>
@@ -410,7 +524,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                     </div>
                 </div>
 
-                <!-- Tax Summary -->
+                <!-- YTD Summary -->
                 <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
                     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">YTD Summary</h2>
@@ -421,33 +535,36 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                 $ytdGross = $payrollRecords->where('period_end', '<=', $currentPayroll->period_end)->sum('gross_pay');
                                 $ytdDeductions = $payrollRecords->where('period_end', '<=', $currentPayroll->period_end)->sum('deductions');
                                 $ytdNet = $payrollRecords->where('period_end', '<=', $currentPayroll->period_end)->sum('net_pay');
+                                $periods = $payrollRecords->where('period_end', '<=', $currentPayroll->period_end)->count();
                             @endphp
                             <div class="flex justify-between items-center">
                                 <span class="text-sm text-gray-600 dark:text-gray-400">YTD Gross Income</span>
                                 <span class="text-sm font-medium text-gray-900 dark:text-white">
-                                    ${{ number_format($ytdGross, 2) }}
+                                    ₱{{ number_format($ytdGross, 2) }}
                                 </span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-sm text-gray-600 dark:text-gray-400">YTD Deductions</span>
                                 <span class="text-sm font-medium text-red-600 dark:text-red-400">
-                                    -${{ number_format($ytdDeductions, 2) }}
+                                    -₱{{ number_format($ytdDeductions, 2) }}
                                 </span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-sm text-gray-600 dark:text-gray-400">YTD Net Income</span>
                                 <span class="text-sm font-medium text-green-600 dark:text-green-400">
-                                    ${{ number_format($ytdNet, 2) }}
+                                    ₱{{ number_format($ytdNet, 2) }}
                                 </span>
                             </div>
+                            @if($periods > 0)
                             <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
                                 <div class="flex justify-between items-center">
-                                    <span class="text-sm font-medium text-gray-900 dark:text-white">Estimated Annual Tax</span>
-                                    <span class="text-sm font-bold text-red-600 dark:text-red-400">
-                                        -${{ number_format($ytdDeductions * (12 / $payrollRecords->count()), 2) }}
+                                    <span class="text-sm font-medium text-gray-900 dark:text-white">Projected Annual Income</span>
+                                    <span class="text-sm font-bold text-green-600 dark:text-green-400">
+                                        ₱{{ number_format($ytdNet * (12 / $periods), 2) }}
                                     </span>
                                 </div>
                             </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -490,7 +607,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                 <div class="ml-4">
                                     <p class="text-sm font-medium text-gray-900 dark:text-white">Next Payroll Date</p>
                                     <p class="text-sm text-gray-600 dark:text-gray-400">
-                                        {{ \Carbon\Carbon::parse($nextPayroll->period_end)->format('M d, Y') }}
+                                        {{ \Carbon\Carbon::parse($nextPayroll->period_end)->addDay()->format('M d, Y') }}
                                     </p>
                                 </div>
                             </div>
@@ -541,7 +658,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                 <div>
                     <h3 class="text-md font-medium text-gray-900 dark:text-white mb-2">How are deductions calculated?</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400">
-                        Deductions include statutory taxes, social security, insurance premiums, and other benefits as per company policy.
+                        Deductions include statutory taxes (SSS, PhilHealth, Pag-IBIG), income tax, and other benefits as per company policy.
                     </p>
                 </div>
                 <div>
@@ -553,7 +670,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                 <div>
                     <h3 class="text-md font-medium text-gray-900 dark:text-white mb-2">Where can I get tax documents?</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400">
-                        Annual tax statements (Form 16/W-2) are available in January each year through the HR portal.
+                        Annual tax statements (BIR Form 2316) are available in January each year through the HR portal.
                     </p>
                 </div>
             </div>
