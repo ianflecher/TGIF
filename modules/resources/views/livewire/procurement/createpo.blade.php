@@ -44,7 +44,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
             ->get()
             ->map(function ($product) {
                 // Calculate pending quantities from Processing POs
-                $product->pending = DB::table('procurement_items as pi')
+                $product->pending = DB::table('requisition_items as pi')
                     ->join('procurement_orders as po', 'pi.order_id', '=', 'po.order_id')
                     ->where('pi.product_id', $product->product_id)
                     ->where('po.status', 'Processing')
@@ -150,7 +150,7 @@ public function loadManagers(): void
             ]);
 
             // Create procurement item
-            DB::table('procurement_items')->insert([
+            DB::table('requisition_items')->insert([
                 'order_id' => $orderId,
                 'product_id' => $product->product_id,
                 'quantity' => $quantity,
@@ -234,7 +234,7 @@ public function loadManagers(): void
                 ]);
 
                 // Create procurement item
-                DB::table('procurement_items')->insert([
+                DB::table('requisition_items')->insert([
                     'order_id' => $orderId,
                     'product_id' => $item->product_id,
                     'quantity' => $quantity,

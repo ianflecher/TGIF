@@ -3,14 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\InventoryController;   // ← add this
-use App\Http\Controllers\StockTransactionController;
-use App\Http\Controllers\ItemLocationController;
-use App\Models\Inventory;
-use Barryvdh\DomPDF\Facade\Pdf;
-use App\Models\InventoryHistory;
-use App\Http\Controllers\PurchaseOrderController;
+
 
 // ====================
 // PUBLIC ROUTES
@@ -80,9 +73,6 @@ Volt::route('/admin/orders/{order}', 'admin.orders.show')->name('admin.orders.sh
 Volt::route('/admin/customers', 'admin.customers.index')->name('admin.customers.index');
 Volt::route('/admin/customers/{customer}', 'admin.customers.show')->name('admin.customers.show');
 
-// Admin Inventory
-Volt::route('/admin/inventory', 'admin.inventory.index')->name('admin.inventory.index');
-
 // Admin Reports
 Volt::route('/admin/reports', 'admin.reports.index')->name('admin.reports.index');
 
@@ -94,6 +84,8 @@ Volt::route('/admin/projects', 'projects.home')->name('projects.home');
 Volt::route('/admin/sales', 'sales.home')->name('sales.home');
 
 Volt::route('/admin/inventory', 'inventory.home')->name('inventory.home');
+Volt::route('/inventory/tracking', 'inventory.tracking')->name('inventory.tracking');
+Volt::route('/inventory/stock', 'inventory.stock')->name('inventory.stock');
 
 Volt::route('/admin/customerservice', 'customerservice.home')->name('customerservice.home');
 
