@@ -153,23 +153,30 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     // ---------------- PRODUCT CRUD ----------------
     public function saveProduct(): void
-    {
-        if (trim($this->product_name) === '') {
-            $this->productMessage = 'Product name is required.';
-            return;
-        }
+{
+    if (trim($this->product_name) === '') {
+        $this->productMessage = 'Product name is required.';
+        return;
+    }
 
-        if (trim($this->category) === '') {
-            $this->productMessage = 'Product category is required.';
-            return;
-        }
+    if (trim($this->category) === '') {
+        $this->productMessage = 'Product category is required.';
+        return;
+    }
 
-        if ($this->price === null || $this->price <= 0) {
-            $this->productMessage = 'Valid product price is required.';
-            return;
-        }
+    if ($this->price === null || $this->price <= 0) {
+        $this->productMessage = 'Valid product price is required.';
+        return;
+    }
 
+    DB::beginTransaction();
+
+    try {
         if ($this->isEditingProduct && $this->product_id_edit) {
+            // EDIT MODE
+            $product = DB::table('products')->where('product_id', $this->product_id_edit)->first();
+            
+            // Update the product
             DB::table('products')->where('product_id', $this->product_id_edit)->update([
                 'product_name' => $this->product_name,
                 'category' => $this->category,
@@ -178,40 +185,87 @@ new #[Layout('components.layouts.procurement')] class extends Component
                 'updated_at' => now(),
             ]);
 
+            // Update the corresponding inventory entry if it exists
+            if ($product->inventory_id) {
+                DB::table('inventories')->where('inventory_id', $product->inventory_id)->update([
+                    'product_name' => $this->product_name,
+                    'unit_price' => $this->price,
+                    'updated_at' => now(),
+                ]);
+            }
+
             $this->productMessage = 'Product updated successfully.';
         } else {
+            // CREATE MODE
+            // First, create the inventory entry
+            $inventoryId = DB::table('inventories')->insertGetId([
+                'product_name' => $this->product_name,
+                'sku' => $this->generateSKU($this->product_name),
+                'description' => $this->category, // Using category as description
+                'quantity' => 0, // Start with 0 stock
+                'min_quantity' => 10, // Default minimum quantity
+                'unit_price' => $this->price,
+                'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            // Then create the product with the inventory_id
             DB::table('products')->insert([
-    'product_name' => $this->product_name,
-    'category' => $this->category,
-    'supplier_id' => $this->product_supplier_id,
-    'price' => $this->price,
-    'slug' => Str::slug($this->product_name), // Add this line
-    'created_at' => now(),
-    'updated_at' => now(),
-]);
+                'product_name' => $this->product_name,
+                'category' => $this->category,
+                'supplier_id' => $this->product_supplier_id,
+                'price' => $this->price,
+                'inventory_id' => $inventoryId, // Link to inventory
+                'stock_quantity' => 0, // Start with 0 stock
+                'reorder_level' => 10, // Default reorder level
+                'slug' => Str::slug($this->product_name),
+                'status' => 'draft',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-            $this->productMessage = 'Product added successfully.';
+            $this->productMessage = 'Product added successfully with inventory entry.';
         }
 
-        $this->resetProductForm();
-        $this->loadProducts();
-        $this->loadSuppliers();
+        DB::commit();
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        $this->productMessage = 'Error saving product: ' . $e->getMessage();
+        return;
     }
 
-    public function editProduct(int $id): void
-    {
-        $product = DB::table('products')->where('product_id', $id)->first();
-        if ($product) {
-            $this->product_id_edit = $product->product_id;
-            $this->product_name = $product->product_name;
-            $this->category = $product->category ?? '';
-            $this->product_supplier_id = $product->supplier_id;
-            $this->price = (float)$product->price;
-            $this->isEditingProduct = true;
-            $this->productMessage = '';
-        }
-    }
+    $this->resetProductForm();
+    $this->loadProducts();
+    $this->loadSuppliers();
+}
 
+// Add this helper method to generate SKU
+private function generateSKU($productName)
+{
+    // Generate a unique SKU
+    $prefix = 'SKU';
+    $productCode = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $productName), 0, 6));
+    $random = strtoupper(substr(str_shuffle('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, 4));
+    $timestamp = date('ymd');
+    
+    return $prefix . '-' . $productCode . '-' . $random . '-' . $timestamp;
+}
+
+public function editProduct(int $id): void
+{
+    $product = DB::table('products')->where('product_id', $id)->first();
+    if ($product) {
+        $this->product_id_edit = $product->product_id;
+        $this->product_name = $product->product_name;
+        $this->category = $product->category ?? '';
+        $this->product_supplier_id = $product->supplier_id;
+        $this->price = (float)$product->price;
+        $this->isEditingProduct = true;
+        $this->productMessage = '';
+    }
+}
     public function resetProductForm(): void
     {
         $this->product_id_edit = null;
@@ -224,23 +278,37 @@ new #[Layout('components.layouts.procurement')] class extends Component
     }
 
     public function deleteProduct(int $id): void
-    {
-        // Check if product has linked procurement items (orders)
-        $orderCount = DB::table('requisition_items')->where('product_id', $id)->count();
-
-        if ($orderCount > 0) {
-            // Show error message
-            $this->message = "Cannot delete this product. It has $orderCount order(s).";
+{
+    DB::beginTransaction();
+    
+    try {
+        // Get the product to find inventory_id
+        $product = DB::table('products')->where('product_id', $id)->first();
+        
+        if (!$product) {
+            $this->message = 'Product not found.';
             return;
         }
+        
+        // Delete the inventory entry if it exists
+        if ($product->inventory_id) {
+            DB::table('inventories')->where('inventory_id', $product->inventory_id)->delete();
+        }
 
-        // Safe to delete if no orders exist
+        // Delete the product
         DB::table('products')->where('product_id', $id)->delete();
 
-        $this->message = 'Product deleted successfully.';
+        DB::commit();
+        
+        $this->message = 'Product and inventory entry deleted successfully.';
         $this->loadProducts();
         $this->loadSuppliers();
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        $this->message = 'Error deleting product: ' . $e->getMessage();
     }
+}
 };
 ?>
 <div class="p-8 bg-gray-100 min-h-screen">

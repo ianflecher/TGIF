@@ -68,7 +68,6 @@
             top: 0;
             left: 0;
             right: 0;
-            z-index: 1000;
             height: 60px;
             display: flex;
             align-items: center;
@@ -86,9 +85,7 @@
             overflow-x: hidden;
             padding: 15px 0;
             box-shadow: 3px 0 15px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 999;
-        }
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);        }
         
         .sidebar:hover {
             width: 200px; /* Expand on hover */
@@ -213,11 +210,9 @@
         }
         
         .logo-icon {
-            background: transparent;
-            padding: 0;
-            border-radius: 0;
-            color: white;
-            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .logo-text {
@@ -525,9 +520,8 @@
             <div class="logo-text">
                 <div class="company-name">Thanks G Its Fries Day</div>
                 <div class="company-tagline">
-    {{ ucfirst(Auth::user()->role) }} Portal 🌱
-</div>
-
+                    {{ ucfirst(Auth::user()->role) }} Portal 🌱
+                </div>
             </div>
         </div>
         <!-- User info and logout -->
@@ -536,9 +530,8 @@
                 <span style="color: var(--mint-green);">👤</span>
                 <span>{{ Auth::user()->name ?? 'Employee' }}</span>
                 <span class="employee-role">
-    {{ strtoupper(Auth::user()->role) }}
-</span>
-
+                    {{ strtoupper(Auth::user()->role) }}
+                </span>
             </div>
             
             <form method="POST" action="{{ route('logout') }}">
@@ -551,7 +544,6 @@
     </div>
 </header>
 
-<!-- Sidebar -->
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
     <h3>👨‍💼 Employee Modules</h3>
@@ -583,13 +575,13 @@
                 </a>
             </li>
 
-            <!-- Tasks -->
+            <!-- Support -->
             <li>
                 <a href="{{ route('employee.support') }}"
                    class="nav-item {{ request()->routeIs('employee.support') ? 'active' : '' }}">
-                    <span class="module-icon">✅</span>
-                    <span class="nav-text">Support Page</span>
-                    <span class="nav-tooltip">Assigned Tickets</span>
+                    <span class="module-icon">🛠️</span>
+                    <span class="nav-text">Support</span>
+                    <span class="nav-tooltip">Support Tickets</span>
                 </a>
             </li>
 
@@ -613,10 +605,11 @@
                 </a>
             </li>
 
+            <!-- Leave -->
             <li>
                 <a href="{{ route('employee.leave') }}"
                    class="nav-item {{ request()->routeIs('employee.leave.*') ? 'active' : '' }}">
-                    <span class="module-icon">💰</span>
+                    <span class="module-icon">🏖️</span>
                     <span class="nav-text">Leave</span>
                     <span class="nav-tooltip">Leave Management</span>
                 </a>
@@ -624,7 +617,17 @@
 
             <!-- SECTION TITLE -->
             <li class="mt-5">
-                <h3>📦 Requisition</h3>
+                <h3>📦 Operations</h3>
+            </li>
+
+            <!-- Warehouse -->
+            <li>
+                <a href="{{ route('employee.warehouse') }}"
+                   class="nav-item {{ request()->routeIs('employee.warehouse.*') ? 'active' : '' }}">
+                    <span class="module-icon">🏪</span>
+                    <span class="nav-text">Warehouse</span>
+                    <span class="nav-tooltip">Warehouse Management</span>
+                </a>
             </li>
 
             <!-- Purchase Requisition -->
@@ -637,20 +640,9 @@
                 </a>
             </li>
 
-            <!-- Profile -->
-            <li>
-                <a href="#"
-                   class="nav-item {{ request()->routeIs('employee.profile.*') ? 'active' : '' }}">
-                    <span class="module-icon">👤</span>
-                    <span class="nav-text">Profile</span>
-                    <span class="nav-tooltip">My Profile</span>
-                </a>
-            </li>
-
         </ul>
     </nav>
 </aside>
-
 
 <!-- Main Content -->
 <main class="main-content" id="mainContent">

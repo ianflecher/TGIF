@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
-    <title>@yield('title', 'Inventory Management') - TGIF Supplier Portal</title>
+    <title>@yield('title', 'Helpdesk System') - TGIF Support Portal</title>
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,7 +13,7 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Custom green inventory theme -->
+    <!-- Custom green helpdesk theme -->
     <script>
         tailwind.config = {
             theme: {
@@ -92,7 +92,7 @@
         }
         
         /* Header */
-        .inventory-header {
+        .helpdesk-header {
             background: linear-gradient(135deg, var(--deep-green) 0%, var(--dark-green) 100%);
             color: white;
             padding: 1rem 2rem;
@@ -153,7 +153,7 @@
         }
         
         /* Navigation */
-        .inventory-nav {
+        .helpdesk-nav {
             display: flex;
             gap: 0.5rem;
             align-items: center;
@@ -221,7 +221,7 @@
             transition: all 0.3s ease;
         }
         
-        .user-badge.inventory {
+        .user-badge.support {
             background: linear-gradient(135deg, rgba(34, 197, 94, 0.8) 0%, rgba(20, 184, 166, 0.8) 100%);
         }
         
@@ -252,7 +252,7 @@
         }
         
         /* Main Content */
-        .inventory-content {
+        .helpdesk-content {
             max-width: 1400px;
             margin: 2rem auto;
             padding: 0 2rem;
@@ -420,7 +420,7 @@
             margin-bottom: 0.5rem;
         }
         
-        /* Status Badges for Inventory */
+        /* Status Badges for Tickets */
         .status-badge {
             display: inline-flex;
             align-items: center;
@@ -432,43 +432,80 @@
             border: 1px solid transparent;
         }
         
-        .status-in-stock {
+        .status-open {
             background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
             color: #166534;
             border-color: #86efac;
         }
         
-        .status-low-stock {
+        .status-in-progress {
             background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
             color: #92400e;
             border-color: #fbbf24;
         }
         
-        .status-out-of-stock {
+        .status-pending {
             background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
             color: #991b1b;
             border-color: #f87171;
         }
         
-        .status-on-order {
+        .status-resolved {
             background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
             color: #1e40af;
             border-color: #93c5fd;
         }
         
-        .status-discontinued {
+        .status-closed {
             background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
             color: #64748b;
             border-color: #cbd5e1;
         }
         
-        .status-expired {
+        .status-escalated {
             background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
             color: #475569;
             border: 1px dashed #94a3b8;
         }
         
-        /* Tables for Inventory Data */
+        /* Priority Badges */
+        .priority-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border: 1px solid transparent;
+        }
+        
+        .priority-critical {
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+            color: #dc2626;
+            border-color: #f87171;
+            animation: pulse 2s infinite;
+        }
+        
+        .priority-high {
+            background: linear-gradient(135deg, #fef2f2 0%, #fed7d7 100%);
+            color: #ef4444;
+            border-color: #fca5a5;
+        }
+        
+        .priority-medium {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            color: #d97706;
+            border-color: #fbbf24;
+        }
+        
+        .priority-low {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            color: #16a34a;
+            border-color: #86efac;
+        }
+        
+        /* Tables for Ticket Data */
         .data-table {
             width: 100%;
             border-collapse: separate;
@@ -558,6 +595,17 @@
             box-shadow: 0 8px 20px rgba(34, 197, 94, 0.4);
         }
         
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+        }
+        
         /* Forms */
         .form-group {
             margin-bottom: 1.75rem;
@@ -587,14 +635,54 @@
             box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.1);
         }
         
-        /* Inventory-specific styles */
-        .inventory-grid {
+        .form-textarea {
+            width: 100%;
+            padding: 0.85rem 1.25rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+            min-height: 150px;
+            resize: vertical;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--primary-green);
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.1);
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: 0.85rem 1.25rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.5em 1.5em;
+        }
+        
+        .form-select:focus {
+            outline: none;
+            border-color: var(--primary-green);
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.1);
+        }
+        
+        /* Helpdesk-specific styles */
+        .helpdesk-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 1fr 300px;
             gap: 2rem;
         }
         
-        .inventory-sidebar {
+        .helpdesk-sidebar {
             background: white;
             border-radius: 16px;
             padding: 1.75rem;
@@ -603,7 +691,7 @@
             border: 1px solid #e2e8f0;
         }
         
-        .inventory-sidebar h3 {
+        .helpdesk-sidebar h3 {
             font-size: 1.25rem;
             font-weight: 600;
             color: #1e293b;
@@ -615,10 +703,10 @@
             gap: 0.75rem;
         }
         
-        .inventory-item-card {
+        .ticket-card {
             background: white;
             border-radius: 12px;
-            padding: 1.75rem;
+            padding: 1.5rem;
             margin-bottom: 1.25rem;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
             border: 1px solid #e2e8f0;
@@ -627,26 +715,45 @@
             position: relative;
         }
         
-        .inventory-item-card:hover {
+        .ticket-card:hover {
             transform: translateY(-3px);
             box-shadow: 0 8px 24px rgba(34, 197, 94, 0.15);
             border-left: 4px solid var(--accent-teal);
         }
         
-        .inventory-item-header {
+        .ticket-card.critical {
+            border-left: 4px solid #ef4444;
+            animation: pulse-card 2s infinite;
+        }
+        
+        @keyframes pulse-card {
+            0%, 100% { box-shadow: 0 4px 16px rgba(239, 68, 68, 0.1); }
+            50% { box-shadow: 0 4px 24px rgba(239, 68, 68, 0.2); }
+        }
+        
+        .ticket-card.high {
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .ticket-card.medium {
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .ticket-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 1rem;
         }
         
-        .inventory-item-name {
+        .ticket-title {
             font-weight: 600;
             color: #1e293b;
             font-size: 1.15rem;
+            margin-bottom: 0.5rem;
         }
         
-        .inventory-item-sku {
+        .ticket-id {
             color: #64748b;
             font-size: 0.85rem;
             font-family: 'Monaco', 'Consolas', monospace;
@@ -656,90 +763,126 @@
             border: 1px solid #e2e8f0;
         }
         
-        .inventory-item-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.25rem;
+        .ticket-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+        
+        .ticket-description {
+            color: #475569;
+            font-size: 0.95rem;
+            line-height: 1.6;
             margin-bottom: 1.25rem;
         }
         
-        .detail-item {
+        .ticket-actions {
             display: flex;
-            flex-direction: column;
-        }
-        
-        .detail-label {
-            font-size: 0.85rem;
-            color: #64748b;
-            margin-bottom: 0.35rem;
-            font-weight: 500;
-        }
-        
-        .detail-value {
-            font-weight: 600;
-            color: #334155;
-            font-size: 1rem;
-        }
-        
-        .stock-level {
-            display: flex;
-            align-items: center;
             gap: 0.75rem;
+            margin-top: 1rem;
         }
         
-        .stock-bar {
-            flex-grow: 1;
-            height: 10px;
+        .message-container {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.25rem;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .message-author {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        
+        .message-time {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+        
+        .message-content {
+            color: #475569;
+            line-height: 1.6;
+        }
+        
+        .message-attachments {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        .attachment-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: #f1f5f9;
+            border-radius: 6px;
+            color: #475569;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.2s ease;
+        }
+        
+        .attachment-item:hover {
             background: #e2e8f0;
-            border-radius: 5px;
-            overflow: hidden;
-            position: relative;
+            transform: translateY(-1px);
         }
         
-        .stock-fill {
-            height: 100%;
-            border-radius: 5px;
-            transition: width 0.5s ease;
-            position: relative;
-            overflow: hidden;
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
         }
         
-        .stock-fill::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            animation: shimmer 2s infinite;
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
         }
         
-        @keyframes shimmer {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(34, 197, 94, 0.15);
         }
         
-        .stock-fill.high {
-            background: linear-gradient(90deg, var(--primary-green) 0%, #4ade80 100%);
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--dark-green) 0%, var(--primary-green) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
         }
         
-        .stock-fill.medium {
-            background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
-        }
-        
-        .stock-fill.low {
-            background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
-        }
-        
-        .stock-fill.critical {
-            background: linear-gradient(90deg, #dc2626 0%, #ef4444 100%);
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
+        .stat-label {
+            color: #64748b;
+            font-size: 0.9rem;
+            font-weight: 500;
         }
         
         /* Mobile Menu */
@@ -806,13 +949,17 @@
                 grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             }
             
-            .inventory-grid {
+            .helpdesk-grid {
                 grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             }
         }
         
         @media (max-width: 768px) {
-            .inventory-header {
+            .helpdesk-header {
                 padding: 0.75rem 1rem;
             }
             
@@ -820,7 +967,7 @@
                 display: block;
             }
             
-            .inventory-nav {
+            .helpdesk-nav {
                 display: none;
             }
             
@@ -844,7 +991,7 @@
                 border-top: 1px solid rgba(255, 255, 255, 0.1);
             }
             
-            .inventory-content {
+            .helpdesk-content {
                 padding: 0 1rem;
             }
             
@@ -857,8 +1004,13 @@
                 overflow-x: auto;
             }
             
-            .inventory-item-details {
-                grid-template-columns: 1fr;
+            .ticket-meta {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .ticket-actions {
+                flex-wrap: wrap;
             }
         }
         
@@ -897,16 +1049,20 @@
                 padding: 0.6rem 1.25rem;
                 font-size: 0.9rem;
             }
+            
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
         }
     </style>
 </head>
 <body class="bg-gray-50">
 
 <!-- Main Header -->
-<header class="inventory-header">
+<header class="helpdesk-header">
     <div class="header-content">
         <!-- Logo -->
-        <a href="{{ route('inventory.home') }}" class="logo-container">
+        <a href="{{ route('sales.home') }}" class="logo-container">
             <div class="logo-icon">
                 @if(file_exists(public_path('TGIF.png')))
                     <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 48px; width: auto; filter: brightness(0) invert(1);">
@@ -918,7 +1074,7 @@
             </div>
             <div class="logo-text">
                 <div class="company-name">Thanks G Its Fries Day</div>
-                <div class="company-tagline">Green Inventory Management</div>
+                <div class="company-tagline">Support Helpdesk System</div>
             </div>
         </a>
 
@@ -928,34 +1084,31 @@
         </button>
 
         <!-- Navigation -->
-        <nav class="inventory-nav">
-            <a href="{{ route('inventory.home') }}" class="nav-link">
+        <nav class="helpdesk-nav">
+            <a href="{{ route('sales.home') }}" class="nav-link">
                 <i class="fas fa-tachometer-alt"></i>Dashboard
             </a>
-            <a href="{{ route('inventory.stock') }}" class="nav-link">
-                <i class="fas fa-boxes"></i>Stock Management
+            <a href="{{ route('sales.ticket') }}" class="nav-link">
+                <i class="fas fa-ticket-alt"></i>Tickets
             </a>
-            <!-- <a href="{{ route('inventory.tracking') }}" class="nav-link">
-                <i class="fas fa-tags"></i>Inventory Tracking
-            </a> -->
         </nav>
 
         <!-- User Actions -->
         <div class="user-actions">
             @auth
-                    <div class="user-badge inventory">
-                        <i class="fas fa-clipboard-list"></i>
-                        <span>{{ Auth::user()->full_name ?? 'Inventory Manager' }}</span>
-                    </div>
-                    <!-- LOGOUT FORM ADDED HERE -->
-                    <form method="POST" action="{{ route('logout') }}">
-                        @csrf
-                        <button type="submit" class="logout-btn">
-                            <i class="fas fa-sign-out-alt"></i>Logout
-                        </button>
-                    </form>
+                <div class="user-badge support">
+                    <i class="fas fa-headset"></i>
+                    <span>{{ Auth::user()->full_name ?? 'Support Agent' }}</span>
+                </div>
+                <!-- LOGOUT FORM -->
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="logout-btn">
+                        <i class="fas fa-sign-out-alt"></i>Logout
+                    </button>
+                </form>
             @else
-                <a href="{{ route('inventory.login') }}" class="nav-link">
+                <a href="{{ route('helpdesk.login') }}" class="nav-link">
                     <i class="fas fa-sign-in-alt"></i>Login
                 </a>
             @endauth
@@ -964,16 +1117,13 @@
 
     <!-- Mobile Navigation -->
     <nav class="mobile-nav" id="mobileMenu">
-        <a href="{{ route('inventory.home') }}" class="nav-link">
+        <a href="{{ route('sales.home') }}" class="nav-link">
             <i class="fas fa-tachometer-alt"></i>Dashboard
         </a>
-        <a href="{{ route('inventory.stock') }}" class="nav-link">
-            <i class="fas fa-boxes"></i>Stock Management
+        <a href="{{ route('sales.ticket') }}" class="nav-link">
+            <i class="fas fa-ticket-alt"></i>Tickets
         </a>
-        <!-- <a href="{{ route('inventory.tracking') }}" class="nav-link">
-            <i class="fas fa-tags"></i>Inventory Tracking
-        </a> -->
-        <!-- LOGOUT FOR MOBILE ADDED HERE -->
+        <!-- LOGOUT FOR MOBILE -->
         @auth
         <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
             <div style="color: #bbf7d0; font-size: 0.85rem; margin-bottom: 0.5rem;">Logged in as:</div>
@@ -991,7 +1141,7 @@
 </header>
 
 <!-- Main Content Area -->
-<main class="inventory-content">
+<main class="helpdesk-content">
     <!-- Alert Messages -->
     @if(session('success'))
         <div class="alert alert-success">
@@ -1081,48 +1231,39 @@
         }, 5000);
     });
     
-    // Inventory-specific functions
-    function updateStockLevel(itemId, newQuantity) {
-        // This would typically make an API call to update stock
-        console.log(`Updating item ${itemId} to ${newQuantity} units`);
+    // Helpdesk-specific functions
+    function updateTicketStatus(ticketId, newStatus) {
+        console.log(`Updating ticket ${ticketId} to ${newStatus}`);
         
-        // Update UI immediately
-        const stockElement = document.getElementById(`stock-${itemId}`);
-        const stockBar = document.getElementById(`stock-bar-${itemId}`);
-        
-        if (stockElement && stockBar) {
-            stockElement.textContent = newQuantity;
+        const statusElement = document.getElementById(`status-${ticketId}`);
+        if (statusElement) {
+            const oldStatus = statusElement.textContent;
+            statusElement.textContent = newStatus;
             
-            // Animate stock change
-            stockElement.style.transform = 'scale(1.2)';
+            // Update status badge class
+            statusElement.className = `status-badge status-${newStatus.toLowerCase().replace(' ', '-')}`;
+            
+            // Animate the change
+            statusElement.style.transform = 'scale(1.1)';
             setTimeout(() => {
-                stockElement.style.transform = 'scale(1)';
-                stockElement.style.transition = 'transform 0.3s ease';
+                statusElement.style.transform = 'scale(1)';
+                statusElement.style.transition = 'transform 0.3s ease';
             }, 300);
             
-            // Update stock bar with animation
-            let width = '0%';
-            let className = 'stock-fill critical';
+            showAlert(`Ticket status updated from ${oldStatus} to ${newStatus}`, 'success');
+        }
+    }
+    
+    function assignToSelf(ticketId) {
+        console.log(`Assigning ticket ${ticketId} to current user`);
+        
+        const assigneeElement = document.getElementById(`assignee-${ticketId}`);
+        if (assigneeElement) {
+            assigneeElement.textContent = 'You';
+            assigneeElement.style.fontWeight = '600';
+            assigneeElement.style.color = 'var(--primary-green)';
             
-            if (newQuantity >= 100) {
-                width = '80%';
-                className = 'stock-fill high';
-            } else if (newQuantity >= 50) {
-                width = '50%';
-                className = 'stock-fill medium';
-            } else if (newQuantity >= 10) {
-                width = '20%';
-                className = 'stock-fill low';
-            } else {
-                width = '5%';
-                className = 'stock-fill critical';
-            }
-            
-            stockBar.className = className;
-            stockBar.style.width = width;
-            
-            // Show success message
-            showAlert('Stock updated successfully', 'success');
+            showAlert('Ticket assigned to you', 'success');
         }
     }
     
@@ -1134,7 +1275,7 @@
             ${message}
         `;
         
-        const contentArea = document.querySelector('.inventory-content');
+        const contentArea = document.querySelector('.helpdesk-content');
         if (contentArea) {
             contentArea.insertBefore(alertDiv, contentArea.firstChild);
             
@@ -1148,12 +1289,59 @@
         }
     }
     
-    // Smooth scroll for page cards
-    function scrollToElement(elementId) {
-        const element = document.getElementById(elementId);
-        if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+    // Ticket filtering
+    function filterTickets(status) {
+        const tickets = document.querySelectorAll('.ticket-card');
+        tickets.forEach(ticket => {
+            if (status === 'all') {
+                ticket.style.display = 'block';
+            } else {
+                const ticketStatus = ticket.querySelector('.status-badge').textContent.toLowerCase();
+                if (ticketStatus === status.toLowerCase().replace(' ', '-')) {
+                    ticket.style.display = 'block';
+                } else {
+                    ticket.style.display = 'none';
+                }
+            }
+        });
+        
+        // Update active filter button
+        const filterButtons = document.querySelectorAll('.filter-btn');
+        filterButtons.forEach(btn => {
+            if (btn.dataset.filter === status) {
+                btn.classList.add('active');
+                btn.style.background = 'linear-gradient(135deg, var(--primary-green) 0%, var(--dark-green) 100%)';
+                btn.style.color = 'white';
+            } else {
+                btn.classList.remove('active');
+                btn.style.background = '';
+                btn.style.color = '';
+            }
+        });
+        
+        showAlert(`Showing ${status === 'all' ? 'all' : status} tickets`, 'info');
+    }
+    
+    // Search tickets
+    function searchTickets(searchTerm) {
+        const tickets = document.querySelectorAll('.ticket-card');
+        let foundCount = 0;
+        
+        tickets.forEach(ticket => {
+            const ticketContent = ticket.textContent.toLowerCase();
+            if (ticketContent.includes(searchTerm.toLowerCase())) {
+                ticket.style.display = 'block';
+                foundCount++;
+                
+                // Highlight search term (simplified)
+                ticket.style.border = '2px solid var(--accent-teal)';
+            } else {
+                ticket.style.display = 'none';
+                ticket.style.border = '';
+            }
+        });
+        
+        showAlert(`Found ${foundCount} tickets matching "${searchTerm}"`, 'info');
     }
     
     // Add loading animation to buttons when clicked
@@ -1172,6 +1360,38 @@
             }, 2000);
         }
     });
+    
+    // Add message to ticket
+    function addMessage(ticketId) {
+        const messageInput = document.getElementById(`message-${ticketId}`);
+        const messageContent = messageInput?.value.trim();
+        
+        if (!messageContent) {
+            showAlert('Please enter a message', 'error');
+            return;
+        }
+        
+        const messagesContainer = document.getElementById(`messages-${ticketId}`);
+        if (messagesContainer) {
+            const newMessage = document.createElement('div');
+            newMessage.className = 'message-container';
+            newMessage.innerHTML = `
+                <div class="message-header">
+                    <div class="message-author">You</div>
+                    <div class="message-time">Just now</div>
+                </div>
+                <div class="message-content">${messageContent}</div>
+            `;
+            
+            messagesContainer.appendChild(newMessage);
+            messageInput.value = '';
+            
+            // Scroll to new message
+            newMessage.scrollIntoView({ behavior: 'smooth' });
+            
+            showAlert('Message added successfully', 'success');
+        }
+    }
 </script>
 
 </body>

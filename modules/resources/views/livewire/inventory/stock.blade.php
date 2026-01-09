@@ -211,12 +211,6 @@ new #[Layout('components.layouts.inventory')] class extends Component
         return;
     }
     
-    \Log::info('Process requisition started', [
-        'requisition_id' => $this->currentRequisitionId,
-        'selected_supplier_id' => $this->selectedSupplierId,
-        'item_count' => count($this->requisitionItems)
-    ]);
-    
     // Check if PO already exists for this requisition
     $existingPO = DB::table('purchase_orders')
         ->where('requisition_id', $this->currentRequisitionId)
@@ -269,27 +263,30 @@ new #[Layout('components.layouts.inventory')] class extends Component
         
         // Process each item
         foreach ($this->requisitionItems as $item) {
-            if ($item->current_stock >= $item->quantity && $item->inventory_id) {
+            // Cast to array if it's an object
+            $item = (array) $item;
+            
+            if ($item['current_stock'] >= $item['quantity'] && !empty($item['inventory_id'])) {
                 // Allocate from existing stock
                 $allocatedItems[] = [
-                    'product_name' => $item->product_name,
-                    'sku' => $item->sku,
-                    'quantity' => $item->quantity,
-                    'current_stock' => $item->current_stock,
-                    'new_stock' => $item->current_stock - $item->quantity
+                    'product_name' => $item['product_name'],
+                    'sku' => $item['sku'],
+                    'quantity' => $item['quantity'],
+                    'current_stock' => $item['current_stock'],
+                    'new_stock' => $item['current_stock'] - $item['quantity']
                 ];
                 
                 // Update inventory
                 DB::table('inventories')
-                    ->where('inventory_id', $item->inventory_id)
-                    ->decrement('quantity', $item->quantity);
+                    ->where('inventory_id', $item['inventory_id'])
+                    ->decrement('quantity', $item['quantity']);
                 
                 // Create allocation record if table exists
                 if (DB::getSchemaBuilder()->hasTable('inventory_allocations')) {
                     DB::table('inventory_allocations')->insert([
-                        'inventory_id' => $item->inventory_id,
+                        'inventory_id' => $item['inventory_id'],
                         'requisition_id' => $this->currentRequisitionId,
-                        'quantity' => $item->quantity,
+                        'quantity' => $item['quantity'],
                         'allocated_by' => Auth::id(),
                         'created_at' => Carbon::now(),
                         'updated_at' => Carbon::now()
@@ -299,7 +296,7 @@ new #[Layout('components.layouts.inventory')] class extends Component
             } else {
                 // Create PO for this item
                 $poItems[] = $item;
-                $itemTotal = $item->quantity * ($item->unit_price ?? 0);
+                $itemTotal = $item['quantity'] * ($item['unit_price'] ?? 0);
                 $totalAmount += $itemTotal;
             }
         }
@@ -325,6 +322,45 @@ new #[Layout('components.layouts.inventory')] class extends Component
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now()
             ]);
+            
+            // Create purchase order items
+            foreach ($poItems as $item) {
+                // Check if inventory_id exists, if not, create inventory entry
+                if (empty($item['inventory_id'])) {
+                    // Generate SKU
+                    $sku = 'SKU-' . strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $item['product_name']), 0, 6)) . '-' . date('ymd');
+                    
+                    // Create new inventory entry
+                    $inventoryId = DB::table('inventories')->insertGetId([
+                        'product_name' => $item['product_name'],
+                        'sku' => $sku,
+                        'description' => $item['description'] ?? null,
+                        'quantity' => 0, // Will be updated when PO is received
+                        'min_quantity' => $item['min_quantity'] ?? 10,
+                        'unit_price' => $item['unit_price'] ?? 0,
+                        'status' => 'active',
+                        'created_at' => Carbon::now(),
+                        'updated_at' => Carbon::now()
+                    ]);
+                    
+                    $item['inventory_id'] = $inventoryId;
+                }
+                
+                // Calculate total price for this item
+                $totalPrice = $item['quantity'] * ($item['unit_price'] ?? 0);
+                
+                // Insert into purchase_order_items table
+                DB::table('purchase_order_items')->insert([
+                    'po_id' => $poId,
+                    'inventory_id' => $item['inventory_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'] ?? 0,
+                    'total_price' => $totalPrice,
+                    'description' => $item['description'] ?? null,
+                    'created_at' => Carbon::now(),
+                    'updated_at' => Carbon::now()
+                ]);
+            }
         }
         
         // Update requisition status based on actions
@@ -358,6 +394,11 @@ new #[Layout('components.layouts.inventory')] class extends Component
         
     } catch (\Exception $e) {
         DB::rollBack();
+        
+        \Log::error('Failed to process requisition', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
         
         $this->dispatch('show-notification', [
             'type' => 'error',

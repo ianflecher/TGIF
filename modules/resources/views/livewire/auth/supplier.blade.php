@@ -5,41 +5,57 @@ namespace App\Livewire\Auth;
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 new #[Layout('components.layouts.supplier')] class extends Component
 {
     #[Validate('required|string')]
-    public $login = '';
+    public $email = '';
     
     #[Validate('required|string')]
-    public $password = '';
+    public $password = 'supplier123'; // Default password
     
     public $remember = false;
+    
+    public function mount()
+    {
+        // Set default password on mount
+        $this->password = 'supplier123';
+    }
     
     public function login()
     {
         $this->validate();
         
-        $fieldType = filter_var($this->login, FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+        // Check if supplier exists with this email
+        $supplier = DB::table('suppliers')
+            ->where('email', $this->email)
+            ->where('status', 'active')
+            ->first();
         
-        if (Auth::attempt([
-            $fieldType => $this->login,
-            'password' => $this->password,
-            'role' => 'supplier'
-        ], $this->remember)) {
-            session()->regenerate();
-            return redirect()->route('supplier.dashboard')
-                ->with('success', 'Welcome back!');
+        if (!$supplier) {
+            $this->addError('email', 'Invalid supplier email or account not active.');
+            return;
         }
         
-        $this->addError('login', 'Invalid credentials or not authorized as supplier.');
+        // Since password is always 'supplier123', we can just check it directly
+        if ($this->password !== 'supplier123') {
+            $this->addError('password', 'Invalid password. Default password is supplier123');
+            return;
+        }
+        
+        // Store supplier in session
+        session(['supplier' => $supplier]);
+        
+        return redirect()->route('supplier.dashboard')
+            ->with('success', 'Welcome back, ' . $supplier->name . '!');
     }
 }
 
 ?>
 
-<div class="min-h-screen bg-gradient-to-b from-white to-green-50 py-12 px-4 sm:px-6 lg:px-8" x-data="{ showPassword: false }" x-init="$refs.login.focus()">
+<div class="min-h-screen bg-gradient-to-b from-white to-green-50 py-12 px-4 sm:px-6 lg:px-8" x-data="{ showPassword: false }" x-init="$refs.email.focus()">
     <div class="max-w-md mx-auto">
         <!-- Brand Header -->
         <div class="text-center mb-8">
@@ -65,27 +81,27 @@ new #[Layout('components.layouts.supplier')] class extends Component
                 <form wire:submit.prevent="login" class="space-y-6">
                     @csrf
                     
-                    <!-- Username/Email -->
+                    <!-- Email -->
                     <div>
-                        <label for="login" class="block text-sm font-medium text-gray-700 mb-2">
-                            Email or Username
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
+                            Supplier Email
                         </label>
                         <div class="relative">
                             <input 
-                                type="text" 
-                                wire:model="login" 
-                                id="login"
-                                x-ref="login"
+                                type="email" 
+                                wire:model="email" 
+                                id="email"
+                                x-ref="email"
                                 required
                                 autofocus
-                                placeholder="supplier@example.com"
+                                placeholder="deekutchiki123@gmail.com"
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
-                                <i class="fas fa-user-tie"></i>
+                                <i class="fas fa-envelope"></i>
                             </div>
                         </div>
-                        @error('login')
+                        @error('email')
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
@@ -96,6 +112,9 @@ new #[Layout('components.layouts.supplier')] class extends Component
                             <label for="password" class="block text-sm font-medium text-gray-700">
                                 Password
                             </label>
+                            <span class="text-xs text-green-600 font-medium">
+                                Default: supplier123
+                            </span>
                         </div>
                         <div class="relative">
                             <input 
@@ -103,7 +122,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 wire:model="password" 
                                 id="password"
                                 required
-                                placeholder="••••••••"
+                                value="supplier123"
                                 class="w-full pl-10 pr-10 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
@@ -117,11 +136,32 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
                             </button>
                         </div>
+                        <div class="mt-1 text-xs text-gray-500">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Default password for all supplier accounts
+                        </div>
                         @error('password')
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
 
+                    <!-- Quick Login Helper -->
+                    <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs font-medium text-blue-800">Test Supplier Account</p>
+                                <p class="text-xs text-blue-700 mt-1">Email: deekutchiki123@gmail.com</p>
+                            </div>
+                            <button 
+                                type="button" 
+                                wire:click="$set('email', 'deekutchiki123@gmail.com')"
+                                class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1 rounded-lg transition"
+                            >
+                                <i class="fas fa-bolt mr-1"></i>
+                                Fill
+                            </button>
+                        </div>
+                    </div>
 
                     <!-- Submit Button -->
                     <div>
@@ -149,18 +189,9 @@ new #[Layout('components.layouts.supplier')] class extends Component
                         <div>
                             <p class="text-xs font-medium text-green-800 mb-1">📋 Supplier Portal Access</p>
                             <p class="text-xs text-green-700">
-                                This portal is for <span class="font-bold">TGIF suppliers only</span>. 
-                                Contact our support team if you need supplier account access.
+                                Use the email registered in our system. Default password is <span class="font-bold">supplier123</span>.
                             </p>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Supplier Information -->
-                <div class="mt-6 text-center">
-                    <div class="inline-flex items-center px-4 py-2 bg-emerald-100 text-emerald-800 rounded-full">
-                        <i class="fas fa-truck mr-2"></i>
-                        <span class="text-sm font-medium">Supplier Partner Account</span>
                     </div>
                 </div>
             </div>
@@ -176,21 +207,21 @@ new #[Layout('components.layouts.supplier')] class extends Component
             </div>
         </div>
 
-        <!-- Default Supplier Info (Optional - remove in production) -->
+        <!-- Default Supplier Info -->
         <div class="mt-8 text-center">
             <details class="inline-block">
                 <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Need Supplier Access?
+                    <i class="fas fa-question-circle mr-1"></i>
+                    Need Help?
                 </summary>
                 <div class="mt-2 p-3 bg-gray-50 rounded-lg text-left">
                     <p class="text-xs text-gray-600 mb-2">
-                        To apply for supplier access, please contact our procurement team:
+                        Supplier login credentials:
                     </p>
                     <ul class="text-xs text-gray-600 space-y-1">
-                        <li><i class="fas fa-envelope mr-2"></i> procurement@tgif.com</li>
-                        <li><i class="fas fa-phone mr-2"></i> (555) 123-4567</li>
-                        <li><i class="fas fa-building mr-2"></i> Business Hours: Mon-Fri, 9AM-5PM</li>
+                        <li><i class="fas fa-envelope mr-2"></i> Use your registered email</li>
+                        <li><i class="fas fa-key mr-2"></i> Default password: <code class="bg-gray-200 px-1 rounded">supplier123</code></li>
+                        <li><i class="fas fa-exclamation-triangle mr-2 text-amber-600"></i> Contact support if login fails</li>
                     </ul>
                 </div>
             </details>
@@ -201,7 +232,12 @@ new #[Layout('components.layouts.supplier')] class extends Component
 @script
 <script>
     document.addEventListener('livewire:initialized', () => {
-        @this.$refs.login?.focus();
+        Livewire.on('login-error', (error) => {
+            alert(error.message);
+        });
+        
+        // Auto-fill for testing
+        @this.$refs.email?.focus();
     });
 </script>
 @endscript

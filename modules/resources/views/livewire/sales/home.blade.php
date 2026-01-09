@@ -288,7 +288,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">Recent Tickets</h2>
                     <p class="text-sm text-gray-600">Latest customer support requests</p>
                 </div>
-                <a href="{{ route('customerservice.tickets') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
+                <a href="{{ route('sales.ticket') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
                     View All
                     <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -354,7 +354,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">Top Agents</h2>
                     <p class="text-sm text-gray-600">Best performing support agents</p>
                 </div>
-                <a href="{{ route('customerservice.tickets') }}?view=agents" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
+                <a href="{{ route('sales.ticket') }}?view=agents" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
                     View All
                     <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -473,33 +473,13 @@ new #[Layout('components.layouts.app')] class extends Component
     <div class="bg-white rounded-xl shadow-md p-6">
         <h2 class="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h2>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <a href="{{ route('customerservice.tickets') }}" class="flex flex-col items-center justify-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+            <a href="{{ route('sales.ticket') }}" class="flex flex-col items-center justify-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
                 <svg class="w-8 h-8 text-green-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                 </svg>
-                <span class="font-medium text-gray-800">New Ticket</span>
+                <span class="font-medium text-gray-800">View Tickets</span>
             </a>
             
-            <a href="{{ route('customerservice.chat') }}" class="flex flex-col items-center justify-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-blue-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                </svg>
-                <span class="font-medium text-gray-800">Live Chat</span>
-            </a>
-            
-            <a href="{{ route('customerservice.feedback') }}" class="flex flex-col items-center justify-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-purple-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
-                </svg>
-                <span class="font-medium text-gray-800">Customer Feedback</span>
-            </a>
-            
-            <a href="{{ route('customerservice.tickets') }}?view=reports" class="flex flex-col items-center justify-center p-4 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-orange-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                </svg>
-                <span class="font-medium text-gray-800">Reports</span>
-            </a>
         </div>
     </div>
 </div>

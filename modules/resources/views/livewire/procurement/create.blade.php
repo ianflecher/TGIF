@@ -228,14 +228,13 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     $this->calculateEstimatedCost();
 
     // Get user's department from users table
-    $user = DB::table('users')->where('id', $this->userId)->first();
+    $user = DB::table('users')->where('user_id', $this->userId)->first();
     $departmentId = $user->department_id ?? 1;
 
     // Insert requisition - use 'submitted' instead of 'pending'
     $requisitionId = DB::table('purchase_requisitions')->insertGetId([
-        'requisition_number' => 'PR-' . date('Ymd') . '-' . str_pad(DB::table('purchase_requisitions')->count() + 1, 4, '0', STR_PAD_LEFT),
         'requested_by' => $this->userId,
-        'status' => 'submitted', // Changed from 'pending' to 'submitted'
+        'status' => 'draft', // Changed from 'pending' to 'submitted'
         'date_requested' => $this->date,
         'department_id' => $departmentId,
         'estimated_cost' => $this->estimatedCost,
@@ -250,21 +249,12 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                 'requisition_id' => $requisitionId,
                 'product_id' => $productId,
                 'quantity' => $quantity,
-                'status' => 'pending',
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
         }
     }
 
-    // Insert status history - use 'submitted' instead of 'pending'
-    DB::table('requisition_status_history')->insert([
-        'requisition_id' => $requisitionId,
-        'status' => 'submitted', // Changed from 'pending' to 'submitted'
-        'changed_by' => $this->userId,
-        'notes' => 'Requisition created',
-        'created_at' => Carbon::now(),
-    ]);
 
     $this->message = '✅ Requisition #' . $requisitionId . ' created successfully! Estimated Cost: ₱' . number_format($this->estimatedCost, 2);
     

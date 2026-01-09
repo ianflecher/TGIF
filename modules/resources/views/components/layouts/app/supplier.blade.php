@@ -73,7 +73,6 @@
             box-shadow: 0 2px 12px rgba(34, 197, 94, 0.2);
             position: sticky;
             top: 0;
-            z-index: 100;
         }
         
         .header-content {

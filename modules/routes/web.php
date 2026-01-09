@@ -82,6 +82,7 @@ Volt::route('/admin/settings', 'admin.settings.index')->name('admin.settings.ind
 Volt::route('/admin/projects', 'projects.home')->name('projects.home');
 
 Volt::route('/admin/sales', 'sales.home')->name('sales.home');
+Volt::route('/sales/ticket', 'sales.ticket')->name('sales.ticket');
 
 Volt::route('/admin/inventory', 'inventory.home')->name('inventory.home');
 Volt::route('/inventory/tracking', 'inventory.tracking')->name('inventory.tracking');
@@ -116,6 +117,7 @@ Volt::route('/employee/schedule', 'employee.schedule')->name('employee.schedule'
 Volt::route('/employee/payroll', 'employee.payroll')->name('employee.payroll');
 Volt::route('/employee/leave', 'employee.leave')->name('employee.leave');
 Volt::route('/employee/support', 'employee.support')->name('employee.support');
+Volt::route('/employee/warehouse', 'employee.warehouse')->name('employee.warehouse');
 
 Volt::route('/applicant', 'applicant.index')->name('applicant.index');
 
