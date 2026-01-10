@@ -256,50 +256,7 @@ return new class extends Migration
         }
 
         // 5. Delivery Route Optimizations table
-        if (!Schema::hasTable('delivery_route_optimizations')) {
-            Schema::create('delivery_route_optimizations', function (Blueprint $table) {
-                $table->id('optimization_id');
-                $table->date('optimization_date');
-                $table->string('optimization_name');
-                
-                // Input shipments
-                $table->json('shipment_ids'); // Array of shipment IDs to optimize
-                $table->json('available_vehicles'); // Available vehicles for assignment
-                
-                // Constraints
-                $table->json('constraints')->nullable(); // {max_distance_km, max_time_minutes, vehicle_capacities}
-                $table->json('traffic_data')->nullable();
-                $table->json('weather_data')->nullable();
-                $table->json('store_time_windows')->nullable(); // Store delivery time preferences
-                
-                // Optimized routes
-                $table->json('optimized_routes'); // Array of optimized routes with shipments
-                $table->json('vehicle_assignments'); // Vehicle assignments per route
-                $table->json('driver_assignments'); // Driver assignments per route
-                
-                // Performance improvements
-                $table->decimal('total_distance_before', 10, 2)->default(0);
-                $table->decimal('total_distance_after', 10, 2)->default(0);
-                $table->decimal('distance_saved_km', 10, 2)->default(0);
-                $table->integer('time_saved_minutes')->default(0);
-                $table->decimal('fuel_saved_liters', 10, 2)->default(0);
-                $table->decimal('cost_saving', 10, 2)->default(0);
-                
-                // Route execution
-                $table->enum('execution_status', ['planned', 'in_progress', 'completed', 'cancelled'])->default('planned');
-                $table->date('execution_date')->nullable();
-                
-                // Created by
-                $table->unsignedBigInteger('optimized_by')->nullable();
-                $table->foreign('optimized_by')->references('user_id')->on('users')->onDelete('set null');
-                
-                $table->timestamps();
-                
-                // Indexes
-                $table->index(['optimization_date', 'execution_status']);
-                $table->index(['distance_saved_km', 'cost_saving']);
-            });
-        }
+        
     }
 
     /**

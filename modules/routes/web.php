@@ -102,12 +102,17 @@ Volt::route('/admin/procurement', 'procurement.home')->name('procurement.home');
 
 Volt::route('/admin/supplychain', 'supplychain.home')->name('supplychain.home');
 Volt::route('/supplychain/logistic', 'supplychain.logistic')->name('supplychain.logistic');
+Volt::route('/supplychain/tracking', 'supplychain.tracking')->name('supplychain.tracking');
 
 Volt::route('/admin/finance', 'finance.home')->name('finance.home');
+Volt::route('/finance/accounts', 'finance.accounts')->name('finance.accounts');
+Volt::route('/finance/invoice', 'finance.invoice')->name('finance.invoice');
+Volt::route('/finance/approval', 'finance.approval')->name('finance.approval');
 
 Volt::route('/admin/ecommerce', 'ecommerce.home')->name('ecommerce.home');
 
 Volt::route('/admin/reports', 'reports.home')->name('reports.home');
+Volt::route('/reports/summary', 'reports.summary')->name('reports.summary');
 
 Volt::route('/employee/dashboard', 'employee.index')->name('employee.dashboard');
 

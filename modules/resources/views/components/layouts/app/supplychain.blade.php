@@ -752,6 +752,9 @@
             <a href="{{ route('supplychain.logistic') }}" class="scm-nav-link">
                 <i class="fas fa-shipping-fast"></i>Logistics
             </a>
+            <a href="{{ route('supplychain.tracking') }}" class="scm-nav-link">
+                <i class="fas fa-truck"></i>Tracking
+            </a>
 
         </nav>
 
@@ -786,6 +789,9 @@
         <a href="{{ route('supplychain.logistic') }}" class="scm-nav-link">
             <i class="fas fa-shipping-fast"></i>Logistics
         </a>
+        <a href="{{ route('supplychain.tracking') }}" class="scm-nav-link">
+                <i class="fas fa-truck"></i>Tracking
+            </a>
 
     </nav>
 </header>
