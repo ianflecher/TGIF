@@ -101,6 +101,7 @@ Volt::route('/admin/procurement', 'procurement.home')->name('procurement.home');
 
 
 Volt::route('/admin/supplychain', 'supplychain.home')->name('supplychain.home');
+Volt::route('/supplychain/logistic', 'supplychain.logistic')->name('supplychain.logistic');
 
 Volt::route('/admin/finance', 'finance.home')->name('finance.home');
 

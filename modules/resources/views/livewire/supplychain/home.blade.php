@@ -377,7 +377,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">Upcoming Shipments</h2>
                     <p class="text-sm text-gray-600">Scheduled deliveries and logistics</p>
                 </div>
-                <a href="{{ route('supplychain.logistics') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
+                <a href="{{ route('supplychain.logistic') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
                     View All
                     <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -524,7 +524,7 @@ new #[Layout('components.layouts.app')] class extends Component
                         </div>
                     </div>
                     <div class="mt-4">
-                        <a href="{{ route('supplychain.logistics') }}" class="text-purple-600 hover:text-purple-800 font-medium text-sm flex items-center">
+                        <a href="{{ route('supplychain.logistic') }}" class="text-purple-600 hover:text-purple-800 font-medium text-sm flex items-center">
                             View Details
                             <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
@@ -556,14 +556,6 @@ new #[Layout('components.layouts.app')] class extends Component
                             <span class="font-medium text-green-600">98%</span>
                         </div>
                     </div>
-                    <div class="mt-4">
-                        <a href="{{ route('supplychain.home') }}" class="text-orange-600 hover:text-orange-800 font-medium text-sm flex items-center">
-                            View Analytics
-                            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                            </svg>
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>
@@ -573,12 +565,6 @@ new #[Layout('components.layouts.app')] class extends Component
     <div class="bg-white rounded-xl shadow-md p-6">
         <h2 class="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h2>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <a href="{{ route('procurement.purchase-orders') }}" class="flex flex-col items-center justify-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-green-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                </svg>
-                <span class="font-medium text-gray-800">Create PO</span>
-            </a>
             
             <a href="{{ route('inventory.home') }}" class="flex flex-col items-center justify-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                 <svg class="w-8 h-8 text-blue-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -587,18 +573,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 <span class="font-medium text-gray-800">Manage Stock</span>
             </a>
             
-            <a href="{{ route('supplychain.logistics') }}" class="flex flex-col items-center justify-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+            <a href="{{ route('supplychain.logistic') }}" class="flex flex-col items-center justify-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
                 <svg class="w-8 h-8 text-purple-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"></path>
                 </svg>
                 <span class="font-medium text-gray-800">Track Shipments</span>
-            </a>
-            
-            <a href="{{ route('procurement.vendors') }}" class="flex flex-col items-center justify-center p-4 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
-                <svg class="w-8 h-8 text-orange-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                </svg>
-                <span class="font-medium text-gray-800">Manage Suppliers</span>
             </a>
         </div>
     </div>

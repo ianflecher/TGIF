@@ -19,6 +19,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
         'newShortDescription' => 'nullable|string|max:255',
         'newStatus' => 'required|in:draft,published,archived',
         'newStockQuantity' => 'required|integer|min:0',
+        'newReorderLevel' => 'required|integer|min:0',
         'newImage' => 'nullable|image|max:2048',
         'newFlavors' => 'sometimes|array',
         'newSizes' => 'sometimes|array',
@@ -33,6 +34,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
     public string $newShortDescription = '';
     public string $newStatus = 'published';
     public int $newStockQuantity = 0;
+    public int $newReorderLevel = 10;
     public ?TemporaryUploadedFile $newImage = null;
     public array $newFlavors = [];
     public array $newSizes = [];
@@ -50,6 +52,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
     public ?string $editShortDescription = null;
     public string $editStatus = 'published';
     public int $editStockQuantity = 0;
+    public int $editReorderLevel = 10;
     public ?TemporaryUploadedFile $editImage = null;
     public array $editFlavors = [];
     public array $editSizes = [];
@@ -82,28 +85,25 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
             });
         }
 
+        if ($this->categoryFilter !== 'all') {
+            $query->where('category', $this->categoryFilter);
+        }
+
         return $query->orderBy('product_name', 'asc')
                      ->get()
                      ->map(fn($p) => (array)$p)
                      ->toArray();
     }
 
-    // Load unique categories from attributes
+    // Load unique categories from products table
     public function loadCategories()
     {
-        $products = DB::table('products')->get();
-        $categories = [];
-        
-        foreach ($products as $product) {
-            if ($product->attributes) {
-                $attributes = json_decode($product->attributes, true);
-                if (isset($attributes['category']) && !in_array($attributes['category'], $categories)) {
-                    $categories[] = $attributes['category'];
-                }
-            }
-        }
-        
-        $this->categories = $categories;
+        $this->categories = DB::table('products')
+            ->distinct()
+            ->pluck('category')
+            ->filter()
+            ->values()
+            ->toArray();
     }
 
     // Add flavor to new product
@@ -169,30 +169,18 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
             $images = [$imagePath];
         }
 
-        // Create attributes JSON with category
+        // Create attributes JSON (without category since it's now a separate column)
         $attributes = [
             'flavors' => $this->newFlavors,
             'sizes' => $this->newSizes,
             'varieties' => $this->newVarieties,
-            'category' => $this->newCategory,
         ];
 
-        // First create inventory record if needed
-        $inventoryId = DB::table('inventories')->insertGetId([
-    'sku' => 'INV-' . time() . '-' . rand(100, 999), // Generate a unique SKU
-    'product_name' => $product->product_name ?? 'Unknown Product', // You need to get product name
-    'quantity' => $this->newStockQuantity,
-    'min_quantity' => 10,
-    'unit_price' => $product->unit_price ?? 0.00, // You need product unit price
-    'cost_price' => $product->cost_price ?? 0.00, // You need product cost price
-    'status' => 'active',
-    'created_at' => now(),
-    'updated_at' => now(), // Don't forget updated_at
-]);
-
         // Insert product with correct schema
-        $productId = DB::table('products')->insertGetId([
+        // Note: inventory_id is set to NULL as per your requirement
+        DB::table('products')->insert([
             'product_name' => $this->newName,
+            'category' => $this->newCategory,
             'price' => $this->newPrice,
             'description' => $this->newDescription,
             'short_description' => $this->newShortDescription,
@@ -201,8 +189,10 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
             'attributes' => !empty($attributes) ? json_encode($attributes) : null,
             'status' => $this->newStatus,
             'stock_quantity' => $this->newStockQuantity,
+            'reorder_level' => $this->newReorderLevel,
             'sold_count' => 0,
-            'inventory_id' => $inventoryId,
+            'inventory_id' => null, // Set to NULL as per requirement
+            'supplier_id' => null, // You may want to add supplier selection later
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -219,11 +209,13 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
 
         $this->editId = $id;
         $this->editName = $product->product_name ?? '';
+        $this->editCategory = $product->category ?? '';
         $this->editDescription = $product->description ?? '';
         $this->editPrice = $product->price ?? 0;
         $this->editShortDescription = $product->short_description ?? '';
         $this->editStatus = $product->status ?? 'published';
         $this->editStockQuantity = $product->stock_quantity ?? 0;
+        $this->editReorderLevel = $product->reorder_level ?? 10;
         $this->editImage = null;
 
         // Decode attributes if they exist
@@ -231,7 +223,6 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
         $this->editFlavors = $attributes['flavors'] ?? [];
         $this->editSizes = $attributes['sizes'] ?? [];
         $this->editVarieties = $attributes['varieties'] ?? [];
-        $this->editCategory = $attributes['category'] ?? '';
     }
 
     // Add flavor to edit product
@@ -296,12 +287,11 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
             $images = [$imagePath];
         }
 
-        // Create attributes JSON with category
+        // Create attributes JSON (without category since it's now a separate column)
         $attributes = [
             'flavors' => $this->editFlavors,
             'sizes' => $this->editSizes,
             'varieties' => $this->editVarieties,
-            'category' => $this->editCategory,
         ];
 
         // Create slug if name changed
@@ -312,6 +302,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
 
         DB::table('products')->where('product_id', $this->editId)->update([
             'product_name' => $this->editName ?? '',
+            'category' => $this->editCategory ?? '',
             'price' => $this->editPrice ?? 0,
             'description' => $this->editDescription ?? '',
             'short_description' => $this->editShortDescription ?? '',
@@ -320,13 +311,8 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
             'attributes' => !empty($attributes) ? json_encode($attributes) : null,
             'status' => $this->editStatus,
             'stock_quantity' => $this->editStockQuantity,
+            'reorder_level' => $this->editReorderLevel,
             'updated_at' => now(),
-        ]);
-
-        // Also update inventory if needed
-        DB::table('inventories')->where('id', $product->inventory_id)->update([
-            'stock_level' => $this->editStockQuantity,
-            'last_updated' => now(),
         ]);
 
         $this->resetEditFields();
@@ -344,6 +330,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
         $this->editShortDescription = '';
         $this->editStatus = 'published';
         $this->editStockQuantity = 0;
+        $this->editReorderLevel = 10;
         $this->editImage = null;
         $this->editFlavors = [];
         $this->editSizes = [];
@@ -359,9 +346,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
         $product = DB::table('products')->where('product_id', $id)->first();
         
         if ($product) {
-            // Delete inventory record first
-            DB::table('inventories')->where('id', $product->inventory_id)->delete();
-            // Then delete product
+            // Only delete product, not inventory
             DB::table('products')->where('product_id', $id)->delete();
         }
         
@@ -376,6 +361,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
         $this->newShortDescription = '';
         $this->newPrice = 0;
         $this->newStockQuantity = 0;
+        $this->newReorderLevel = 10;
         $this->newStatus = 'published';
         $this->newImage = null;
         $this->newFlavors = [];
@@ -424,12 +410,17 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
                 </div>
             </div>
 
-            <!-- Short Description & Status -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Short Description, Reorder Level & Status -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Short Description</label>
                     <input type="text" placeholder="Brief description" wire:model.defer="newShortDescription" class="border rounded-lg px-3 py-2 w-full focus:ring focus:ring-green-200">
                 </div>
+                
+                <!-- <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Reorder Level</label>
+                    <input type="number" placeholder="10" wire:model.defer="newReorderLevel" class="border rounded-lg px-3 py-2 w-full focus:ring focus:ring-green-200" required>
+                </div> -->
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -553,6 +544,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
                     <th class="px-4 py-2 text-left">Description</th>
                     <th class="px-4 py-2 text-left">Price</th>
                     <th class="px-4 py-2 text-left">Stock</th>
+                    <th class="px-4 py-2 text-left">Reorder</th>
                     <th class="px-4 py-2 text-left">Category</th>
                     <th class="px-4 py-2 text-left">Status</th>
                     <th class="px-4 py-2 text-left w-64">Actions</th>
@@ -627,13 +619,16 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
                         </td>
                         <td class="px-4 py-2">
                             @if($editId === $product['product_id'])
+                                <input type="number" wire:model.defer="editReorderLevel" class="border rounded-lg w-full px-2 py-1">
+                            @else
+                                {{ $product['reorder_level'] }}
+                            @endif
+                        </td>
+                        <td class="px-4 py-2">
+                            @if($editId === $product['product_id'])
                                 <input type="text" wire:model.defer="editCategory" class="border rounded-lg w-full px-2 py-1">
                             @else
-                                @php
-                                    $attributes = $product['attributes'] ? json_decode($product['attributes'], true) : [];
-                                    $category = $attributes['category'] ?? 'No category';
-                                @endphp
-                                {{ $category }}
+                                {{ $product['category'] ?? 'No category' }}
                             @endif
                         </td>
                         <td class="px-4 py-2">
@@ -667,7 +662,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
                     <!-- Edit Mode - Attributes Section -->
                     @if($editId === $product['product_id'])
                         <tr>
-                            <td colspan="8" class="px-4 py-4 bg-gray-50">
+                            <td colspan="9" class="px-4 py-4 bg-gray-50">
                                 <div class="space-y-4">
                                     <!-- Flavors Edit -->
                                     <div class="border rounded-lg p-4">

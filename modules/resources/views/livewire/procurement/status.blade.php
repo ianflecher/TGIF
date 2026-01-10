@@ -75,7 +75,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     <!-- Tabs - Updated to match your ENUM values -->
     <div class="flex justify-center mb-6 space-x-4">
-        @foreach(['draft', 'submitted', 'approved', 'rejected', 'converted_to_po'] as $statusTab)
+        @foreach(['draft', 'submitted', 'converted_to_po'] as $statusTab)
             <button
                 wire:click="$set('tab', '{{ $statusTab }}')"
                 class="px-4 py-2 rounded-lg font-semibold transition
@@ -113,10 +113,6 @@ new #[Layout('components.layouts.procurement')] class extends Component
                                     <span class="px-3 py-1 rounded-full bg-gray-200 text-gray-800 font-semibold">Draft</span>
                                 @elseif($req->status === 'submitted')
                                     <span class="px-3 py-1 rounded-full bg-blue-200 text-blue-800 font-semibold">Submitted</span>
-                                @elseif($req->status === 'approved')
-                                    <span class="px-3 py-1 rounded-full bg-green-200 text-green-800 font-semibold">Approved</span>
-                                @elseif($req->status === 'rejected')
-                                    <span class="px-3 py-1 rounded-full bg-red-200 text-red-800 font-semibold">Rejected</span>
                                 @elseif($req->status === 'converted_to_po')
                                     <span class="px-3 py-1 rounded-full bg-purple-200 text-purple-800 font-semibold">Converted to PO</span>
                                 @endif

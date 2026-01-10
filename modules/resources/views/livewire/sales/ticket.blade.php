@@ -3,6 +3,7 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 new #[Layout('components.layouts.helpdesk')] class extends Component
@@ -24,6 +25,13 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
         'escalate_to_manager' => true,
         'create_followup_task' => true
     ];
+    
+    public $selectedTicketId = null;
+    public $selectedTicketDetails = null;
+    public $replyText = '';
+    public $replyIsInternal = false;
+    public $replies = [];
+    public $showConversationModal = false;
     
     public function mount()
     {
@@ -78,16 +86,17 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
     {
         $this->recentRecoveryTickets = DB::table('tickets as t')
             ->join('customers as c', 't.customer_id', '=', 'c.customer_id')
+            ->leftJoin('users as u', 't.assigned_agent', '=', 'u.user_id')
             ->where('t.subject', 'LIKE', '%Service Recovery%')
             ->orWhere('t.subject', 'LIKE', '%Goodwill%')
             ->orWhere('t.subject', 'LIKE', '%Discount%')
-            ->select('t.*', 'c.first_name', 'c.last_name', 'c.email')
+            ->select('t.*', 'c.first_name', 'c.last_name', 'c.email', 'u.full_name as agent_name')
             ->orderBy('t.created_at', 'desc')
             ->limit(10)
             ->get()
             ->toArray();
     }
-
+    
     public function reviewCustomer($customerId)
     {
         $this->selectCustomer($customerId);
@@ -96,6 +105,11 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
     public function selectCustomer($customerId)
     {
         $this->selectedCustomerId = $customerId;
+        $this->selectedTicketId = null;
+        $this->selectedTicketDetails = null;
+        $this->replyText = '';
+        $this->replies = [];
+        $this->showConversationModal = false;
         
         // Load customer info
         $this->customerInfo = DB::table('customers')
@@ -103,10 +117,12 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             ->first() ?? [];
         
         // Load customer tickets from last 30 days
-        $this->customerTickets = DB::table('tickets')
-            ->where('customer_id', $customerId)
-            ->where('created_at', '>=', Carbon::now()->subDays(30))
-            ->orderBy('created_at', 'desc')
+        $this->customerTickets = DB::table('tickets as t')
+            ->leftJoin('users as u', 't.assigned_agent', '=', 'u.user_id')
+            ->where('t.customer_id', $customerId)
+            ->where('t.created_at', '>=', Carbon::now()->subDays(30))
+            ->orderBy('t.created_at', 'desc')
+            ->select('t.*', 'u.full_name as agent_name')
             ->get()
             ->toArray();
         
@@ -117,6 +133,188 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             ->limit(10)
             ->get()
             ->toArray();
+    }
+    
+    public function viewTicket($ticketId)
+    {
+        $this->selectedTicketId = $ticketId;
+        $this->loadTicketReplies($ticketId);
+        $this->showConversationModal = true;
+        
+        // Also load the customer info if we have it
+        $ticket = DB::table('tickets')
+            ->where('ticket_id', $ticketId)
+            ->first();
+        
+        if ($ticket && $ticket->customer_id) {
+            $this->selectedCustomerId = $ticket->customer_id;
+            $this->loadCustomerInfo($ticket->customer_id);
+        }
+    }
+    
+    private function loadCustomerInfo($customerId)
+    {
+        $this->customerInfo = DB::table('customers')
+            ->where('customer_id', $customerId)
+            ->first() ?? [];
+        
+        $this->customerTickets = DB::table('tickets as t')
+            ->leftJoin('users as u', 't.assigned_agent', '=', 'u.user_id')
+            ->where('t.customer_id', $customerId)
+            ->where('t.created_at', '>=', Carbon::now()->subDays(30))
+            ->orderBy('t.created_at', 'desc')
+            ->select('t.*', 'u.full_name as agent_name')
+            ->get()
+            ->toArray();
+    }
+    
+    public function loadTicketReplies($ticketId)
+    {
+        $this->selectedTicketId = $ticketId;
+        
+        // Load ticket details
+        $this->selectedTicketDetails = DB::table('tickets as t')
+            ->leftJoin('users as u', 't.assigned_agent', '=', 'u.user_id')
+            ->leftJoin('customers as c', 't.customer_id', '=', 'c.customer_id')
+            ->where('t.ticket_id', $ticketId)
+            ->select('t.*', 'u.full_name as agent_name', 'c.first_name', 'c.last_name', 'c.email as customer_email')
+            ->first();
+        
+        // Ensure ticket_notes table exists
+        $this->ensureTicketNotesTable();
+        
+        // Get the ticket first to show as initial message
+        $ticket = $this->selectedTicketDetails;
+        
+        $this->replies = [];
+        
+        // Add the ticket itself as the first message in the conversation
+        if ($ticket) {
+            $this->replies[] = (object) [
+                'note_id' => 0,
+                'ticket_id' => $ticketId,
+                'note_text' => "**Ticket Created**\n\n" . 
+                              "**Subject:** {$ticket->subject}\n" .
+                              "**Description:**\n{$ticket->issue_description}\n\n" .
+                              "**Priority:** " . ucfirst($ticket->priority) . "\n" .
+                              "**Status:** " . ucfirst($ticket->status) . "\n" .
+                              ($ticket->agent_name ? "**Assigned To:** {$ticket->agent_name}\n" : ""),
+                'created_by' => null,
+                'author_name' => $ticket->first_name . ' ' . $ticket->last_name . ' (Customer)',
+                'internal' => false,
+                'created_at' => $ticket->created_at,
+                'updated_at' => $ticket->updated_at,
+                'is_ticket' => true
+            ];
+        }
+        
+        // Load all notes for this ticket
+        $notes = DB::table('ticket_notes')
+            ->leftJoin('users', 'ticket_notes.created_by', '=', 'users.user_id')
+            ->where('ticket_notes.ticket_id', $ticketId)
+            ->orderBy('ticket_notes.created_at', 'asc')
+            ->select('ticket_notes.*', 'users.full_name as author_name')
+            ->get();
+        
+        foreach ($notes as $note) {
+            $this->replies[] = (object) array_merge((array) $note, ['is_ticket' => false]);
+        }
+    }
+    
+    private function ensureTicketNotesTable()
+    {
+        if (!Schema::hasTable('ticket_notes')) {
+            Schema::create('ticket_notes', function ($table) {
+                $table->bigIncrements('note_id');
+                $table->unsignedBigInteger('ticket_id');
+                $table->text('note_text');
+                $table->unsignedBigInteger('created_by')->nullable();
+                $table->boolean('internal')->default(false);
+                $table->text('attachments')->nullable();
+                $table->timestamps();
+                
+                $table->foreign('ticket_id')->references('ticket_id')->on('tickets')->onDelete('cascade');
+                if (Schema::hasTable('users')) {
+                    $table->foreign('created_by')->references('user_id')->on('users')->onDelete('set null');
+                }
+            });
+        }
+    }
+    
+    public function addReply()
+{
+    if (!$this->selectedTicketId || empty(trim($this->replyText))) {
+        session()->flash('error', 'Please select a ticket and enter reply text');
+        return;
+    }
+    
+    try {
+        $this->ensureTicketNotesTable();
+        
+        $currentUserId = auth()->id();
+        $currentUserName = auth()->user()->full_name ?? auth()->user()->name ?? 'System';
+        
+        // Debug: Check if we have auth user
+        if (!$currentUserId) {
+            session()->flash('error', 'No authenticated user found. Please login.');
+            return;
+        }
+        
+        // Debug: Check if ticket exists
+        $ticketExists = DB::table('tickets')
+            ->where('ticket_id', $this->selectedTicketId)
+            ->exists();
+            
+        if (!$ticketExists) {
+            session()->flash('error', 'Ticket not found in database');
+            return;
+        }
+        
+        // Insert the note
+        $noteId = DB::table('ticket_notes')->insertGetId([
+            'ticket_id' => $this->selectedTicketId,
+            'note_text' => $this->replyText,
+            'created_by' => $currentUserId,
+            'internal' => $this->replyIsInternal,
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+        
+        // Update ticket's updated_at timestamp
+        DB::table('tickets')
+            ->where('ticket_id', $this->selectedTicketId)
+            ->update(['updated_at' => now()]);
+        
+        // Clear reply form
+        $this->replyText = '';
+        $this->replyIsInternal = false;
+        
+        // IMPORTANT: Reload replies WITHOUT closing the modal
+        $this->loadTicketReplies($this->selectedTicketId);
+        
+        session()->flash('success', 'Reply added successfully (Note ID: ' . $noteId . ')');
+        
+        // Refresh recent tickets list if needed
+        $this->loadRecentRecoveryTickets();
+        
+    } catch (\Exception $e) {
+        session()->flash('error', 'Failed to add reply: ' . $e->getMessage());
+        
+        // Add more detailed error info
+        if (str_contains($e->getMessage(), 'SQLSTATE')) {
+            session()->flash('error', 'Database error: ' . $e->getMessage());
+        }
+    }
+}
+    
+    public function closeConversationModal()
+    {
+        $this->showConversationModal = false;
+        $this->selectedTicketId = null;
+        $this->selectedTicketDetails = null;
+        $this->replies = [];
+        $this->replyText = '';
+        $this->replyIsInternal = false;
     }
     
     public function triggerServiceRecovery()
@@ -143,10 +341,15 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             // Generate ticket number
             $ticketNumber = 'SR-' . date('Ymd') . '-' . strtoupper(uniqid());
             
+            // Get current logged-in user (agent)
+            $currentUserId = auth()->id() ?? 1;
+            $currentUserName = auth()->user()->full_name ?? auth()->user()->name ?? 'System';
+            
             // Create service recovery ticket
             $ticketId = DB::table('tickets')->insertGetId([
                 'ticket_number' => $ticketNumber,
                 'customer_id' => $this->selectedCustomerId,
+                'assigned_agent' => $currentUserId,
                 'subject' => 'Service Recovery - Multiple Issues Detected',
                 'issue_description' => "**AUTOMATED SERVICE RECOVERY TICKET**\n\n" .
                                       "Customer has submitted {$recentTicketCount} tickets in the last {$this->recoveryForm['timeframe']} days.\n\n" .
@@ -162,7 +365,12 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                 'updated_at' => now()
             ]);
             
-            // Add internal note
+            $this->ensureTicketNotesTable();
+            
+            // Generate discount code
+            $discountCode = 'RECOVERY-' . strtoupper(substr(uniqid(), -8));
+            
+            // Add initial system note
             DB::table('ticket_notes')->insert([
                 'ticket_id' => $ticketId,
                 'note_text' => "**SERVICE RECOVERY INITIATED**\n\n" .
@@ -171,16 +379,13 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                               "Discount Setting: {$this->recoveryForm['discount_percentage']}% for {$this->recoveryForm['discount_days']} days\n" .
                               "Manager Escalation: " . ($this->recoveryForm['escalate_to_manager'] ? 'Yes' : 'No') . "\n" .
                               "Follow-up Task: " . ($this->recoveryForm['create_followup_task'] ? 'Yes' : 'No'),
-                'created_by' => auth()->id() ?? 1,
+                'created_by' => $currentUserId,
                 'internal' => true,
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
             
-            // Generate discount code
-            $discountCode = 'RECOVERY-' . strtoupper(substr(uniqid(), -8));
-            
-            // Add goodwill message to ticket_notes (customer-facing note)
+            // Add customer-facing goodwill message
             DB::table('ticket_notes')->insert([
                 'ticket_id' => $ticketId,
                 'note_text' => "**GOODWILL DISCOUNT OFFERED**\n\n" .
@@ -194,108 +399,12 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                               "We value your business and are committed to providing you with better service moving forward.\n\n" .
                               "Best regards,\n" .
                               "The Customer Service Team",
-                'created_by' => auth()->id() ?? 1,
+                'created_by' => $currentUserId,
                 'internal' => false,
                 'attachments' => null,
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
-            
-            // Create discount code in journal entries
-            DB::table('journal_entries')->insert([
-                'entry_date' => now()->format('Y-m-d'),
-                'journal_number' => 'DISC-' . date('Ymd') . '-' . str_pad($ticketId, 4, '0', STR_PAD_LEFT),
-                'description' => "Goodwill discount for customer {$this->customerInfo->first_name} {$this->customerInfo->last_name} - Service Recovery",
-                'created_by' => auth()->id() ?? 1,
-                'reference_type' => 'ticket',
-                'reference_id' => $ticketId,
-                'status' => 'posted',
-                'total_debit' => $this->recoveryForm['discount_percentage'],
-                'total_credit' => $this->recoveryForm['discount_percentage'],
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-            
-            // Create follow-up task if enabled
-            if ($this->recoveryForm['create_followup_task']) {
-                // Find or create a service recovery project
-                $projectId = DB::table('projects')
-                    ->where('project_name', 'LIKE', '%Service Recovery%')
-                    ->value('project_id');
-                
-                if (!$projectId) {
-                    $projectId = DB::table('projects')->insertGetId([
-                        'project_name' => 'Service Recovery Management',
-                        'description' => 'Automated service recovery follow-ups',
-                        'start_date' => now()->format('Y-m-d'),
-                        'end_date' => now()->addYear()->format('Y-m-d'),
-                        'status' => 'in_progress',
-                        'project_manager_id' => auth()->id() ?? 1,
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ]);
-                }
-                
-                // Create task for follow-up
-                DB::table('project_tasks')->insert([
-                    'project_id' => $projectId,
-                    'task_name' => "Service Recovery - {$this->customerInfo->first_name} {$this->customerInfo->last_name}",
-                    'description' => "Customer has submitted {$recentTicketCount} tickets recently. Please:\n" .
-                                    "1. Make personal call\n" .
-                                    "2. Offer {$this->recoveryForm['discount_percentage']}% discount (Code: {$discountCode})\n" .
-                                    "3. Document conversation in ticket notes\n" .
-                                    "4. Update ticket #{$ticketNumber}",
-                    'start_date' => now()->format('Y-m-d'),
-                    'end_date' => now()->addDays(3)->format('Y-m-d'),
-                    'priority' => 'high',
-                    'status' => 'not_started',
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
-            
-            // Send email to account manager if high-value customer and escalation enabled
-            if ($this->recoveryForm['escalate_to_manager']) {
-                // Check if customer is high-value (spent over $1000)
-                $totalSpent = DB::table('sales_orders')
-                    ->where('customer_id', $this->selectedCustomerId)
-                    ->sum('grand_total');
-                
-                if ($totalSpent > 1000) {
-                    // Get account managers
-                    $managers = DB::table('employees as e')
-                        ->join('users as u', 'e.user_id', '=', 'u.user_id')
-                        ->where('e.job_title', 'LIKE', '%Manager%')
-                        ->orWhere('u.role', 'manager')
-                        ->limit(3)
-                        ->get();
-                    
-                    // Create a report for management
-                    DB::table('reports')->insert([
-                        'report_name' => "Service Recovery Alert - {$this->customerInfo->first_name} {$this->customerInfo->last_name}",
-                        'module_name' => 'helpdesk',
-                        'created_by' => auth()->id() ?? 1,
-                        'report_type' => 'alert',
-                        'filters' => json_encode(['customer_id' => $this->selectedCustomerId]),
-                        'status' => 'generated',
-                        'generated_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ]);
-                    
-                    // Add note about manager escalation
-                    DB::table('ticket_notes')->insert([
-                        'ticket_id' => $ticketId,
-                        'note_text' => "**MANAGER ESCALATION**\n\n" .
-                                      "Customer flagged as high-value (total spent: $" . number_format($totalSpent, 2) . ")\n" .
-                                      "Alert sent to account managers for personal follow-up.",
-                        'created_by' => auth()->id() ?? 1,
-                        'internal' => true,
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ]);
-                }
-            }
             
             DB::commit();
             
@@ -304,7 +413,10 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             $this->loadRecentRecoveryTickets();
             $this->selectCustomer($this->selectedCustomerId);
             
-            session()->flash('success', "Service recovery initiated! Ticket #{$ticketNumber} created. Goodwill message added to ticket notes.");
+            // Open the new ticket conversation in modal
+            $this->viewTicket($ticketId);
+            
+            session()->flash('success', "Service recovery initiated! Ticket #{$ticketNumber} created and assigned to you. You can now continue the conversation in the replies section below.");
             
         } catch (\Exception $e) {
             DB::rollBack();
@@ -327,6 +439,7 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                 HAVING COUNT(t.ticket_id) >= 3
             ");
             
+            $currentUserId = auth()->id() ?? 1;
             $recoveryCount = 0;
             
             foreach ($atRiskCustomers as $customer) {
@@ -344,6 +457,7 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                     $ticketId = DB::table('tickets')->insertGetId([
                         'ticket_number' => $ticketNumber,
                         'customer_id' => $customer->customer_id,
+                        'assigned_agent' => $currentUserId,
                         'subject' => 'Automated Service Recovery - Multiple Issues',
                         'issue_description' => "**AUTOMATED SERVICE RECOVERY**\n\n" .
                                               "System detected {$customer->ticket_count} tickets from this customer in the last 7 days.\n\n" .
@@ -361,13 +475,15 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                         'updated_at' => now()
                     ]);
                     
+                    $this->ensureTicketNotesTable();
+                    
                     // Add initial note
                     DB::table('ticket_notes')->insert([
                         'ticket_id' => $ticketId,
                         'note_text' => "Auto-generated by Service Recovery System\n" .
                                       "Trigger: {$customer->ticket_count} tickets in 7 days\n" .
                                       "Time: " . now()->format('Y-m-d H:i:s'),
-                        'created_by' => auth()->id() ?? 1,
+                        'created_by' => $currentUserId,
                         'internal' => true,
                         'created_at' => now(),
                         'updated_at' => now()
@@ -382,14 +498,14 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             $this->loadStats();
             $this->loadRecentRecoveryTickets();
             
-            session()->flash('success', "Auto-recovery check completed! Created {$recoveryCount} new recovery tickets.");
+            session()->flash('success', "Auto-recovery check completed! Created {$recoveryCount} new recovery tickets assigned to you.");
             
         } catch (\Exception $e) {
             DB::rollBack();
             session()->flash('error', 'Auto-recovery check failed: ' . $e->getMessage());
         }
     }
-
+    
     public function reviewAndRecover($customerId)
     {
         $this->selectCustomer($customerId);
@@ -403,12 +519,14 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             return;
         }
         
+        $currentUserId = auth()->id() ?? 1;
         $discountCode = 'GOODWILL-' . strtoupper(substr(uniqid(), -8));
         
         // Create a special ticket for goodwill discount
         $ticketId = DB::table('tickets')->insertGetId([
             'ticket_number' => 'GW-' . date('Ymd') . '-' . str_pad(DB::table('tickets')->count() + 1, 4, '0', STR_PAD_LEFT),
             'customer_id' => $this->selectedCustomerId,
+            'assigned_agent' => $currentUserId,
             'subject' => 'Goodwill Gesture - Discount Offer',
             'issue_description' => "Goodwill discount offer for exceptional customer service recovery.",
             'priority' => 'low',
@@ -418,7 +536,9 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             'updated_at' => now()
         ]);
         
-        // Add goodwill discount note to ticket_notes (customer-facing)
+        $this->ensureTicketNotesTable();
+        
+        // Add goodwill discount note (customer-facing)
         DB::table('ticket_notes')->insert([
             'ticket_id' => $ticketId,
             'note_text' => "**GOODWILL DISCOUNT OFFER**\n\n" .
@@ -431,43 +551,15 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                           "Simply enter this code at checkout to redeem your discount.\n\n" .
                           "We value your business and look forward to serving you better.\n\n" .
                           "Best regards,\nThe Customer Service Team",
-            'created_by' => auth()->id() ?? 1,
+            'created_by' => $currentUserId,
             'internal' => false,
             'attachments' => null,
             'created_at' => now(),
             'updated_at' => now()
         ]);
         
-        // Add internal note for tracking
-        DB::table('ticket_notes')->insert([
-            'ticket_id' => $ticketId,
-            'note_text' => "Goodwill discount created manually via Service Recovery System.\n" .
-                          "Code: {$discountCode}\n" .
-                          "Discount: {$this->recoveryForm['discount_percentage']}%\n" .
-                          "Valid for: {$this->recoveryForm['discount_days']} days",
-            'created_by' => auth()->id() ?? 1,
-            'internal' => true,
-            'attachments' => null,
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-        
-        // Log the discount in journal entries
-        DB::table('journal_entries')->insert([
-            'entry_date' => now()->format('Y-m-d'),
-            'journal_number' => 'DISCOUNT-' . date('YmdHis'),
-            'description' => "Goodwill discount issued to {$this->customerInfo->first_name} {$this->customerInfo->last_name} - Code: {$discountCode}",
-            'created_by' => auth()->id() ?? 1,
-            'reference_type' => 'ticket',
-            'reference_id' => $ticketId,
-            'status' => 'posted',
-            'total_debit' => $this->recoveryForm['discount_percentage'],
-            'total_credit' => $this->recoveryForm['discount_percentage'],
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-        
         $this->loadRecentRecoveryTickets();
+        $this->selectCustomer($this->selectedCustomerId);
         session()->flash('success', "Goodwill discount created! Discount code: {$discountCode}");
     }
 }
@@ -616,11 +708,19 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                 
                 <div class="space-y-4">
                     @foreach($recentRecoveryTickets as $ticket)
-                        <div class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div class="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer 
+                                    {{ $selectedTicketId == $ticket->ticket_id ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : '' }}"
+                             wire:click="viewTicket({{ $ticket->ticket_id }})">
                             <div class="flex justify-between items-start mb-2">
                                 <div>
                                     <h4 class="font-semibold">{{ $ticket->subject }}</h4>
                                     <p class="text-sm text-gray-600">{{ $ticket->first_name }} {{ $ticket->last_name }}</p>
+                                    @if($ticket->agent_name)
+                                        <p class="text-xs text-blue-600">
+                                            <i class="fas fa-user-circle mr-1"></i>
+                                            Assigned to: {{ $ticket->agent_name }}
+                                        </p>
+                                    @endif
                                 </div>
                                 <span class="text-xs {{ $ticket->priority === 'high' ? 'text-red-600' : 'text-yellow-600' }}">
                                     {{ ucfirst($ticket->priority) }}
@@ -645,187 +745,335 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             </div>
         </div>
 
-        <!-- Right Sidebar -->
-        <div class="space-y-6">
-            @if($selectedCustomerId)
-                <!-- Customer Details -->
-                <div class="helpdesk-sidebar">
-                    <h3>
-                        <i class="fas fa-user-circle"></i>
-                        Customer Details
-                    </h3>
+        <!-- Customer Details -->
+        <div class="helpdesk-sidebar">
+            <h3>
+                <i class="fas fa-user-circle"></i>
+                Customer Details
+            </h3>
+            
+            @if(!empty($customerInfo))
+                <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                            <i class="fas fa-user text-green-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-lg">
+                                {{ $customerInfo->first_name }} {{ $customerInfo->last_name }}
+                            </h4>
+                            <p class="text-gray-600 text-sm">{{ $customerInfo->email }}</p>
+                        </div>
+                    </div>
                     
-                    @if(!empty($customerInfo))
-                        <div class="bg-gray-50 p-4 rounded-lg mb-4">
-                            <div class="flex items-center mb-4">
-                                <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mr-3">
-                                    <i class="fas fa-user text-green-600"></i>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center p-3 bg-white rounded border">
+                            <div class="text-2xl font-bold text-red-600">
+                                {{ count($customerTickets) }}
+                            </div>
+                            <div class="text-sm text-gray-500">Recent Tickets (30d)</div>
+                        </div>
+                        <div class="text-center p-3 bg-white rounded border">
+                            <div class="text-2xl font-bold text-green-600">
+                                ${{ number_format(collect($customerOrders)->sum('grand_total'), 2) }}
+                            </div>
+                            <div class="text-sm text-gray-500">Total Orders</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recovery Actions -->
+                    <div class="border-t pt-4 mt-4">
+                        <button wire:click="triggerServiceRecovery" 
+                                class="btn btn-primary w-full mb-4">
+                            <i class="fas fa-bullhorn mr-2"></i>
+                            Trigger Service Recovery
+                        </button>
+                    </div>
+                    
+                    <!-- Recovery Form -->
+                    <div class="border-t pt-4 mt-4">
+                        <h5 class="font-semibold mb-3">Service Recovery Settings</h5>
+                        
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Ticket Threshold</label>
+                                <input type="range" wire:model.live="recoveryForm.ticket_count" 
+                                       min="1" max="10" class="w-full"
+                                       oninput="this.nextElementSibling.value = this.value + ' tickets'">
+                                <output class="text-sm text-gray-600">{{ $recoveryForm['ticket_count'] }} tickets</output>
+                            </div>
+                            
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Timeframe (days)</label>
+                                <select wire:model="recoveryForm.timeframe" class="form-input text-sm">
+                                    <option value="3">3 days</option>
+                                    <option value="7">7 days</option>
+                                    <option value="14">14 days</option>
+                                    <option value="30">30 days</option>
+                                </select>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700">Discount %</label>
+                                    <input type="number" wire:model="recoveryForm.discount_percentage" 
+                                           class="form-input text-sm" min="1" max="50">
                                 </div>
                                 <div>
-                                    <h4 class="font-semibold text-lg">
-                                        {{ $customerInfo->first_name }} {{ $customerInfo->last_name }}
-                                    </h4>
-                                    <p class="text-gray-600 text-sm">{{ $customerInfo->email }}</p>
+                                    <label class="text-sm font-medium text-gray-700">Valid Days</label>
+                                    <input type="number" wire:model="recoveryForm.discount_days" 
+                                           class="form-input text-sm" min="1" max="365">
                                 </div>
                             </div>
-                            
-                            <div class="grid grid-cols-2 gap-4 mb-4">
-                                <div class="text-center p-3 bg-white rounded border">
-                                    <div class="text-2xl font-bold text-red-600">
-                                        {{ count($customerTickets) }}
-                                    </div>
-                                    <div class="text-sm text-gray-500">Recent Tickets (30d)</div>
-                                </div>
-                                <div class="text-center p-3 bg-white rounded border">
-                                    <div class="text-2xl font-bold text-green-600">
-                                        ${{ number_format(collect($customerOrders)->sum('grand_total'), 2) }}
-                                    </div>
-                                    <div class="text-sm text-gray-500">Total Orders</div>
-                                </div>
-                            </div>
-                            
-                            <!-- Recovery Form -->
-                            <div class="border-t pt-4 mt-4">
-                                <h5 class="font-semibold mb-3">Service Recovery Settings</h5>
-                                
-                                <div class="space-y-3">
-                                    <div>
-                                        <label class="text-sm font-medium text-gray-700">Ticket Threshold</label>
-                                        <input type="range" wire:model.live="recoveryForm.ticket_count" 
-                                               min="1" max="10" class="w-full"
-                                               oninput="this.nextElementSibling.value = this.value + ' tickets'">
-                                        <output class="text-sm text-gray-600">{{ $recoveryForm['ticket_count'] }} tickets</output>
-                                    </div>
-                                    
-                                    <div>
-                                        <label class="text-sm font-medium text-gray-700">Timeframe (days)</label>
-                                        <select wire:model="recoveryForm.timeframe" class="form-input text-sm">
-                                            <option value="3">3 days</option>
-                                            <option value="7">7 days</option>
-                                            <option value="14">14 days</option>
-                                            <option value="30">30 days</option>
-                                        </select>
-                                    </div>
-                                    
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label class="text-sm font-medium text-gray-700">Discount %</label>
-                                            <input type="number" wire:model="recoveryForm.discount_percentage" 
-                                                   class="form-input text-sm" min="1" max="50">
-                                        </div>
-                                        <div>
-                                            <label class="text-sm font-medium text-gray-700">Valid Days</label>
-                                            <input type="number" wire:model="recoveryForm.discount_days" 
-                                                   class="form-input text-sm" min="1" max="365">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="space-y-2">
-                                        <label class="flex items-center">
-                                            <input type="checkbox" wire:model="recoveryForm.escalate_to_manager" class="mr-2">
-                                            <span class="text-sm">Escalate to manager</span>
-                                        </label>
-                                        <label class="flex items-center">
-                                            <input type="checkbox" wire:model="recoveryForm.create_followup_task" class="mr-2">
-                                            <span class="text-sm">Create follow-up task</span>
-                                        </label>
-                                    </div>
-
-                                    
-                                    <button wire:click="sendDiscountToCustomer" 
-                                            class="btn btn-success w-full mt-2">
-                                        <i class="fas fa-gift mr-2"></i>
-                                        Send Goodwill Discount
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    @endif
-
-                    <!-- Recent Tickets -->
-                    <h4 class="font-semibold mb-3">Recent Tickets (30 days)</h4>
-                    <div class="space-y-2">
-                        @foreach($customerTickets as $ticket)
-                            <div class="p-3 border rounded bg-white hover:bg-gray-50">
-                                <div class="flex justify-between items-start">
-                                    <div class="flex-1">
-                                        <div class="font-medium text-sm">{{ $ticket->subject }}</div>
-                                        <div class="text-xs text-gray-500 mt-1">
-                                            {{ \Carbon\Carbon::parse($ticket->created_at)->format('M d, H:i') }}
-                                            • {{ ucfirst($ticket->status) }}
-                                        </div>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 rounded 
-                                        {{ $ticket->priority === 'critical' ? 'bg-red-100 text-red-800' : 
-                                           ($ticket->priority === 'high' ? 'bg-orange-100 text-orange-800' : 
-                                           ($ticket->priority === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800')) }}">
-                                        {{ ucfirst($ticket->priority) }}
-                                    </span>
-                                </div>
-                            </div>
-                        @endforeach
-                        @if(empty($customerTickets))
-                            <p class="text-gray-500 text-center py-4">No recent tickets</p>
-                        @endif
-                    </div>
-                </div>
-            @else
-                <!-- Instructions -->
-                <div class="helpdesk-sidebar">
-                    <h3>
-                        <i class="fas fa-info-circle"></i>
-                        How It Works
-                    </h3>
-                    
-                    <div class="space-y-4">
-                        <div class="p-3 bg-blue-50 rounded border border-blue-100">
-                            <h4 class="font-semibold text-blue-800 mb-2">
-                                <i class="fas fa-robot mr-2"></i>Auto-Detection
-                            </h4>
-                            <p class="text-sm text-blue-700">
-                                System automatically flags customers with 3+ tickets in 7 days
-                            </p>
+                        
                         </div>
                         
-                        <div class="p-3 bg-green-50 rounded border border-green-100">
-                            <h4 class="font-semibold text-green-800 mb-2">
-                                <i class="fas fa-ticket-alt mr-2"></i>Recovery Ticket
-                            </h4>
-                            <p class="text-sm text-green-700">
-                                Creates a special service recovery ticket with recommended actions
+                        <!-- Send Goodwill Discount Button at the bottom of the form -->
+                        <div class="mt-6 pt-4 border-t">
+                            <button wire:click="sendDiscountToCustomer" 
+                                    class="btn btn-success w-full">
+                                <i class="fas fa-gift mr-2"></i>
+                                Send Goodwill Discount Only
+                            </button>
+                            <p class="text-xs text-gray-500 mt-2 text-center">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Sends discount without creating a full recovery ticket
                             </p>
-                        </div>
-                        
-                        <div class="p-3 bg-purple-50 rounded border border-purple-100">
-                            <h4 class="font-semibold text-purple-800 mb-2">
-                                <i class="fas fa-sticky-note mr-2"></i>Goodwill in Ticket Notes
-                            </h4>
-                            <p class="text-sm text-purple-700">
-                                All goodwill messages are stored in ticket_notes table (customer-facing)
-                            </p>
-                        </div>
-                        
-                        <div class="p-3 bg-orange-50 rounded border border-orange-100">
-                            <h4 class="font-semibold text-orange-800 mb-2">
-                                <i class="fas fa-user-tie mr-2"></i>Manager Escalation
-                            </h4>
-                            <p class="text-sm text-orange-700">
-                                Escalates high-value cases to account managers for personal follow-up
-                            </p>
-                        </div>
-                        
-                        <div class="mt-6">
-                            <h4 class="font-semibold mb-2">Quick Start:</h4>
-                            <ol class="text-sm text-gray-600 space-y-2 pl-4 list-decimal">
-                                <li>Select a customer from the list</li>
-                                <li>Configure recovery settings</li>
-                                <li>Click "Trigger Service Recovery"</li>
-                                <li>System creates ticket + adds goodwill message to ticket notes</li>
-                            </ol>
                         </div>
                     </div>
                 </div>
             @endif
+
+            <!-- Recent Tickets -->
+            @if(!empty($customerInfo))
+                <h4 class="font-semibold mb-3">Recent Tickets (30 days)</h4>
+                <div class="space-y-2 mb-6">
+                    @foreach($customerTickets as $ticket)
+                        <div class="p-3 border rounded bg-white hover:bg-gray-50 cursor-pointer 
+                                    {{ $selectedTicketId == $ticket->ticket_id ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : '' }}"
+                             wire:click="viewTicket({{ $ticket->ticket_id }})">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <div class="font-medium text-sm">{{ $ticket->subject }}</div>
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        {{ \Carbon\Carbon::parse($ticket->created_at)->format('M d, H:i') }}
+                                        • {{ ucfirst($ticket->status) }}
+                                    </div>
+                                    @if($ticket->agent_name)
+                                        <div class="text-xs text-blue-600 mt-1">
+                                            <i class="fas fa-user mr-1"></i>
+                                            {{ $ticket->agent_name }}
+                                        </div>
+                                    @endif
+                                </div>
+                                <span class="text-xs px-2 py-1 rounded 
+                                    {{ $ticket->priority === 'critical' ? 'bg-red-100 text-red-800' : 
+                                       ($ticket->priority === 'high' ? 'bg-orange-100 text-orange-800' : 
+                                       ($ticket->priority === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800')) }}">
+                                    {{ ucfirst($ticket->priority) }}
+                                </span>
+                            </div>
+                        </div>
+                    @endforeach
+                    @if(empty($customerTickets))
+                        <p class="text-gray-500 text-center py-4">No recent tickets</p>
+                    @endif
+                </div>
+            @endif
         </div>
     </div>
+
+   <!-- Ticket Conversation Modal -->
+@if($showConversationModal && $selectedTicketDetails)
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" wire:key="ticket-modal-{{ $selectedTicketId }}">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4 text-white">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h3 class="text-xl font-bold">Ticket Conversation</h3>
+                    <div class="text-sm text-blue-100 mt-1">
+                        <span class="font-medium">{{ $selectedTicketDetails->first_name }} {{ $selectedTicketDetails->last_name }}</span>
+                        • {{ $selectedTicketDetails->customer_email }}
+                    </div>
+                </div>
+                <button wire:click="closeConversationModal" 
+                        type="button"
+                        class="text-white hover:text-blue-200 transition-colors">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            
+            <div class="mt-4 flex flex-wrap gap-3">
+                <div class="bg-blue-700 px-3 py-1 rounded-full text-sm">
+                    <i class="fas fa-ticket-alt mr-2"></i>
+                    {{ $selectedTicketDetails->ticket_number }}
+                </div>
+                <div class="bg-blue-700 px-3 py-1 rounded-full text-sm">
+                    <i class="fas fa-tag mr-2"></i>
+                    {{ $selectedTicketDetails->subject }}
+                </div>
+                <div class="{{ $selectedTicketDetails->priority === 'high' || $selectedTicketDetails->priority === 'critical' ? 'bg-red-500' : 'bg-yellow-500' }} px-3 py-1 rounded-full text-sm">
+                    <i class="fas fa-flag mr-2"></i>
+                    {{ ucfirst($selectedTicketDetails->priority) }}
+                </div>
+                <div class="{{ $selectedTicketDetails->status === 'open' ? 'bg-yellow-500' : ($selectedTicketDetails->status === 'closed' ? 'bg-gray-500' : 'bg-green-500') }} px-3 py-1 rounded-full text-sm">
+                    <i class="fas fa-circle mr-2"></i>
+                    {{ ucfirst($selectedTicketDetails->status) }}
+                </div>
+                @if($selectedTicketDetails->agent_name)
+                    <div class="bg-blue-700 px-3 py-1 rounded-full text-sm">
+                        <i class="fas fa-user-circle mr-2"></i>
+                        {{ $selectedTicketDetails->agent_name }}
+                    </div>
+                @endif
+            </div>
+        </div>
+        
+        <!-- Flash Messages -->
+        @if(session()->has('success'))
+        <div class="bg-green-50 border-l-4 border-green-500 p-4 mx-6 my-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-check-circle text-green-400"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-green-700">{{ session('success') }}</p>
+                </div>
+            </div>
+        </div>
+        @endif
+
+        @if(session()->has('error'))
+        <div class="bg-red-50 border-l-4 border-red-500 p-4 mx-6 my-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-circle text-red-400"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-red-700">{{ session('error') }}</p>
+                </div>
+            </div>
+        </div>
+        @endif
+
+        @if(session()->has('warning'))
+        <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 mx-6 my-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-yellow-700">{{ session('warning') }}</p>
+                </div>
+            </div>
+        </div>
+        @endif
+        
+        <!-- Modal Body -->
+        <div class="flex flex-col h-[70vh]">
+            <!-- Conversation Thread -->
+            <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <div class="space-y-4">
+                    @foreach($replies as $reply)
+                        <div class="{{ $reply->internal ? 'bg-yellow-50 border-yellow-200' : ($reply->is_ticket ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200') }} border rounded-lg p-4 shadow-sm">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center">
+                                    <div class="w-8 h-8 rounded-full {{ $reply->internal ? 'bg-yellow-100' : ($reply->is_ticket ? 'bg-blue-100' : 'bg-gray-100') }} flex items-center justify-center mr-3">
+                                        @if($reply->is_ticket)
+                                            <i class="fas fa-ticket-alt {{ $reply->internal ? 'text-yellow-600' : 'text-blue-600' }} text-sm"></i>
+                                        @else
+                                            <i class="fas fa-user {{ $reply->internal ? 'text-yellow-600' : 'text-gray-600' }} text-sm"></i>
+                                        @endif
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-gray-900">
+                                            @if($reply->author_name)
+                                                {{ $reply->author_name }}
+                                            @elseif($reply->is_ticket)
+                                                <span class="text-blue-700">
+                                                    <i class="fas fa-ticket-alt mr-1"></i>
+                                                    Ticket Created
+                                                </span>
+                                            @else
+                                                {{ auth()->user()->full_name ?? 'System' }}
+                                            @endif
+                                        </div>
+                                        <div class="text-xs text-gray-500">
+                                            {{ \Carbon\Carbon::parse($reply->created_at)->format('F j, Y g:i A') }}
+                                        </div>
+                                    </div>
+                                </div>
+                                @if($reply->internal)
+                                    <span class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs font-medium">
+                                        <i class="fas fa-lock mr-1"></i>
+                                        Internal
+                                    </span>
+                                @endif
+                            </div>
+                            <div class="text-gray-700 whitespace-pre-line text-sm leading-relaxed">{{ $reply->note_text }}</div>
+                        </div>
+                    @endforeach
+                    @if(empty($replies))
+                        <div class="text-center py-12">
+                            <div class="text-gray-400 mb-4">
+                                <i class="fas fa-comments fa-3x"></i>
+                            </div>
+                            <h4 class="text-lg font-medium text-gray-900 mb-2">No conversation yet</h4>
+                            <p class="text-gray-600">Start the conversation by sending the first message below.</p>
+                        </div>
+                    @endif
+                </div>
+            </div>
+            
+            <!-- Reply Form -->
+            <div class="border-t border-gray-200 p-6 bg-white">
+                <h5 class="font-semibold text-gray-900 mb-4">Add Reply</h5>
+                <textarea wire:model.live="replyText" 
+          rows="4"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4"
+          placeholder="Type your message here..."
+          wire:keydown.enter.prevent></textarea>
+
+                
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center">
+                        <input type="checkbox" wire:model="replyIsInternal" class="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <span class="text-sm text-gray-600">
+                            <i class="fas fa-lock mr-1"></i>
+                            Internal note (not visible to customer)
+                        </span>
+                    </label>
+                    
+                    <div class="flex space-x-3">
+                        <button wire:click="closeConversationModal" 
+                                type="button"
+                                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button wire:click="addReply" 
+                                type="button"
+                                wire:loading.attr="disabled"
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                {{ empty(trim($this->replyText)) ? 'disabled' : '' }}>
+                            <span wire:loading.remove>
+                                <i class="fas fa-paper-plane mr-2"></i>
+                                Send Message
+                            </span>
+                            <span wire:loading>
+                                <i class="fas fa-spinner fa-spin mr-2"></i>
+                                Sending...
+                            </span>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-4">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Messages are stored in ticket_notes table. Internal notes are only visible to support agents.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
 </div>

@@ -3,35 +3,60 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 new #[Layout('components.layouts.procurement')] class extends Component
 {
     public array $suppliers = [];
-    public array $products = [];
-    public array $selectedProducts = [];
+    public array $inventories = [];
+    public array $warehouses = [];
 
     // Supplier properties
     public int $supplier_id = 0;
-    public string $name = '';
+    public string $supplier_name = '';
     public string $contact_person = '';
     public string $email = '';
+    public string $phone = '';
+    public string $address = '';
+    public string $supplier_status = 'active';
 
-    // Product properties
-    public ?int $product_id_edit = null;
+    // Inventory properties
+    public ?int $inventory_id_edit = null;
+    public string $sku = '';
     public string $product_name = '';
+    public string $description = '';
     public string $category = '';
-    public ?int $product_supplier_id = null;
-    public ?float $price = null;
+    public ?int $inventory_supplier_id = null;
+    public int $quantity = 0;
+    public string $expiration_date = '';
+    public int $min_quantity = 10;
+    public int $max_quantity = 100;
+    public float $unit_price = 0.00;
+    public float $cost_price = 0.00;
+    public string $inventory_status = 'active';
 
-    public bool $isEditing = false;
-    public bool $isEditingProduct = false;
-    public string $message = '';
-    public string $productMessage = '';
+    // Warehouse properties
+    public ?int $warehouse_edit_id = null;
+    public string $warehouse_code = '';
+    public string $warehouse_name = '';
+    public string $location_address = '';
+    public string $warehouse_contact_person = '';
+    public string $warehouse_phone = '';
+    public float $capacity = 0.00;
+    public string $warehouse_status = 'active';
+
+    public bool $isEditingSupplier = false;
+    public bool $isEditingInventory = false;
+    public bool $isEditingWarehouse = false;
+    public string $supplierMessage = '';
+    public string $inventoryMessage = '';
+    public string $warehouseMessage = '';
 
     public function mount(): void
     {
         $this->loadSuppliers();
-        $this->loadProducts();
+        $this->loadInventories();
+        $this->loadWarehouses();
     }
 
     // ---------------- SUPPLIER FUNCTIONS ----------------
@@ -40,322 +65,395 @@ new #[Layout('components.layouts.procurement')] class extends Component
         $this->suppliers = DB::table('suppliers')
             ->orderBy('supplier_id')
             ->get()
-            ->map(function ($supplier) {
-                $products = DB::table('products')
-                    ->where('supplier_id', $supplier->supplier_id)
-                    ->select('product_name', 'category')
-                    ->get()
-                    ->map(fn($p) => "{$p->product_name} ({$p->category})")
-                    ->toArray();
-                $supplier->products = $products;
-                return $supplier;
-            })
             ->toArray();
     }
 
-    public function loadProducts(): void
+    public function loadInventories(): void
     {
-        $this->products = DB::table('products')
-            ->select('product_id', 'product_name', 'category', 'supplier_id', 'price')
-            ->orderBy('product_name')
+        $this->inventories = DB::table('inventories as i')
+            ->leftJoin('suppliers as s', 'i.supplier_id', '=', 's.supplier_id')
+            ->select(
+                'i.*',
+                's.name as supplier_name'
+            )
+            ->orderBy('i.product_name')
+            ->get()
+            ->toArray();
+    }
+
+    public function loadWarehouses(): void
+    {
+        $this->warehouses = DB::table('warehouse_locations')
+            ->orderBy('warehouse_name')
             ->get()
             ->toArray();
     }
 
     // ---------------- SUPPLIER CRUD ----------------
-    public function save(): void
+    public function saveSupplier(): void
     {
-        if (trim($this->name) === '') {
-            $this->message = 'Supplier name is required.';
+        if (trim($this->supplier_name) === '') {
+            $this->supplierMessage = 'Supplier name is required.';
             return;
         }
 
-        if ($this->isEditing && $this->supplier_id > 0) {
-            DB::table('suppliers')->where('supplier_id', $this->supplier_id)
-                ->update([
-                    'name' => $this->name,
-                    'contact_person' => $this->contact_person,
-                    'email' => $this->email,
-                ]);
+        $data = [
+            'name' => $this->supplier_name,
+            'contact_person' => $this->contact_person,
+            'email' => $this->email,
+            'phone' => $this->phone,
+            'address' => $this->address,
+            'status' => $this->supplier_status,
+            'updated_at' => now(),
+        ];
 
-            // Update products to this supplier
-            foreach ($this->selectedProducts as $productId) {
-                DB::table('products')->where('product_id', $productId)->update(['supplier_id' => $this->supplier_id]);
-            }
-
-            $this->message = 'Supplier updated successfully.';
+        if ($this->isEditingSupplier && $this->supplier_id > 0) {
+            DB::table('suppliers')->where('supplier_id', $this->supplier_id)->update($data);
+            $this->supplierMessage = 'Supplier updated successfully.';
         } else {
-            $supplierId = DB::table('suppliers')->insertGetId([
-                'name' => $this->name,
-                'contact_person' => $this->contact_person,
-                'email' => $this->email,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            foreach ($this->selectedProducts as $productId) {
-                DB::table('products')->where('product_id', $productId)->update(['supplier_id' => $supplierId]);
-            }
-
-            $this->message = 'Supplier added successfully.';
+            $data['created_at'] = now();
+            DB::table('suppliers')->insert($data);
+            $this->supplierMessage = 'Supplier added successfully.';
         }
 
-        $this->resetForm();
+        $this->resetSupplierForm();
         $this->loadSuppliers();
-        $this->loadProducts();
+        $this->loadInventories();
     }
 
-    public function edit(int $id): void
+    public function editSupplier(int $id): void
     {
         $supplier = DB::table('suppliers')->where('supplier_id', $id)->first();
         if ($supplier) {
             $this->supplier_id = $supplier->supplier_id;
-            $this->name = $supplier->name ?? '';
+            $this->supplier_name = $supplier->name ?? '';
             $this->contact_person = $supplier->contact_person ?? '';
             $this->email = $supplier->email ?? '';
-            $this->selectedProducts = DB::table('products')->where('supplier_id', $id)->pluck('product_id')->toArray();
-            $this->isEditing = true;
-            $this->message = '';
+            $this->phone = $supplier->phone ?? '';
+            $this->address = $supplier->address ?? '';
+            $this->supplier_status = $supplier->status ?? 'active';
+            $this->isEditingSupplier = true;
+            $this->supplierMessage = '';
         }
     }
 
-    public function delete(int $id): void
+    public function deleteSupplier(int $id): void
     {
-        // Check if supplier has linked purchase orders
-        $orderCount = DB::table('purchase_orders')->where('supplier_id', $id)->count();
+        // Check if supplier has linked inventories
+        $inventoryCount = DB::table('inventories')->where('supplier_id', $id)->count();
 
-        if ($orderCount > 0) {
-            // Show a warning message instead of deleting automatically
-            $this->message = "Cannot delete supplier. It has $orderCount purchase order(s).";
+        if ($inventoryCount > 0) {
+            $this->supplierMessage = "Cannot delete supplier. It has $inventoryCount inventory item(s).";
             return;
         }
-
-        // Remove supplier assignment from products
-        DB::table('products')->where('supplier_id', $id)->update(['supplier_id' => null]);
 
         // Delete the supplier
         DB::table('suppliers')->where('supplier_id', $id)->delete();
 
-        $this->message = 'Supplier deleted successfully.';
+        $this->supplierMessage = 'Supplier deleted successfully.';
         $this->loadSuppliers();
-        $this->loadProducts();
+        $this->loadInventories();
     }
 
-    public function resetForm(): void
+    public function resetSupplierForm(): void
     {
         $this->supplier_id = 0;
-        $this->name = '';
+        $this->supplier_name = '';
         $this->contact_person = '';
         $this->email = '';
-        $this->selectedProducts = [];
-        $this->isEditing = false;
+        $this->phone = '';
+        $this->address = '';
+        $this->supplier_status = 'active';
+        $this->isEditingSupplier = false;
     }
 
-    // ---------------- PRODUCT CRUD ----------------
-    public function saveProduct(): void
-{
-    if (trim($this->product_name) === '') {
-        $this->productMessage = 'Product name is required.';
-        return;
-    }
-
-    if (trim($this->category) === '') {
-        $this->productMessage = 'Product category is required.';
-        return;
-    }
-
-    if ($this->price === null || $this->price <= 0) {
-        $this->productMessage = 'Valid product price is required.';
-        return;
-    }
-
-    DB::beginTransaction();
-
-    try {
-        if ($this->isEditingProduct && $this->product_id_edit) {
-            // EDIT MODE
-            $product = DB::table('products')->where('product_id', $this->product_id_edit)->first();
-            
-            // Update the product
-            DB::table('products')->where('product_id', $this->product_id_edit)->update([
-                'product_name' => $this->product_name,
-                'category' => $this->category,
-                'supplier_id' => $this->product_supplier_id,
-                'price' => $this->price,
-                'updated_at' => now(),
-            ]);
-
-            // Update the corresponding inventory entry if it exists
-            if ($product->inventory_id) {
-                DB::table('inventories')->where('inventory_id', $product->inventory_id)->update([
-                    'product_name' => $this->product_name,
-                    'unit_price' => $this->price,
-                    'updated_at' => now(),
-                ]);
-            }
-
-            $this->productMessage = 'Product updated successfully.';
-        } else {
-            // CREATE MODE
-            // First, create the inventory entry
-            $inventoryId = DB::table('inventories')->insertGetId([
-                'product_name' => $this->product_name,
-                'sku' => $this->generateSKU($this->product_name),
-                'description' => $this->category, // Using category as description
-                'quantity' => 0, // Start with 0 stock
-                'min_quantity' => 10, // Default minimum quantity
-                'unit_price' => $this->price,
-                'status' => 'active',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            // Then create the product with the inventory_id
-            DB::table('products')->insert([
-                'product_name' => $this->product_name,
-                'category' => $this->category,
-                'supplier_id' => $this->product_supplier_id,
-                'price' => $this->price,
-                'inventory_id' => $inventoryId, // Link to inventory
-                'stock_quantity' => 0, // Start with 0 stock
-                'reorder_level' => 10, // Default reorder level
-                'slug' => Str::slug($this->product_name),
-                'status' => 'draft',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $this->productMessage = 'Product added successfully with inventory entry.';
-        }
-
-        DB::commit();
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        $this->productMessage = 'Error saving product: ' . $e->getMessage();
-        return;
-    }
-
-    $this->resetProductForm();
-    $this->loadProducts();
-    $this->loadSuppliers();
-}
-
-// Add this helper method to generate SKU
-private function generateSKU($productName)
-{
-    // Generate a unique SKU
-    $prefix = 'SKU';
-    $productCode = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $productName), 0, 6));
-    $random = strtoupper(substr(str_shuffle('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, 4));
-    $timestamp = date('ymd');
-    
-    return $prefix . '-' . $productCode . '-' . $random . '-' . $timestamp;
-}
-
-public function editProduct(int $id): void
-{
-    $product = DB::table('products')->where('product_id', $id)->first();
-    if ($product) {
-        $this->product_id_edit = $product->product_id;
-        $this->product_name = $product->product_name;
-        $this->category = $product->category ?? '';
-        $this->product_supplier_id = $product->supplier_id;
-        $this->price = (float)$product->price;
-        $this->isEditingProduct = true;
-        $this->productMessage = '';
-    }
-}
-    public function resetProductForm(): void
+    // ---------------- INVENTORY CRUD ----------------
+    public function saveInventory(): void
     {
-        $this->product_id_edit = null;
-        $this->product_name = '';
-        $this->category = '';
-        $this->product_supplier_id = null;
-        $this->price = null;
-        $this->isEditingProduct = false;
-        $this->productMessage = '';
-    }
-
-    public function deleteProduct(int $id): void
-{
-    DB::beginTransaction();
-    
-    try {
-        // Get the product to find inventory_id
-        $product = DB::table('products')->where('product_id', $id)->first();
-        
-        if (!$product) {
-            $this->message = 'Product not found.';
+        // Validate required fields
+        if (trim($this->product_name) === '') {
+            $this->inventoryMessage = 'Product name is required.';
             return;
         }
-        
-        // Delete the inventory entry if it exists
-        if ($product->inventory_id) {
-            DB::table('inventories')->where('inventory_id', $product->inventory_id)->delete();
+
+        if ($this->unit_price <= 0) {
+            $this->inventoryMessage = 'Valid unit price is required.';
+            return;
         }
 
-        // Delete the product
-        DB::table('products')->where('product_id', $id)->delete();
+        // Generate SKU if not provided
+        if (trim($this->sku) === '') {
+            $this->sku = $this->generateSKU($this->product_name);
+        }
 
-        DB::commit();
-        
-        $this->message = 'Product and inventory entry deleted successfully.';
-        $this->loadProducts();
-        $this->loadSuppliers();
-        
-    } catch (\Exception $e) {
-        DB::rollBack();
-        $this->message = 'Error deleting product: ' . $e->getMessage();
+        // Validate SKU uniqueness
+        if ($this->isEditingInventory && $this->inventory_id_edit) {
+            $existingSku = DB::table('inventories')
+                ->where('sku', $this->sku)
+                ->where('inventory_id', '!=', $this->inventory_id_edit)
+                ->exists();
+        } else {
+            $existingSku = DB::table('inventories')->where('sku', $this->sku)->exists();
+        }
+
+        if ($existingSku) {
+            $this->inventoryMessage = 'SKU already exists. Please use a different SKU.';
+            return;
+        }
+
+        $data = [
+            'sku' => $this->sku,
+            'product_name' => $this->product_name,
+            'description' => $this->description,
+            'category' => $this->category,
+            'supplier_id' => $this->inventory_supplier_id,
+            'quantity' => $this->quantity,
+            'expiration_date' => $this->expiration_date ?: null,
+            'min_quantity' => $this->min_quantity,
+            'max_quantity' => $this->max_quantity,
+            'unit_price' => $this->unit_price,
+            'cost_price' => $this->cost_price,
+            'status' => $this->inventory_status,
+            'updated_at' => now(),
+        ];
+
+        if ($this->isEditingInventory && $this->inventory_id_edit) {
+            DB::table('inventories')->where('inventory_id', $this->inventory_id_edit)->update($data);
+            $this->inventoryMessage = 'Inventory item updated successfully.';
+        } else {
+            $data['created_at'] = now();
+            DB::table('inventories')->insert($data);
+            $this->inventoryMessage = 'Inventory item added successfully.';
+        }
+
+        $this->resetInventoryForm();
+        $this->loadInventories();
     }
-}
+
+    private function generateSKU(string $productName): string
+    {
+        $prefix = 'SKU';
+        $productCode = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $productName), 0, 6));
+        $random = strtoupper(substr(str_shuffle('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 0, 4));
+        $timestamp = date('ymd');
+        
+        return $prefix . '-' . $productCode . '-' . $random . '-' . $timestamp;
+    }
+
+    public function editInventory(int $id): void
+    {
+        $inventory = DB::table('inventories')->where('inventory_id', $id)->first();
+        if ($inventory) {
+            $this->inventory_id_edit = $inventory->inventory_id;
+            $this->sku = $inventory->sku;
+            $this->product_name = $inventory->product_name;
+            $this->description = $inventory->description ?? '';
+            $this->category = $inventory->category ?? '';
+            $this->inventory_supplier_id = $inventory->supplier_id;
+            $this->quantity = (int)$inventory->quantity;
+            $this->expiration_date = $inventory->expiration_date ? date('Y-m-d', strtotime($inventory->expiration_date)) : '';
+            $this->min_quantity = (int)$inventory->min_quantity;
+            $this->max_quantity = (int)$inventory->max_quantity;
+            $this->unit_price = (float)$inventory->unit_price;
+            $this->cost_price = (float)$inventory->cost_price;
+            $this->inventory_status = $inventory->status ?? 'active';
+            $this->isEditingInventory = true;
+            $this->inventoryMessage = '';
+        }
+    }
+
+    public function resetInventoryForm(): void
+    {
+        $this->inventory_id_edit = null;
+        $this->sku = '';
+        $this->product_name = '';
+        $this->description = '';
+        $this->category = '';
+        $this->inventory_supplier_id = null;
+        $this->quantity = 0;
+        $this->expiration_date = '';
+        $this->min_quantity = 10;
+        $this->max_quantity = 100;
+        $this->unit_price = 0.00;
+        $this->cost_price = 0.00;
+        $this->inventory_status = 'active';
+        $this->isEditingInventory = false;
+        $this->inventoryMessage = '';
+    }
+
+    public function deleteInventory(int $id): void
+    {
+        DB::table('inventories')->where('inventory_id', $id)->delete();
+        $this->inventoryMessage = 'Inventory item deleted successfully.';
+        $this->loadInventories();
+    }
+
+    // ---------------- WAREHOUSE CRUD ----------------
+    public function saveWarehouse(): void
+    {
+        if (trim($this->warehouse_name) === '') {
+            $this->warehouseMessage = 'Warehouse name is required.';
+            return;
+        }
+
+        if (trim($this->warehouse_code) === '') {
+            $this->warehouseMessage = 'Warehouse code is required.';
+            return;
+        }
+
+        // Check for duplicate warehouse code
+        $existingCode = DB::table('warehouse_locations')
+            ->where('warehouse_code', $this->warehouse_code)
+            ->when($this->isEditingWarehouse, function ($query) {
+                return $query->where('id', '!=', $this->warehouse_edit_id);
+            })
+            ->exists();
+
+        if ($existingCode) {
+            $this->warehouseMessage = 'Warehouse code already exists.';
+            return;
+        }
+
+        $data = [
+            'warehouse_code' => $this->warehouse_code,
+            'warehouse_name' => $this->warehouse_name,
+            'location_address' => $this->location_address,
+            'contact_person' => $this->warehouse_contact_person,
+            'phone' => $this->warehouse_phone,
+            'capacity' => $this->capacity,
+            'status' => $this->warehouse_status,
+            'updated_at' => now(),
+        ];
+
+        if ($this->isEditingWarehouse && $this->warehouse_edit_id) {
+            DB::table('warehouse_locations')->where('id', $this->warehouse_edit_id)->update($data);
+            $this->warehouseMessage = 'Warehouse updated successfully.';
+        } else {
+            $data['created_at'] = now();
+            DB::table('warehouse_locations')->insert($data);
+            $this->warehouseMessage = 'Warehouse added successfully.';
+        }
+
+        $this->resetWarehouseForm();
+        $this->loadWarehouses();
+    }
+
+    public function editWarehouse(int $id): void
+    {
+        $warehouse = DB::table('warehouse_locations')->where('id', $id)->first();
+        if ($warehouse) {
+            $this->warehouse_edit_id = $warehouse->id;
+            $this->warehouse_code = $warehouse->warehouse_code;
+            $this->warehouse_name = $warehouse->warehouse_name;
+            $this->location_address = $warehouse->location_address;
+            $this->warehouse_contact_person = $warehouse->contact_person ?? '';
+            $this->warehouse_phone = $warehouse->phone ?? '';
+            $this->capacity = (float)$warehouse->capacity;
+            $this->warehouse_status = $warehouse->status ?? 'active';
+            $this->isEditingWarehouse = true;
+            $this->warehouseMessage = '';
+        }
+    }
+
+    public function deleteWarehouse(int $id): void
+    {
+        DB::table('warehouse_locations')->where('id', $id)->delete();
+        $this->warehouseMessage = 'Warehouse deleted successfully.';
+        $this->loadWarehouses();
+    }
+
+    public function resetWarehouseForm(): void
+    {
+        $this->warehouse_edit_id = null;
+        $this->warehouse_code = '';
+        $this->warehouse_name = '';
+        $this->location_address = '';
+        $this->warehouse_contact_person = '';
+        $this->warehouse_phone = '';
+        $this->capacity = 0.00;
+        $this->warehouse_status = 'active';
+        $this->isEditingWarehouse = false;
+        $this->warehouseMessage = '';
+    }
 };
 ?>
 <div class="p-8 bg-gray-100 min-h-screen">
-    <h1 class="text-3xl font-bold mb-6 text-green-800">Supplier & Product Management</h1>
+    <h1 class="text-3xl font-bold mb-6 text-green-800">Supplier, Inventory & Warehouse Management</h1>
 
     <!-- Supplier Messages -->
-    @if($message)
-        <div class="mb-6 p-4 rounded-lg {{ str_contains($message, 'successfully') ? 'bg-green-100 text-green-800 border-l-4 border-green-600' : 'bg-red-100 text-red-800 border-l-4 border-red-600' }}">
+    @if($supplierMessage)
+        <div class="mb-6 p-4 rounded-lg {{ str_contains($supplierMessage, 'successfully') ? 'bg-green-100 text-green-800 border-l-4 border-green-600' : 'bg-red-100 text-red-800 border-l-4 border-red-600' }}">
             <div class="flex items-center">
-                @if(str_contains($message, 'successfully'))
+                @if(str_contains($supplierMessage, 'successfully'))
                     <i class="fas fa-check-circle mr-3"></i>
                 @else
                     <i class="fas fa-exclamation-triangle mr-3"></i>
                 @endif
-                <span>{{ $message }}</span>
+                <span>{{ $supplierMessage }}</span>
             </div>
         </div>
     @endif
 
-    <!-- Add/Edit Supplier -->
-    <div class="bg-white p-6 rounded-lg shadow mb-8 max-w-3xl">
-        <h2 class="text-xl font-semibold mb-4">{{ $isEditing ? 'Edit Supplier' : 'Add New Supplier' }}</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- Warehouse Messages -->
+    @if($warehouseMessage)
+        <div class="mb-6 p-4 rounded-lg {{ str_contains($warehouseMessage, 'successfully') ? 'bg-green-100 text-green-800 border-l-4 border-green-600' : 'bg-red-100 text-red-800 border-l-4 border-red-600' }}">
+            <div class="flex items-center">
+                @if(str_contains($warehouseMessage, 'successfully'))
+                    <i class="fas fa-check-circle mr-3"></i>
+                @else
+                    <i class="fas fa-exclamation-triangle mr-3"></i>
+                @endif
+                <span>{{ $warehouseMessage }}</span>
+            </div>
+        </div>
+    @endif
+
+    <!-- Add/Edit Supplier Form -->
+    <div class="bg-white p-6 rounded-lg shadow mb-8">
+        <h2 class="text-xl font-semibold mb-4 text-green-700">
+            <i class="fas fa-truck mr-2"></i>{{ $isEditingSupplier ? 'Edit Supplier' : 'Add New Supplier' }}
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
                 <label class="block text-gray-700 mb-2">Supplier Name *</label>
-                <input wire:model="name" type="text" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-green-500 focus:border-green-500" placeholder="Enter supplier name">
+                <input wire:model="supplier_name" type="text" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-green-500" placeholder="Enter supplier name">
             </div>
             <div>
                 <label class="block text-gray-700 mb-2">Contact Person</label>
                 <input wire:model="contact_person" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Contact person name">
             </div>
-            <div class="md:col-span-2">
+            <div>
                 <label class="block text-gray-700 mb-2">Email</label>
                 <input wire:model="email" type="email" class="w-full border border-gray-300 rounded p-2" placeholder="supplier@example.com">
             </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Phone</label>
+                <input wire:model="phone" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Phone number">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-gray-700 mb-2">Address</label>
+                <input wire:model="address" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Full address">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Status</label>
+                <select wire:model="supplier_status" class="w-full border border-gray-300 rounded p-2">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended</option>
+                </select>
+            </div>
         </div>
         <div class="mt-4 flex space-x-3">
-            <button wire:click="save" 
+            <button wire:click="saveSupplier" 
                     class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg transition duration-200">
-                @if($isEditing)
+                @if($isEditingSupplier)
                     <i class="fas fa-save"></i> Update Supplier
                 @else
                     <i class="fas fa-plus"></i> Add Supplier
                 @endif
             </button>
-            @if($isEditing)
-                <button wire:click="resetForm" 
+            @if($isEditingSupplier)
+                <button wire:click="resetSupplierForm" 
                         class="flex items-center gap-2 bg-gray-400 hover:bg-gray-500 text-white px-5 py-2 rounded-lg transition duration-200">
                     <i class="fas fa-times"></i> Cancel
                 </button>
@@ -363,57 +461,166 @@ public function editProduct(int $id): void
         </div>
     </div>
 
-    <!-- Add/Edit Product -->
-    <div class="bg-white p-6 rounded-lg shadow mb-8 max-w-3xl">
-        <h2 class="text-xl font-semibold mb-4 text-green-700">{{ $isEditingProduct ? 'Edit Product' : 'Add New Product' }}</h2>
+    <!-- Add/Edit Warehouse Form -->
+    <div class="bg-white p-6 rounded-lg shadow mb-8">
+        <h2 class="text-xl font-semibold mb-4 text-purple-700">
+            <i class="fas fa-warehouse mr-2"></i>{{ $isEditingWarehouse ? 'Edit Warehouse' : 'Add New Warehouse' }}
+        </h2>
         
-        @if($productMessage)
-            <div class="mb-4 p-3 {{ str_contains($productMessage, 'successfully') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }} rounded">
+        @if($warehouseMessage)
+            <div class="mb-4 p-3 {{ str_contains($warehouseMessage, 'successfully') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }} rounded">
                 <div class="flex items-center">
-                    @if(str_contains($productMessage, 'successfully'))
+                    @if(str_contains($warehouseMessage, 'successfully'))
                         <i class="fas fa-check-circle mr-2"></i>
                     @else
                         <i class="fas fa-exclamation-circle mr-2"></i>
                     @endif
-                    <span>{{ $productMessage }}</span>
+                    <span>{{ $warehouseMessage }}</span>
                 </div>
             </div>
         @endif
         
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-                <label class="block text-gray-700 mb-2">Product Name *</label>
-                <input wire:model="product_name" type="text" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-green-500" placeholder="Enter product name">
+                <label class="block text-gray-700 mb-2">Warehouse Code *</label>
+                <input wire:model="warehouse_code" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="e.g., WH-001">
             </div>
             <div>
-                <label class="block text-gray-700 mb-2">Category *</label>
+                <label class="block text-gray-700 mb-2">Warehouse Name *</label>
+                <input wire:model="warehouse_name" type="text" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-purple-500" placeholder="Main Warehouse">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Status</label>
+                <select wire:model="warehouse_status" class="w-full border border-gray-300 rounded p-2">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="maintenance">Maintenance</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-gray-700 mb-2">Address *</label>
+                <input wire:model="location_address" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Warehouse address">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Capacity (sqm)</label>
+                <input wire:model="capacity" type="number" step="0.01" min="0" class="w-full border border-gray-300 rounded p-2" placeholder="0.00">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Contact Person</label>
+                <input wire:model="warehouse_contact_person" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Contact person">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Phone</label>
+                <input wire:model="warehouse_phone" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Phone number">
+            </div>
+        </div>
+        <div class="mt-4 flex space-x-3">
+            <button wire:click="saveWarehouse" 
+                    class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg transition duration-200">
+                @if($isEditingWarehouse)
+                    <i class="fas fa-save"></i> Update Warehouse
+                @else
+                    <i class="fas fa-plus"></i> Add Warehouse
+                @endif
+            </button>
+            @if($isEditingWarehouse)
+                <button wire:click="resetWarehouseForm" 
+                        class="flex items-center gap-2 bg-gray-400 hover:bg-gray-500 text-white px-5 py-2 rounded-lg transition duration-200">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+            @endif
+        </div>
+    </div>
+
+    <!-- Add/Edit Inventory Form -->
+    <div class="bg-white p-6 rounded-lg shadow mb-8">
+        <h2 class="text-xl font-semibold mb-4 text-blue-700">
+            <i class="fas fa-box mr-2"></i>{{ $isEditingInventory ? 'Edit Inventory Item' : 'Add New Inventory Item' }}
+        </h2>
+        
+        @if($inventoryMessage)
+            <div class="mb-4 p-3 {{ str_contains($inventoryMessage, 'successfully') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }} rounded">
+                <div class="flex items-center">
+                    @if(str_contains($inventoryMessage, 'successfully'))
+                        <i class="fas fa-check-circle mr-2"></i>
+                    @else
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                    @endif
+                    <span>{{ $inventoryMessage }}</span>
+                </div>
+            </div>
+        @endif
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-gray-700 mb-2">SKU *</label>
+                <input wire:model="sku" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Auto-generated or enter custom">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Inventory Name *</label>
+                <input wire:model="product_name" type="text" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-blue-500" placeholder="Enter inventory name">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Category</label>
                 <input wire:model="category" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="e.g., Electronics">
             </div>
             <div>
                 <label class="block text-gray-700 mb-2">Supplier</label>
-                <select wire:model="product_supplier_id" class="w-full border border-gray-300 rounded p-2">
-                    <option value="">— None —</option>
+                <select wire:model="inventory_supplier_id" class="w-full border border-gray-300 rounded p-2">
+                    <option value="">— Select Supplier —</option>
                     @foreach($suppliers as $supplier)
                         <option value="{{ $supplier->supplier_id }}">{{ $supplier->name }}</option>
                     @endforeach
                 </select>
             </div>
             <div>
-                <label class="block text-gray-700 mb-2">Price *</label>
-                <input wire:model="price" type="number" min="0" step="0.01" class="w-full border border-gray-300 rounded p-2" placeholder="₱0.00">
+                <label class="block text-gray-700 mb-2">Quantity</label>
+                <input wire:model="quantity" type="number" min="0" class="w-full border border-gray-300 rounded p-2" placeholder="Current stock">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Expiration Date</label>
+                <input wire:model="expiration_date" type="date" class="w-full border border-gray-300 rounded p-2">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Min Quantity</label>
+                <input wire:model="min_quantity" type="number" min="0" class="w-full border border-gray-300 rounded p-2" placeholder="Reorder level">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Max Quantity</label>
+                <input wire:model="max_quantity" type="number" min="0" class="w-full border border-gray-300 rounded p-2" placeholder="Maximum stock">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Unit Price (₱) *</label>
+                <input wire:model="unit_price" type="number" min="0" step="0.01" class="w-full border border-gray-300 rounded p-2" placeholder="Selling price">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Cost Price (₱)</label>
+                <input wire:model="cost_price" type="number" min="0" step="0.01" class="w-full border border-gray-300 rounded p-2" placeholder="Purchase cost">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Status</label>
+                <select wire:model="inventory_status" class="w-full border border-gray-300 rounded p-2">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="discontinued">Discontinued</option>
+                </select>
+            </div>
+            <div class="md:col-span-3">
+                <label class="block text-gray-700 mb-2">Description</label>
+                <textarea wire:model="description" rows="2" class="w-full border border-gray-300 rounded p-2" placeholder="Inventory description"></textarea>
             </div>
         </div>
         <div class="mt-4 flex space-x-3">
-            <button wire:click="saveProduct" 
+            <button wire:click="saveInventory" 
                     class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition duration-200">
-                @if($isEditingProduct)
-                    <i class="fas fa-save"></i> Update Product
+                @if($isEditingInventory)
+                    <i class="fas fa-save"></i> Update Inventory
                 @else
-                    <i class="fas fa-plus"></i> Add Product
+                    <i class="fas fa-plus"></i> Add Inventory
                 @endif
             </button>
-            @if($isEditingProduct)
-                <button wire:click="resetProductForm" 
+            @if($isEditingInventory)
+                <button wire:click="resetInventoryForm" 
                         class="flex items-center gap-2 bg-gray-400 hover:bg-gray-500 text-white px-5 py-2 rounded-lg transition duration-200">
                     <i class="fas fa-times"></i> Cancel
                 </button>
@@ -421,19 +628,22 @@ public function editProduct(int $id): void
         </div>
     </div>
 
-    <!-- Supplier Table -->
+    <!-- Suppliers Table -->
     <div class="overflow-x-auto bg-white rounded-lg shadow mb-8">
         <div class="flex justify-between items-center p-4 border-b">
-            <h3 class="text-lg font-semibold text-gray-800">Suppliers ({{ count($suppliers) }})</h3>
+            <h3 class="text-lg font-semibold text-gray-800">
+                <i class="fas fa-truck mr-2 text-green-600"></i>Suppliers ({{ count($suppliers) }})
+            </h3>
         </div>
         <table class="min-w-full text-sm text-left border-collapse">
             <thead class="bg-green-700 text-white">
                 <tr>
                     <th class="px-6 py-3">ID</th>
                     <th class="px-6 py-3">Name</th>
-                    <th class="px-6 py-3">Contact</th>
+                    <th class="px-6 py-3">Contact Person</th>
                     <th class="px-6 py-3">Email</th>
-                    <th class="px-6 py-3">Products</th>
+                    <th class="px-6 py-3">Phone</th>
+                    <th class="px-6 py-3">Status</th>
                     <th class="px-6 py-3 text-center">Actions</th>
                 </tr>
             </thead>
@@ -450,25 +660,27 @@ public function editProduct(int $id): void
                                 —
                             @endif
                         </td>
+                        <td class="px-6 py-4">{{ $supplier->phone ?? '—' }}</td>
                         <td class="px-6 py-4">
-                            @if(!empty($supplier->products))
-                                <div class="max-w-xs">
-                                    <span class="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded mr-1 mb-1">
-                                        {{ count($supplier->products) }} products
-                                    </span>
-                                </div>
-                            @else
-                                <span class="text-gray-400">—</span>
-                            @endif
+                            @php
+                                $statusColors = [
+                                    'active' => 'bg-green-100 text-green-800',
+                                    'inactive' => 'bg-yellow-100 text-yellow-800',
+                                    'suspended' => 'bg-red-100 text-red-800',
+                                ];
+                            @endphp
+                            <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full {{ $statusColors[$supplier->status] ?? 'bg-gray-100 text-gray-800' }}">
+                                {{ ucfirst($supplier->status) }}
+                            </span>
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex justify-center space-x-2">
-                                <button wire:click="edit({{ $supplier->supplier_id }})" 
+                                <button wire:click="editSupplier({{ $supplier->supplier_id }})" 
                                         class="flex items-center gap-1 bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg transition">
                                     <i class="fas fa-edit text-sm"></i>
                                     <span>Edit</span>
                                 </button>
-                                <button onclick="if(confirm('Delete supplier: {{ addslashes($supplier->name) }}?')) { @this.delete({{ $supplier->supplier_id }}) }" 
+                                <button onclick="if(confirm('Delete supplier: {{ addslashes($supplier->name) }}?')) { @this.deleteSupplier({{ $supplier->supplier_id }}) }" 
                                         class="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg transition">
                                     <i class="fas fa-trash text-sm"></i>
                                     <span>Delete</span>
@@ -478,7 +690,7 @@ public function editProduct(int $id): void
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="text-center py-8 text-gray-500">
+                        <td colspan="7" class="text-center py-8 text-gray-500">
                             <div class="flex flex-col items-center">
                                 <i class="fas fa-truck text-4xl mb-3 text-gray-300"></i>
                                 <p class="text-lg">No suppliers found.</p>
@@ -491,53 +703,60 @@ public function editProduct(int $id): void
         </table>
     </div>
 
-    <!-- Product Table -->
-    <div class="overflow-x-auto bg-white rounded-lg shadow">
+    <!-- Warehouses Table -->
+    <div class="overflow-x-auto bg-white rounded-lg shadow mb-8">
         <div class="flex justify-between items-center p-4 border-b">
-            <h3 class="text-lg font-semibold text-gray-800">Products ({{ count($products) }})</h3>
+            <h3 class="text-lg font-semibold text-gray-800">
+                <i class="fas fa-warehouse mr-2 text-purple-600"></i>Warehouses ({{ count($warehouses) }})
+            </h3>
         </div>
         <table class="min-w-full text-sm text-left border-collapse">
-            <thead class="bg-blue-700 text-white">
+            <thead class="bg-purple-700 text-white">
                 <tr>
-                    <th class="px-6 py-3">ID</th>
+                    <th class="px-6 py-3">Code</th>
                     <th class="px-6 py-3">Name</th>
-                    <th class="px-6 py-3">Category</th>
-                    <th class="px-6 py-3">Supplier</th>
-                    <th class="px-6 py-3">Price</th>
+                    <th class="px-6 py-3">Address</th>
+                    <th class="px-6 py-3">Contact</th>
+                    <th class="px-6 py-3">Capacity</th>
+                    <th class="px-6 py-3">Status</th>
                     <th class="px-6 py-3 text-center">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y">
-                @forelse($products as $product)
+                @forelse($warehouses as $warehouse)
                     <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-6 py-4 font-semibold text-gray-700">{{ $product->product_id }}</td>
-                        <td class="px-6 py-4 font-medium">{{ $product->product_name }}</td>
+                        <td class="px-6 py-4 font-mono font-semibold text-purple-700">{{ $warehouse->warehouse_code }}</td>
+                        <td class="px-6 py-4 font-medium">{{ $warehouse->warehouse_name }}</td>
+                        <td class="px-6 py-4">{{ Str::limit($warehouse->location_address, 30) }}</td>
                         <td class="px-6 py-4">
-                            <span class="inline-block bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">
-                                {{ $product->category ?? '—' }}
+                            <div>{{ $warehouse->contact_person ?? '—' }}</div>
+                            @if($warehouse->phone)
+                                <div class="text-sm text-gray-600">{{ $warehouse->phone }}</div>
+                            @endif
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="font-semibold text-purple-700">{{ number_format($warehouse->capacity, 2) }} sqm</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            @php
+                                $statusColors = [
+                                    'active' => 'bg-green-100 text-green-800',
+                                    'inactive' => 'bg-yellow-100 text-yellow-800',
+                                    'maintenance' => 'bg-red-100 text-red-800',
+                                ];
+                            @endphp
+                            <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full {{ $statusColors[$warehouse->status] ?? 'bg-gray-100 text-gray-800' }}">
+                                {{ ucfirst($warehouse->status) }}
                             </span>
                         </td>
                         <td class="px-6 py-4">
-                            @if($product->supplier_id)
-                                @php
-                                    $supplier = collect($suppliers)->firstWhere('supplier_id', $product->supplier_id);
-                                @endphp
-                                <span class="text-green-700">{{ $supplier->name ?? '—' }}</span>
-                            @else
-                                <span class="text-gray-400">—</span>
-                            @endif
-                        </td>
-                        <td class="px-6 py-4 font-semibold text-green-700">
-                            ₱{{ number_format($product->price ?? 0, 2) }}
-                        </td>
-                        <td class="px-6 py-4">
                             <div class="flex justify-center space-x-2">
-                                <button wire:click="editProduct({{ $product->product_id }})" 
-                                        class="flex items-center gap-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1.5 rounded-lg transition">
+                                <button wire:click="editWarehouse({{ $warehouse->id }})" 
+                                        class="flex items-center gap-1 bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg transition">
                                     <i class="fas fa-edit text-sm"></i>
                                     <span>Edit</span>
                                 </button>
-                                <button onclick="if(confirm('Delete product: {{ addslashes($product->product_name) }}?')) { @this.deleteProduct({{ $product->product_id }}) }"
+                                <button onclick="if(confirm('Delete warehouse: {{ addslashes($warehouse->warehouse_name) }}?')) { @this.deleteWarehouse({{ $warehouse->id }}) }" 
                                         class="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg transition">
                                     <i class="fas fa-trash text-sm"></i>
                                     <span>Delete</span>
@@ -547,11 +766,108 @@ public function editProduct(int $id): void
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="text-center py-8 text-gray-500">
+                        <td colspan="7" class="text-center py-8 text-gray-500">
                             <div class="flex flex-col items-center">
-                                <i class="fas fa-box text-4xl mb-3 text-gray-300"></i>
-                                <p class="text-lg">No products found.</p>
-                                <p class="text-sm mt-1">Add your first product above.</p>
+                                <i class="fas fa-warehouse text-4xl mb-3 text-gray-300"></i>
+                                <p class="text-lg">No warehouses found.</p>
+                                <p class="text-sm mt-1">Add your first warehouse above.</p>
+                            </div>
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Inventories Table -->
+    <div class="overflow-x-auto bg-white rounded-lg shadow">
+        <div class="flex justify-between items-center p-4 border-b">
+            <h3 class="text-lg font-semibold text-gray-800">
+                <i class="fas fa-boxes mr-2 text-blue-600"></i>Inventory Items ({{ count($inventories) }})
+            </h3>
+        </div>
+        <table class="min-w-full text-sm text-left border-collapse">
+            <thead class="bg-blue-700 text-white">
+                <tr>
+                    <th class="px-6 py-3">SKU</th>
+                    <th class="px-6 py-3">Product Name</th>
+                    <th class="px-6 py-3">Category</th>
+                    <th class="px-6 py-3">Supplier</th>
+                    <th class="px-6 py-3">Quantity</th>
+                    <th class="px-6 py-3">Unit Price</th>
+                    <th class="px-6 py-3">Status</th>
+                    <th class="px-6 py-3 text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y">
+                @forelse($inventories as $inventory)
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 font-mono text-sm">{{ $inventory->sku }}</td>
+                        <td class="px-6 py-4 font-medium">
+                            <div>{{ $inventory->product_name }}</div>
+                            @if($inventory->description)
+                                <div class="text-xs text-gray-500 truncate max-w-xs">{{ Str::limit($inventory->description, 50) }}</div>
+                            @endif
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-block bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">
+                                {{ $inventory->category ?? '—' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            @if($inventory->supplier_name)
+                                <span class="text-green-700">{{ $inventory->supplier_name }}</span>
+                            @else
+                                <span class="text-gray-400">—</span>
+                            @endif
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex flex-col">
+                                <span class="font-semibold {{ $inventory->quantity <= $inventory->min_quantity ? 'text-red-600' : 'text-gray-700' }}">
+                                    {{ $inventory->quantity }}
+                                </span>
+                                <div class="text-xs text-gray-500">
+                                    Min: {{ $inventory->min_quantity }} / Max: {{ $inventory->max_quantity }}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 font-semibold text-green-700">
+                            ₱{{ number_format($inventory->unit_price, 2) }}
+                        </td>
+                        <td class="px-6 py-4">
+                            @php
+                                $statusColors = [
+                                    'active' => 'bg-green-100 text-green-800',
+                                    'inactive' => 'bg-yellow-100 text-yellow-800',
+                                    'discontinued' => 'bg-red-100 text-red-800',
+                                ];
+                            @endphp
+                            <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full {{ $statusColors[$inventory->status] ?? 'bg-gray-100 text-gray-800' }}">
+                                {{ ucfirst($inventory->status) }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex justify-center space-x-2">
+                                <button wire:click="editInventory({{ $inventory->inventory_id }})" 
+                                        class="flex items-center gap-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1.5 rounded-lg transition">
+                                    <i class="fas fa-edit text-sm"></i>
+                                    <span>Edit</span>
+                                </button>
+                                <button onclick="if(confirm('Delete inventory item: {{ addslashes($inventory->product_name) }}?')) { @this.deleteInventory({{ $inventory->inventory_id }}) }"
+                                        class="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg transition">
+                                    <i class="fas fa-trash text-sm"></i>
+                                    <span>Delete</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="8" class="text-center py-8 text-gray-500">
+                            <div class="flex flex-col items-center">
+                                <i class="fas fa-boxes text-4xl mb-3 text-gray-300"></i>
+                                <p class="text-lg">No inventory items found.</p>
+                                <p class="text-sm mt-1">Add your first inventory item above.</p>
                             </div>
                         </td>
                     </tr>

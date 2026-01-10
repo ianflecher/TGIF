@@ -378,7 +378,12 @@
             Procurement Dashboard
         </a>
         <p class="section-title">Tracking</p>
-        <a href="{{ route('procurement.status') }}" class="{{ request()->routeIs('purchasing.status') ? 'active' : '' }}">
+        <a href="{{ route('supplier.list') }}" class="{{ request()->routeIs('supplier.list') ? 'active' : '' }}">
+            <i class="fas fa-chart-bar"></i>
+            Supplier Tracking
+        </a>
+        <p class="section-title">Tracking</p>
+        <a href="{{ route('procurement.status') }}" class="{{ request()->routeIs('procurement.status') ? 'active' : '' }}">
             <i class="fas fa-chart-bar"></i>
             Track Status
         </a>
