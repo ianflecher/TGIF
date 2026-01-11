@@ -674,17 +674,6 @@
                 </li>
             @endforeach
             
-            <!-- Always show logout option -->
-            <li>
-                <a href="{{ route('admin.logout') }}" class="nav-item" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
-                    <span class="module-icon" style="color: #ef4444;">🚪</span>
-                    <span class="nav-text">Logout</span>
-                    <span class="nav-tooltip">Logout</span>
-                </a>
-                <form id="logout-form" action="{{ route('admin.logout') }}" method="POST" style="display: none;">
-                    @csrf
-                </form>
-            </li>
         </ul>
     </nav>
 </aside>
