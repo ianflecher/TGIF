@@ -69,7 +69,7 @@
         }
     </script>
     
-    <title>Thanks G Its Fries Day - {{ ucfirst(strtolower(Auth::user()->employee->department->department_name ?? 'Employee')) }} Portal</title>
+    <title>Thanks G Its Fries Day - Employee Portal</title>
 
     <style>
         :root {
@@ -80,33 +80,14 @@
             --mint-green: #86efac;
         }
         
-        /* Dynamic department colors */
-        .department-support {
-            --dept-primary: #2563eb;
-            --dept-dark: #1d4ed8;
-            --dept-light: #dbeafe;
-            --dept-accent: #60a5fa;
-        }
-        
-        .department-warehouse {
-            --dept-primary: #f97316;
-            --dept-dark: #c2410c;
-            --dept-light: #ffedd5;
-            --dept-accent: #fb923c;
-        }
-        
-        .department-procurement {
-            --dept-primary: #a855f7;
-            --dept-dark: #7e22ce;
-            --dept-light: #f3e8ff;
-            --dept-accent: #c084fc;
-        }
-        
-        .department-default {
+        /* Use default green theme for everyone */
+        body {
             --dept-primary: #22c55e;
             --dept-dark: #15803d;
             --dept-light: #dcfce7;
             --dept-accent: #86efac;
+            --dept-primary-rgb: 34, 197, 94;
+            --dept-accent-rgb: 134, 239, 172;
         }
         
         body {
@@ -524,28 +505,32 @@
             border-color: var(--dept-dark);
         }
         
-        /* Access control styles */
+        /* Remove access control styles */
         .nav-item.disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            pointer-events: none;
+            opacity: 1;
+            cursor: pointer;
+            pointer-events: auto;
         }
         
         .access-denied {
-            color: #9ca3af;
-            font-style: italic;
+            color: white;
+            font-style: normal;
         }
     </style>
     
     <script>
-        // Set department class and RGB values
+        // Set department class and RGB values - everyone gets default green theme
         document.addEventListener('DOMContentLoaded', function() {
-            const departmentName = "{{ strtolower(Auth::user()->employee->department->department_name ?? 'default') }}";
-            const departmentClass = getDepartmentClass(departmentName);
-            const colors = getDepartmentColors(departmentClass);
-            
-            // Add department class to body
-            document.body.classList.add(departmentClass);
+            // Everyone uses default green theme
+            const departmentClass = 'department-default';
+            const colors = {
+                primary: '#22c55e',
+                dark: '#15803d',
+                light: '#dcfce7',
+                accent: '#86efac',
+                primaryRgb: '34, 197, 94',
+                accentRgb: '134, 239, 172'
+            };
             
             // Set CSS custom properties
             document.documentElement.style.setProperty('--dept-primary', colors.primary);
@@ -555,112 +540,37 @@
             document.documentElement.style.setProperty('--dept-primary-rgb', colors.primaryRgb);
             document.documentElement.style.setProperty('--dept-accent-rgb', colors.accentRgb);
             
-            // Control module access based on department
-            controlModuleAccess(departmentName);
-            
-            function getDepartmentClass(deptName) {
-                const dept = deptName.toLowerCase();
-                if (dept.includes('support') || dept.includes('help') || dept.includes('service')) {
-                    return 'department-support';
-                } else if (dept.includes('warehouse') || dept.includes('storage') || dept.includes('inventory')) {
-                    return 'department-warehouse';
-                } else if (dept.includes('procurement') || dept.includes('purchasing') || dept.includes('purchase')) {
-                    return 'department-procurement';
-                } else {
-                    return 'department-default';
-                }
-            }
-            
-            function getDepartmentColors(deptClass) {
-                const colorMap = {
-                    'department-support': {
-                        primary: '#2563eb',
-                        dark: '#1d4ed8',
-                        light: '#dbeafe',
-                        accent: '#60a5fa',
-                        primaryRgb: '37, 99, 235',
-                        accentRgb: '96, 165, 250'
-                    },
-                    'department-warehouse': {
-                        primary: '#f97316',
-                        dark: '#c2410c',
-                        light: '#ffedd5',
-                        accent: '#fb923c',
-                        primaryRgb: '249, 115, 22',
-                        accentRgb: '251, 146, 60'
-                    },
-                    'department-procurement': {
-                        primary: '#a855f7',
-                        dark: '#7e22ce',
-                        light: '#f3e8ff',
-                        accent: '#c084fc',
-                        primaryRgb: '168, 85, 247',
-                        accentRgb: '192, 132, 252'
-                    },
-                    'department-default': {
-                        primary: '#22c55e',
-                        dark: '#15803d',
-                        light: '#dcfce7',
-                        accent: '#86efac',
-                        primaryRgb: '34, 197, 94',
-                        accentRgb: '134, 239, 172'
-                    }
-                };
+            // Enable all modules for everyone
+            document.querySelectorAll('.nav-item.disabled').forEach(item => {
+                item.classList.remove('disabled');
+                const icon = item.querySelector('.module-icon');
+                const text = item.querySelector('.nav-text');
+                const tooltip = item.querySelector('.nav-tooltip');
                 
-                return colorMap[deptClass] || colorMap['department-default'];
-            }
-            
-            function controlModuleAccess(deptName) {
-                const dept = deptName.toLowerCase();
-                const supportModules = ['dashboard', 'tasks', 'support', 'attendance', 'payroll', 'leave'];
-                const warehouseModules = ['dashboard', 'tasks', 'attendance', 'payroll', 'leave', 'warehouse'];
-                const procurementModules = ['dashboard', 'tasks', 'attendance', 'payroll', 'leave', 'procurement.create'];
-                
-                let allowedModules = [];
-                
-                if (dept.includes('support')) {
-                    allowedModules = supportModules;
-                } else if (dept.includes('warehouse')) {
-                    allowedModules = warehouseModules;
-                } else if (dept.includes('procurement') || dept.includes('purchasing')) {
-                    allowedModules = procurementModules;
-                } else {
-                    // Default: show all modules
-                    allowedModules = ['dashboard', 'tasks', 'support', 'attendance', 'payroll', 'leave', 'warehouse', 'procurement.create'];
-                }
-                
-                // Disable modules not allowed for this department
-                document.querySelectorAll('.nav-item').forEach(item => {
+                // Reset icons to original (you'll need to set these based on actual module)
+                if (icon && text && tooltip) {
+                    // You can set specific icons based on href
                     const href = item.getAttribute('href');
-                    const moduleName = href ? href.split('/').pop() : '';
-                    const routeName = href ? href.replace(/^\//, '').replace(/\//g, '.') : '';
-                    
-                    let isAllowed = false;
-                    for (const allowedModule of allowedModules) {
-                        if (routeName.includes(allowedModule) || href.includes(allowedModule)) {
-                            isAllowed = true;
-                            break;
+                    if (href) {
+                        if (href.includes('support')) {
+                            icon.textContent = '🛠️';
+                            text.textContent = 'Support';
+                            tooltip.textContent = 'Support Tickets';
+                        } else if (href.includes('warehouse')) {
+                            icon.textContent = '🏪';
+                            text.textContent = 'Warehouse';
+                            tooltip.textContent = 'Warehouse Management';
+                        } else if (href.includes('procurement')) {
+                            icon.textContent = '📝';
+                            text.textContent = 'Purchase Request';
+                            tooltip.textContent = 'Create Purchase Requisition';
                         }
                     }
-                    
-                    if (!isAllowed && href) {
-                        item.classList.add('disabled');
-                        const icon = item.querySelector('.module-icon');
-                        const text = item.querySelector('.nav-text');
-                        const tooltip = item.querySelector('.nav-tooltip');
-                        
-                        if (icon) icon.textContent = '🚫';
-                        if (text) {
-                            text.textContent = 'Access Restricted';
-                            text.classList.add('access-denied');
-                        }
-                        if (tooltip) {
-                            tooltip.textContent = 'Not Available for Your Department';
-                            tooltip.style.background = '#9ca3af';
-                        }
-                    }
-                });
-            }
+                }
+                
+                if (text) text.classList.remove('access-denied');
+                if (tooltip) tooltip.style.background = '';
+            });
         });
     </script>
 </head>
@@ -689,7 +599,7 @@
             <div class="logo-text">
                 <div class="company-name">Thanks G Its Fries Day</div>
                 <div class="company-tagline">
-                    {{ ucfirst(Auth::user()->employee->department->department_name ?? 'Employee') }} Portal
+                    Employee Portal
                 </div>
             </div>
         </div>
@@ -700,7 +610,7 @@
                 <span style="color: var(--dept-accent);">👤</span>
                 <span>{{ Auth::user()->name ?? 'Employee' }}</span>
                 <span class="employee-role">
-                    {{ strtoupper(Auth::user()->employee->department->department_name ?? 'EMPLOYEE') }}
+                    EMPLOYEE
                 </span>
             </div>
             
@@ -716,7 +626,7 @@
 
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
-    <h3>{{ strtoupper(Auth::user()->employee->department->department_name ?? 'EMPLOYEE') }} MODULES</h3>
+    <h3>EMPLOYEE MODULES</h3>
 
     <nav>
         <ul>
@@ -744,12 +654,7 @@
                 </a>
             </li>
 
-            <!-- Support (Only for Support Department) -->
-            @php
-                $deptName = strtolower(Auth::user()->employee->department->department_name ?? '');
-            @endphp
-            
-            @if(str_contains($deptName, 'support'))
+            <!-- Support (Show for everyone) -->
             <li>
                 <a href="{{ route('employee.support') }}"
                    class="nav-item {{ request()->routeIs('employee.support') ? 'active' : '' }}">
@@ -758,7 +663,6 @@
                     <span class="nav-tooltip">Support Tickets</span>
                 </a>
             </li>
-            @endif
 
             <!-- Attendance -->
             <li>
@@ -790,8 +694,7 @@
                 </a>
             </li>
 
-            <!-- Warehouse (Only for Warehouse Department) -->
-            @if(str_contains($deptName, 'warehouse'))
+            <!-- Warehouse Operations Section (Show for everyone) -->
             <li class="mt-5">
                 <h3>📦 WAREHOUSE OPERATIONS</h3>
             </li>
@@ -803,10 +706,8 @@
                     <span class="nav-tooltip">Warehouse Management</span>
                 </a>
             </li>
-            @endif
 
-            <!-- Purchase Requisition (Only for Procurement/Purchasing Department) -->
-            @if(str_contains($deptName, 'procurement') || str_contains($deptName, 'purchasing'))
+            <!-- Procurement Operations Section (Show for everyone) -->
             <li class="mt-5">
                 <h3>📋 PROCUREMENT OPERATIONS</h3>
             </li>
@@ -818,7 +719,6 @@
                     <span class="nav-tooltip">Create Purchase Requisition</span>
                 </a>
             </li>
-            @endif
         </ul>
     </nav>
 </aside>
@@ -863,8 +763,6 @@
         const navItems = document.querySelectorAll('.nav-item');
         
         navItems.forEach(item => {
-            if (item.classList.contains('disabled')) return;
-            
             const href = item.getAttribute('href');
             if (href && currentPath.includes(href.replace(/\/$/, '')) && href !== '/') {
                 item.classList.add('active');
@@ -877,7 +775,7 @@
         
         // Auto-close mobile menu on item click
         if (window.innerWidth <= 480) {
-            document.querySelectorAll('.nav-item:not(.disabled)').forEach(item => {
+            document.querySelectorAll('.nav-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const sidebar = document.getElementById('sidebar');
                     if (sidebar) sidebar.classList.remove('mobile-open');

@@ -241,12 +241,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">All Projects</h2>
                     <p class="text-sm text-gray-600">Overview of all active and completed projects</p>
                 </div>
-                <a href="{{ route('projects.home') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
-                    View All
-                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                </a>
+
             </div>
             <div class="p-6">
                 <div class="space-y-4">
@@ -315,12 +310,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">Recent Tasks</h2>
                     <p class="text-sm text-gray-600">Latest tasks across all projects</p>
                 </div>
-                <a href="{{ route('projects.home') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
-                    View All
-                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                </a>
+
             </div>
             <div class="p-6">
                 <div class="space-y-4">

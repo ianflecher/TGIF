@@ -775,7 +775,7 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                         </div>
                         <div class="text-center p-3 bg-white rounded border">
                             <div class="text-2xl font-bold text-green-600">
-                                ${{ number_format(collect($customerOrders)->sum('grand_total'), 2) }}
+                                ₱{{ number_format(collect($customerOrders)->sum('grand_total'), 2) }}
                             </div>
                             <div class="text-sm text-gray-500">Total Orders</div>
                         </div>

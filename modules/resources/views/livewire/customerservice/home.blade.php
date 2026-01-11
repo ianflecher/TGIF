@@ -87,42 +87,41 @@ new #[Layout('components.layouts.app')] class extends Component
         });
     }
     
-    public function showTicketDetails($ticketId)
-    {
-        $this->selectedTicket = DB::table('tickets')
+public function showTicketDetails($ticketId)
+{
+    $this->selectedTicket = DB::table('tickets')
+        ->select(
+            'tickets.*',
+            'customers.first_name',
+            'customers.last_name',
+            'customers.email',
+            'customers.phone',
+            'agent_users.full_name as assigned_agent_name' // Only keep this one
+        )
+        ->leftJoin('customers', 'tickets.customer_id', '=', 'customers.customer_id')
+        ->leftJoin('employees', 'tickets.assigned_agent', '=', 'employees.employee_id')
+        ->leftJoin('users as agent_users', 'employees.user_id', '=', 'agent_users.user_id')
+        ->where('tickets.ticket_id', $ticketId)
+        ->first();
+    
+    if ($this->selectedTicket) {
+        // Load ticket notes
+        $this->selectedTicket->notes = DB::table('ticket_notes')
             ->select(
-                'tickets.*',
-                'customers.first_name',
-                'customers.last_name',
-                'customers.email',
-                'customers.phone',
-                'users.full_name as agent_name',
-                'agent_users.full_name as assigned_agent_name'
+                'ticket_notes.*',
+                'users.full_name as author_name',
+                DB::raw('CASE WHEN employees.employee_id IS NOT NULL THEN "agent" ELSE "customer" END as sender_type')
             )
-            ->leftJoin('customers', 'tickets.customer_id', '=', 'customers.customer_id')
-            ->leftJoin('employees', 'tickets.assigned_agent', '=', 'employees.employee_id')
-            ->leftJoin('users as agent_users', 'employees.user_id', '=', 'agent_users.user_id')
-            ->where('tickets.ticket_id', $ticketId)
-            ->first();
-        
-        if ($this->selectedTicket) {
-            // Load ticket notes
-            $this->selectedTicket->notes = DB::table('ticket_notes')
-                ->select(
-                    'ticket_notes.*',
-                    'users.full_name as author_name',
-                    DB::raw('CASE WHEN employees.employee_id IS NOT NULL THEN "agent" ELSE "customer" END as sender_type')
-                )
-                ->leftJoin('users', 'ticket_notes.created_by', '=', 'users.user_id')
-                ->leftJoin('employees', 'users.user_id', '=', 'employees.user_id')
-                ->where('ticket_id', $ticketId)
-                ->orderBy('created_at', 'asc')
-                ->get();
-        }
-        
-        $this->assignAgentId = $this->selectedTicket->assigned_agent ?? '';
-        $this->showTicketModal = true;
+            ->leftJoin('users', 'ticket_notes.created_by', '=', 'users.user_id')
+            ->leftJoin('employees', 'users.user_id', '=', 'employees.user_id')
+            ->where('ticket_id', $ticketId)
+            ->orderBy('created_at', 'asc')
+            ->get();
     }
+    
+    $this->assignAgentId = $this->selectedTicket->assigned_agent ?? '';
+    $this->showTicketModal = true;
+}
     
     public function assignAgent()
     {

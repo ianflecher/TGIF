@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 
 new #[Layout('components.layouts.landing')] class extends Component
 {
@@ -23,7 +24,44 @@ new #[Layout('components.layouts.landing')] class extends Component
             'full_name' => ['required', 'string', 'max:150'],
             'username' => ['required', 'string', 'max:100', 'unique:users,username'],
             'email' => ['required', 'string', 'email', 'max:150', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => [
+                'nullable', 
+                'string', 
+                'max:50',
+                function ($attribute, $value, $fail) {
+                    // If phone is provided, validate it
+                    if ($value && $value !== '') {
+                        // Remove spaces, dashes, and other non-numeric characters
+                        $cleaned = preg_replace('/[^0-9]/', '', $value);
+                        
+                        // Check if it's exactly 11 digits
+                        if (strlen($cleaned) !== 11) {
+                            $fail('Phone number must be 11 digits.');
+                            return;
+                        }
+                        
+                        // Check if it starts with 639 or 09
+                        if (!preg_match('/^(639|09)/', $cleaned)) {
+                            $fail('Phone number must start with 639 or 09.');
+                            return;
+                        }
+                        
+                        // If starts with 09, ensure the next check passes
+                        if (str_starts_with($cleaned, '09')) {
+                            // Validate the rest of the number
+                            if (!preg_match('/^09[0-9]{9}$/', $cleaned)) {
+                                $fail('Invalid phone number format.');
+                            }
+                        }
+                        // If starts with 639, ensure it's followed by 9 digits
+                        elseif (str_starts_with($cleaned, '639')) {
+                            if (!preg_match('/^639[0-9]{9}$/', $cleaned)) {
+                                $fail('Invalid phone number format.');
+                            }
+                        }
+                    }
+                }
+            ],
             'address' => ['nullable', 'string'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'password_confirmation' => ['required', 'string'],
@@ -33,6 +71,9 @@ new #[Layout('components.layouts.landing')] class extends Component
     public function register()
     {
         $this->validate();
+
+        // Clean the phone number before saving
+        $cleanedPhone = $this->phone ? preg_replace('/[^0-9]/', '', $this->phone) : null;
 
         // Start database transaction
         DB::beginTransaction();
@@ -54,7 +95,7 @@ new #[Layout('components.layouts.landing')] class extends Component
                 'first_name' => explode(' ', $this->full_name)[0] ?? '',
                 'last_name' => explode(' ', $this->full_name)[1] ?? '',
                 'email' => $this->email,
-                'phone' => $this->phone,
+                'phone' => $cleanedPhone,
                 'address' => $this->address,
                 'user_id' => $userId,
                 'date_registered' => now(),
@@ -194,13 +235,16 @@ new #[Layout('components.layouts.landing')] class extends Component
                                 type="tel" 
                                 wire:model="phone" 
                                 id="phone"
-                                placeholder="Enter phone number"
+                                placeholder="09XXXXXXXXX or 639XXXXXXXXX"
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
                                 <i class="fas fa-phone"></i>
                             </div>
                         </div>
+                        <p class="mt-1 text-xs text-gray-500">
+                            Format: 09XXXXXXXXX or 639XXXXXXXXX (11 digits total)
+                        </p>
                         @error('phone')
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
@@ -371,12 +415,13 @@ new #[Layout('components.layouts.landing')] class extends Component
     </div>
 </div>
 
-@script
+
 <script>
     // Toggle password visibility
     function togglePassword(inputId) {
         const passwordInput = document.getElementById(inputId);
-        const eyeIcon = event.currentTarget.querySelector('i');
+        const button = event.currentTarget;
+        const eyeIcon = button.querySelector('i');
         
         if (passwordInput.type === 'password') {
             passwordInput.type = 'text';
@@ -395,6 +440,20 @@ new #[Layout('components.layouts.landing')] class extends Component
         if (nameField) {
             nameField.focus();
         }
+        
+        // Optional: Add phone number formatting
+        const phoneInput = document.getElementById('phone');
+        if (phoneInput) {
+            phoneInput.addEventListener('input', function(e) {
+                // Remove non-numeric characters
+                let value = e.target.value.replace(/\D/g, '');
+                
+                // Limit to 11 digits
+                value = value.substring(0, 11);
+                
+                // Update the input value
+                e.target.value = value;
+            });
+        }
     });
 </script>
-@endscript

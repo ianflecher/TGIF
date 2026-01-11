@@ -1095,7 +1095,6 @@
 
         <!-- User Actions -->
         <div class="user-actions">
-            @auth
                 <div class="user-badge support">
                     <i class="fas fa-headset"></i>
                     <span>{{ Auth::user()->full_name ?? 'Support Agent' }}</span>
@@ -1107,11 +1106,6 @@
                         <i class="fas fa-sign-out-alt"></i>Logout
                     </button>
                 </form>
-            @else
-                <a href="{{ route('helpdesk.login') }}" class="nav-link">
-                    <i class="fas fa-sign-in-alt"></i>Login
-                </a>
-            @endauth
         </div>
     </div>
 

@@ -288,12 +288,6 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">Recent Tickets</h2>
                     <p class="text-sm text-gray-600">Latest customer support requests</p>
                 </div>
-                <a href="{{ route('sales.ticket') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
-                    View All
-                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                </a>
             </div>
             <div class="p-6">
                 <div class="space-y-4">
@@ -354,12 +348,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     <h2 class="text-xl font-semibold text-gray-800">Top Agents</h2>
                     <p class="text-sm text-gray-600">Best performing support agents</p>
                 </div>
-                <a href="{{ route('sales.ticket') }}?view=agents" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
-                    View All
-                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                    </svg>
-                </a>
+
             </div>
             <div class="p-6">
                 <div class="space-y-4">

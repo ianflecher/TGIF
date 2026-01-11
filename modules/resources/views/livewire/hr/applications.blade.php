@@ -129,35 +129,30 @@ new #[Layout('components.layouts.humanresource')] class extends Component
         $this->applications = $query->get();
     }
 
-    public function loadEmployees()
-    {
-        // Get all users with employee records OR who should have employee records
-        $this->employees = DB::table('users as u')
-            ->select(
-                'u.user_id',
-                'u.full_name',
-                'u.username',
-                'u.email',
-                'u.role',
-                'e.employee_id',
-                'e.job_title',
-                'e.hire_date',
-                'e.salary',
-                'e.status as emp_status',
-                'e.department_id',
-                'd.department_name'
-            )
-            ->leftJoin('employees as e', 'u.user_id', '=', 'e.user_id')
-            ->leftJoin('departments as d', 'e.department_id', '=', 'd.department_id')
-            ->where(function($query) {
-                // Include users who have role 'employee'
-                $query->where('u.role', 'employee')
-                      // OR users who have an employee record (even if role is different)
-                      ->orWhereNotNull('e.employee_id');
-            })
-            ->orderBy('u.full_name')
-            ->get();
-    }
+  public function loadEmployees()
+{
+    $this->employees = DB::table('users as u')
+        ->select(
+            'u.user_id',
+            'u.full_name',
+            'u.username',
+            'u.email',
+            'u.role',
+            'e.employee_id',
+            'e.job_title',
+            'e.hire_date',
+            'e.salary',
+            'e.status as emp_status',
+            'e.department_id',
+            'd.department_name'
+        )
+        ->join('employees as e', 'u.user_id', '=', 'e.user_id') // INNER JOIN
+        ->leftJoin('departments as d', 'e.department_id', '=', 'd.department_id')
+        ->where('e.status', 'active') // ✅ ONLY ACTIVE
+        ->orderBy('u.full_name')
+        ->get();
+}
+
 
     public function loadDepartments()
     {
@@ -236,74 +231,85 @@ new #[Layout('components.layouts.humanresource')] class extends Component
         $this->showDocumentsModal = true;
     }
 
-    public function updateApplicationStatus($applicationId, $status)
-    {
-        $updates = [
-            'status' => $status,
-            'updated_at' => now()
-        ];
+public function updateApplicationStatus($applicationId, $status)
+{
+    $updates = [
+        'status' => $status,
+        'updated_at' => now()
+    ];
 
-        if ($status !== 'reviewed') {
-            $updates['interview_date'] = null;
-            $updates['interview_notes'] = null;
-            $updates['interviewer_id'] = null;
-            $updates['interview_status'] = null;
-        }
+    if ($status !== 'reviewed') {
+        $updates['interview_date'] = null;
+        $updates['interview_notes'] = null;
+        $updates['interviewer_id'] = null;
+        $updates['interview_status'] = null;
+    }
 
-        DB::table('job_applications')
+    DB::table('job_applications')
+        ->where('application_id', $applicationId)
+        ->update($updates);
+
+    if ($status === 'hired') {
+        $application = DB::table('job_applications')
             ->where('application_id', $applicationId)
-            ->update($updates);
+            ->first();
 
-        if ($status === 'hired') {
-            $application = DB::table('job_applications')
-                ->where('application_id', $applicationId)
+        if ($application) {
+            // Update user role to employee
+            DB::table('users')
+                ->where('user_id', $application->user_id)
+                ->update(['role' => 'employee']);
+
+            // Check if employee record already exists
+            $existingEmployee = DB::table('employees')
+                ->where('user_id', $application->user_id)
                 ->first();
-
-            if ($application) {
-                // Update user role to employee
-                DB::table('users')
+            
+            if (!$existingEmployee) {
+                // Create employee record for new hire with status 'active'
+                DB::table('employees')->insert([
+                    'user_id' => $application->user_id,
+                    'job_title' => $application->position_applied,
+                    'hire_date' => date('Y-m-d'),
+                    'salary' => 0.00,
+                    'status' => 'active', // Explicitly set status to 'active'
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            } else {
+                // Update existing employee record for re-hire
+                DB::table('employees')
                     ->where('user_id', $application->user_id)
-                    ->update(['role' => 'employee']);
-
-                // Check if employee record already exists
-                $existingEmployee = DB::table('employees')
-                    ->where('user_id', $application->user_id)
-                    ->first();
-                
-                if (!$existingEmployee) {
-                    // Create employee record for new hire
-                    DB::table('employees')->insert([
-                        'user_id' => $application->user_id,
+                    ->update([
                         'job_title' => $application->position_applied,
                         'hire_date' => date('Y-m-d'),
-                        'salary' => 0.00,
-                        'status' => 'active',
-                        'created_at' => now(),
+                        'status' => 'active', // Ensure status is set to 'active'
                         'updated_at' => now()
                     ]);
-                } else {
-                    // Update existing employee record for re-hire
-                    DB::table('employees')
-                        ->where('user_id', $application->user_id)
-                        ->update([
-                            'job_title' => $application->position_applied,
-                            'hire_date' => date('Y-m-d'),
-                            'status' => 'active',
-                            'updated_at' => now()
-                        ]);
-                }
             }
+            
+            // Also update application notes to reflect hiring
+            $currentNotes = $application->notes ?? '';
+            $newNotes = $currentNotes . "\n\n--- HIRED ---\n";
+            $newNotes .= "Hired as: " . $application->position_applied . "\n";
+            $newNotes .= "Hire date: " . date('Y-m-d') . "\n";
+            $newNotes .= "Employee record " . ($existingEmployee ? 'updated' : 'created');
+            
+            DB::table('job_applications')
+                ->where('application_id', $applicationId)
+                ->update(['notes' => $newNotes]);
         }
-
-        if ($this->showApplicationModal) {
-            $this->showApplicationModal = false;
-            $this->selectedApplication = null;
-        }
-        
-        $this->loadData();
-        
-        session()->flash('success', 'Application status updated successfully!');
     }
+
+    if ($this->showApplicationModal) {
+        $this->showApplicationModal = false;
+        $this->selectedApplication = null;
+    }
+    
+    $this->loadData();
+    
+    session()->flash('success', 'Application status updated successfully!');
+}
 
     public function markAsReviewed($applicationId)
     {
