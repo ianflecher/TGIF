@@ -206,7 +206,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         </div>
 
         <!-- Cart Items -->
-        <a href="#" class="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <a href="customer.cart.index" class="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
             <div class="flex items-center">
                 <div class="p-3 rounded-lg bg-purple-100">
                     <span class="text-purple-600 text-xl">🛒</span>
@@ -219,7 +219,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         </a>
 
         <!-- Open Tickets -->
-        <a href="{{ route('customer.support.tickets') }}" class="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+        <a href="{{ route('customer.support.index') }}" class="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
             <div class="flex items-center">
                 <div class="p-3 rounded-lg bg-orange-100">
                     <span class="text-orange-600 text-xl">🎫</span>
@@ -398,20 +398,6 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                        class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
                         <span class="text-xl mr-3">🎫</span>
                         <span class="flex-1">Create Support Ticket</span>
-                        <span class="text-gray-400">→</span>
-                    </a>
-                    
-                    <a href="#" 
-                       class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                        <span class="text-xl mr-3">👤</span>
-                        <span class="flex-1">Update Profile</span>
-                        <span class="text-gray-400">→</span>
-                    </a>
-                    
-                    <a href="#" 
-                       class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                        <span class="text-xl mr-3">❤️</span>
-                        <span class="flex-1">View Wishlist ({{ $wishlistItems }})</span>
                         <span class="text-gray-400">→</span>
                     </a>
                 </div>

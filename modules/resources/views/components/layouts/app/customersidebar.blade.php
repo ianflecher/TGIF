@@ -32,7 +32,7 @@
             top: 0;
             left: 0;
             right: 0;
-            z-index: 1000;
+            z-index: 500;
             box-shadow: 0 2px 12px rgba(21, 128, 61, 0.2);
         }
         
@@ -444,12 +444,7 @@
                             <i class="fas fa-tachometer-alt"></i>
                             Dashboard
                         </a>
-                        
-                        <!-- Profile -->
-                        <a href="{{ route('customer.account.profile') }}" class="dropdown-item {{ request()->routeIs('customer.account.*') ? 'active' : '' }}">
-                            <i class="fas fa-user-circle"></i>
-                            My Profile
-                        </a>
+    
                         
                         <!-- Orders -->
                         <a href="{{ route('customer.orders.index') }}" class="dropdown-item">
@@ -526,14 +521,6 @@
                 <i class="fas fa-chevron-right text-gray-400"></i>
             </a>
             
-            <!-- Profile -->
-            <a href="{{ route('customer.account.profile') }}" class="mobile-nav-item">
-                <div class="mobile-nav-left">
-                    <i class="fas fa-user-circle text-green-600"></i>
-                    <span>Profile</span>
-                </div>
-                <i class="fas fa-chevron-right text-gray-400"></i>
-            </a>
             
             <!-- Support -->
             <a href="{{ route('customer.support.tickets') }}" class="mobile-nav-item">

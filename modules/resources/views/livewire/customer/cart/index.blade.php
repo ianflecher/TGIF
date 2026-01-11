@@ -4,7 +4,6 @@ use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Models\Product;
 
 new #[Layout('components.layouts.customerapp')] class extends Component
 {
@@ -29,9 +28,74 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         
         $userId = Auth::user()->user_id;
         
+        // Try to get cart from session first (since we're using session-based cart)
+        $cart = session()->get('cart', []);
+        
+        if (isset($cart[$userId])) {
+            // Use session cart
+            $this->loadCartFromSession($userId, $cart[$userId]);
+        } else {
+            // Fallback to database cart if session is empty
+            $this->loadCartFromDatabase($userId);
+        }
+    }
+
+    private function loadCartFromSession($userId, $sessionCart)
+    {
+        $this->cartItems = [];
+        $this->subtotal = 0;
+        
+        foreach ($sessionCart as $key => $cartItem) {
+            // Get product info from database
+            $product = DB::table('products')
+                ->where('product_id', $cartItem['product_id'])
+                ->first();
+            
+            if ($product) {
+                // Get image
+                $image = null;
+                if (!empty($cartItem['image'])) {
+                    $image = $cartItem['image'];
+                } elseif ($product->images) {
+                    try {
+                        $images = json_decode($product->images, true);
+                        $image = is_array($images) && count($images) > 0 ? $images[0] : null;
+                    } catch (\Exception $e) {
+                        $image = null;
+                    }
+                }
+                
+                $itemTotal = $cartItem['total_price'];
+                
+                $this->cartItems[] = [
+                    'cart_key' => $key,
+                    'product_id' => $product->product_id,
+                    'name' => $product->product_name,
+                    'price' => $cartItem['unit_price'],
+                    'quantity' => $cartItem['quantity'],
+                    'image' => $image,
+                    'total' => $itemTotal,
+                    'stock_quantity' => $product->stock_quantity ?? 0,
+                    // Add the selected options
+                    'size' => $cartItem['size'] ?? null,
+                    'flavor' => $cartItem['flavor'] ?? null,
+                    'variety' => $cartItem['variety'] ?? null,
+                    'base_price' => $cartItem['base_price'] ?? $cartItem['unit_price'],
+                    'price_adjustment_percent' => $cartItem['price_adjustment_percent'] ?? 0,
+                    'final_price' => $cartItem['final_price'] ?? $cartItem['total_price'],
+                    'is_session' => true
+                ];
+                $this->subtotal += $itemTotal;
+            }
+        }
+        
+        $this->calculateTotals();
+    }
+
+    private function loadCartFromDatabase($userId)
+    {
         // Check if cart_items table exists
         if (!DB::getSchemaBuilder()->hasTable('cart_items')) {
-            \Log::error('cart_items table does not exist');
             $this->cartItems = [];
             return;
         }
@@ -40,12 +104,6 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         $cartItems = DB::table('cart_items')
             ->where('user_id', $userId)
             ->get();
-        
-        \Log::info('Cart items from database', [
-            'user_id' => $userId,
-            'count' => $cartItems->count(),
-            'items' => $cartItems->toArray()
-        ]);
         
         $this->cartItems = [];
         $this->subtotal = 0;
@@ -56,7 +114,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                 ->first();
             
             if ($product) {
-                // Get image from product if not stored in cart
+                // Get image
                 $image = null;
                 if ($product->images) {
                     try {
@@ -72,22 +130,30 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                 $this->cartItems[] = [
                     'cart_item_id' => $cartItem->id,
                     'product_id' => $product->product_id,
-                    'name' => $product->product_name,
+                    'name' => $cartItem->product_name ?? $product->product_name,
                     'price' => $cartItem->unit_price,
                     'quantity' => $cartItem->quantity,
                     'image' => $image,
                     'total' => $itemTotal,
-                    'stock_quantity' => $product->stock_quantity ?? 0
+                    'stock_quantity' => $product->stock_quantity ?? 0,
+                    // Add the selected options (check if columns exist)
+                    'size' => $cartItem->size ?? null,
+                    'flavor' => $cartItem->flavor ?? null,
+                    'variety' => $cartItem->variety ?? null,
+                    'base_price' => $cartItem->base_price ?? $cartItem->unit_price,
+                    'price_adjustment_percent' => $cartItem->price_adjustment_percent ?? 0,
+                    'final_price' => $cartItem->final_price ?? $itemTotal,
+                    'is_session' => false
                 ];
                 $this->subtotal += $itemTotal;
-            } else {
-                // Product not found, remove from cart
-                DB::table('cart_items')
-                    ->where('id', $cartItem->id)
-                    ->delete();
             }
         }
         
+        $this->calculateTotals();
+    }
+
+    private function calculateTotals()
+    {
         // Calculate totals
         $this->tax = $this->subtotal * 0.08; // 8% tax
         $this->shipping = $this->subtotal > 100 ? 0 : 10; // Free shipping over $100
@@ -100,101 +166,95 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         ]);
     }
 
-    public function updateQuantity($cartItemId, $action)
+    public function updateQuantity($cartKey, $action)
     {
         if (!Auth::check()) {
             return;
         }
         
         $userId = Auth::user()->user_id;
+        $cart = session()->get('cart', []);
         
-        // Get cart item
-        $cartItem = DB::table('cart_items')
-            ->where('id', $cartItemId)
-            ->where('user_id', $userId)
-            ->first();
-        
-        if (!$cartItem) {
+        if (!isset($cart[$userId][$cartKey])) {
             return;
         }
         
+        $cartItem = $cart[$userId][$cartKey];
+        $productId = $cartItem['product_id'];
+        
         // Get product to check stock
         $product = DB::table('products')
-            ->where('product_id', $cartItem->product_id)
+            ->where('product_id', $productId)
             ->first();
         
         if (!$product) {
-            $this->removeItem($cartItemId);
+            unset($cart[$userId][$cartKey]);
+            session()->put('cart', $cart);
+            $this->loadCart();
             return;
         }
         
         if ($action === 'increase') {
-            // Check if enough stock
-            if ($product->stock_quantity > $cartItem->quantity) {
-                $newQuantity = $cartItem->quantity + 1;
-                DB::table('cart_items')
-                    ->where('id', $cartItemId)
-                    ->update([
-                        'quantity' => $newQuantity,
-                        'total_price' => $cartItem->unit_price * $newQuantity,
-                        'updated_at' => now()
-                    ]);
+            if ($product->stock_quantity > 0) {
+                $cart[$userId][$cartKey]['quantity'] += 1;
+                $cart[$userId][$cartKey]['total_price'] = $cart[$userId][$cartKey]['quantity'] * $cartItem['unit_price'];
                 
                 // Decrease stock
                 DB::table('products')
-                    ->where('product_id', $cartItem->product_id)
+                    ->where('product_id', $productId)
                     ->decrement('stock_quantity');
+            } else {
+                session()->flash('error', 'Insufficient stock available.');
+                return;
             }
         } elseif ($action === 'decrease') {
-            if ($cartItem->quantity > 1) {
-                $newQuantity = $cartItem->quantity - 1;
-                DB::table('cart_items')
-                    ->where('id', $cartItemId)
-                    ->update([
-                        'quantity' => $newQuantity,
-                        'total_price' => $cartItem->unit_price * $newQuantity,
-                        'updated_at' => now()
-                    ]);
+            if ($cartItem['quantity'] > 1) {
+                $cart[$userId][$cartKey]['quantity'] -= 1;
+                $cart[$userId][$cartKey]['total_price'] = $cart[$userId][$cartKey]['quantity'] * $cartItem['unit_price'];
                 
                 // Increase stock
                 DB::table('products')
-                    ->where('product_id', $cartItem->product_id)
+                    ->where('product_id', $productId)
                     ->increment('stock_quantity');
             } else {
                 // Remove item if quantity becomes 0
-                $this->removeItem($cartItemId);
+                $this->removeItem($cartKey);
                 return;
             }
         }
         
+        session()->put('cart', $cart);
         $this->loadCart();
         $this->dispatch('cart-updated');
     }
 
-    public function removeItem($cartItemId)
+    public function removeItem($cartKey)
     {
         if (!Auth::check()) {
             return;
         }
         
         $userId = Auth::user()->user_id;
+        $cart = session()->get('cart', []);
         
-        // Get cart item to restore stock
-        $cartItem = DB::table('cart_items')
-            ->where('id', $cartItemId)
-            ->where('user_id', $userId)
-            ->first();
-        
-        if ($cartItem) {
+        if (isset($cart[$userId][$cartKey])) {
+            $cartItem = $cart[$userId][$cartKey];
+            $productId = $cartItem['product_id'];
+            
             // Restore stock
             DB::table('products')
-                ->where('product_id', $cartItem->product_id)
-                ->increment('stock_quantity', $cartItem->quantity);
+                ->where('product_id', $productId)
+                ->increment('stock_quantity', $cartItem['quantity']);
             
             // Remove from cart
-            DB::table('cart_items')
-                ->where('id', $cartItemId)
-                ->delete();
+            unset($cart[$userId][$cartKey]);
+            
+            // If user's cart is empty, remove the user's entry
+            if (empty($cart[$userId])) {
+                unset($cart[$userId]);
+            }
+            
+            session()->put('cart', $cart);
         }
         
         $this->loadCart();
@@ -208,23 +268,20 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         }
         
         $userId = Auth::user()->user_id;
+        $cart = session()->get('cart', []);
         
-        // Get all cart items to restore stock
-        $cartItems = DB::table('cart_items')
-            ->where('user_id', $userId)
-            ->get();
-        
-        foreach ($cartItems as $cartItem) {
-            // Restore stock for each item
-            DB::table('products')
-                ->where('product_id', $cartItem->product_id)
-                ->increment('stock_quantity', $cartItem->quantity);
+        if (isset($cart[$userId])) {
+            // Restore stock for all items
+            foreach ($cart[$userId] as $cartItem) {
+                DB::table('products')
+                    ->where('product_id', $cartItem['product_id'])
+                    ->increment('stock_quantity', $cartItem['quantity']);
+            }
+            
+            // Clear user's cart
+            unset($cart[$userId]);
+            session()->put('cart', $cart);
         }
-        
-        // Clear cart
-        DB::table('cart_items')
-            ->where('user_id', $userId)
-            ->delete();
         
         $this->loadCart();
         $this->dispatch('cart-updated');
@@ -297,8 +354,55 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                         <div class="flex justify-between items-start">
                                             <div>
                                                 <h3 class="font-semibold text-lg text-gray-800">{{ $item['name'] }}</h3>
-                                                <div class="flex items-center gap-4 mt-2">
-                                                    <p class="text-green-600 font-medium">₱{{ number_format($item['price'], 2) }}</p>
+                                                
+                                                <!-- Display selected options -->
+                                                <div class="mt-2 flex flex-wrap gap-2">
+                                                    @if($item['size'])
+                                                        <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
+                                                            <i class="fas fa-expand-alt text-xs"></i>
+                                                            Size: {{ $item['size'] }}
+                                                        </span>
+                                                    @endif
+                                                    
+                                                    @if($item['flavor'])
+                                                        <span class="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-medium">
+                                                            <i class="fas fa-utensils text-xs"></i>
+                                                            Flavor: {{ $item['flavor'] }}
+                                                        </span>
+                                                    @endif
+                                                    
+                                                    @if($item['variety'])
+                                                        <span class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 text-xs rounded-full font-medium">
+                                                            <i class="fas fa-layer-group text-xs"></i>
+                                                            Variety: {{ $item['variety'] }}
+                                                        </span>
+                                                    @endif
+                                                    
+                                                    @if($item['price_adjustment_percent'] > 0)
+                                                        <span class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
+                                                            <i class="fas fa-percentage text-xs"></i>
+                                                            +{{ $item['price_adjustment_percent'] }}%
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                                
+                                                <!-- Price breakdown -->
+                                                <div class="mt-2 flex items-center gap-4">
+                                                    @if($item['base_price'] != $item['price'])
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="text-gray-500 line-through text-sm">
+                                                                ₱{{ number_format($item['base_price'], 2) }}
+                                                            </span>
+                                                            <span class="text-green-600 font-medium">
+                                                                ₱{{ number_format($item['price'], 2) }}
+                                                            </span>
+                                                        </div>
+                                                    @else
+                                                        <p class="text-green-600 font-medium">
+                                                            ₱{{ number_format($item['price'], 2) }}
+                                                        </p>
+                                                    @endif
+                                                    
                                                     @if($item['stock_quantity'] <= 0)
                                                         <span class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full font-medium">Out of Stock</span>
                                                     @elseif($item['stock_quantity'] <= 5)
@@ -312,19 +416,19 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                         <!-- Quantity Controls -->
                                         <div class="flex items-center mt-4">
                                             <div class="flex items-center border border-gray-300 rounded-lg">
-                                                <button wire:click="updateQuantity({{ $item['cart_item_id'] }}, 'decrease')" 
+                                                <button wire:click="updateQuantity('{{ $item['cart_key'] ?? $item['cart_item_id'] }}', 'decrease')" 
                                                         class="px-3 py-1 hover:bg-gray-100 rounded-l-lg transition-colors"
                                                         {{ $item['quantity'] <= 1 ? 'disabled' : '' }}>
                                                     <i class="fas fa-minus text-sm {{ $item['quantity'] <= 1 ? 'text-gray-400' : '' }}"></i>
                                                 </button>
                                                 <span class="px-4 py-1 border-x border-gray-300 font-medium">{{ $item['quantity'] }}</span>
-                                                <button wire:click="updateQuantity({{ $item['cart_item_id'] }}, 'increase')" 
+                                                <button wire:click="updateQuantity('{{ $item['cart_key'] ?? $item['cart_item_id'] }}', 'increase')" 
                                                         class="px-3 py-1 hover:bg-gray-100 rounded-r-lg transition-colors"
                                                         {{ $item['stock_quantity'] <= 0 ? 'disabled' : '' }}>
                                                     <i class="fas fa-plus text-sm {{ $item['stock_quantity'] <= 0 ? 'text-gray-400' : '' }}"></i>
                                                 </button>
                                             </div>
-                                            <button wire:click="removeItem({{ $item['cart_item_id'] }})" 
+                                            <button wire:click="removeItem('{{ $item['cart_key'] ?? $item['cart_item_id'] }}')" 
                                                     wire:confirm="Remove this item from cart? Stock will be restored."
                                                     class="ml-6 text-red-600 hover:text-red-800 font-medium flex items-center gap-1">
                                                 <i class="fas fa-trash-alt"></i>

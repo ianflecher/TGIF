@@ -76,6 +76,12 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                     'price' => $cartItem->unit_price,
                     'quantity' => $cartItem->quantity,
                     'total' => $itemTotal,
+                    'size' => $cartItem->size,
+                    'flavor' => $cartItem->flavor,
+                    'variety' => $cartItem->variety,
+                    'base_price' => $cartItem->base_price,
+                    'price_adjustment_percent' => $cartItem->price_adjustment_percent,
+                    'final_price' => $cartItem->final_price,
                 ];
                 $this->total += $itemTotal;
             }
@@ -134,6 +140,15 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                 
                 if ($customer) {
                     $customerId = $customer->customer_id;
+                    // Update customer info if changed
+                    DB::table('customers')
+                        ->where('customer_id', $customerId)
+                        ->update([
+                            'name' => $this->name,
+                            'phone' => $this->phone,
+                            'address' => $this->address,
+                            'updated_at' => now(),
+                        ]);
                 } else {
                     // Create a new customer record
                     $customerId = DB::table('customers')->insertGetId([
@@ -159,14 +174,21 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                 'status' => 'confirmed', // Using confirmed instead of draft
                 'shipping_address' => $this->address,
                 'billing_address' => $this->address,
+                'order_notes' => $this->notes,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
             
-            // Insert order items - using your actual table column names
+            // Insert order items - with all option details
             $this->orderDetails = [];
+            
+            // First, check if order_items has the option columns
+            $hasSizeColumn = DB::getSchemaBuilder()->hasColumn('order_items', 'size');
+            $hasProductNameColumn = DB::getSchemaBuilder()->hasColumn('order_items', 'product_name');
+            
             foreach ($this->cartItems as $item) {
-                DB::table('order_items')->insert([
+                // Prepare the order item data
+                $orderItemData = [
                     'order_id' => $orderId,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
@@ -177,18 +199,41 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                     'total' => $item['total'],
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
                 
-                // Update stock
+                // Add product name if column exists
+                if ($hasProductNameColumn) {
+                    $orderItemData['product_name'] = $item['name'];
+                }
+                
+                // Add option columns if they exist
+                if ($hasSizeColumn) {
+                    $orderItemData['size'] = $item['size'];
+                    $orderItemData['flavor'] = $item['flavor'];
+                    $orderItemData['variety'] = $item['variety'];
+                    $orderItemData['base_price'] = $item['base_price'] ?? $item['price'];
+                    $orderItemData['price_adjustment_percent'] = $item['price_adjustment_percent'] ?? 0;
+                    $orderItemData['final_price'] = $item['final_price'] ?? $item['price'];
+                    $orderItemData['unit_price'] = $item['price']; // Add unit_price column if it exists
+                }
+                
+                // Insert the order item
+                DB::table('order_items')->insert($orderItemData);
+                
+                // Also decrement product stock
                 DB::table('products')
                     ->where('product_id', $item['product_id'])
                     ->decrement('stock_quantity', $item['quantity']);
-                    
+                
                 $this->orderDetails[] = [
                     'name' => $item['name'],
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
-                    'total' => $item['total']
+                    'total' => $item['total'],
+                    'size' => $item['size'],
+                    'flavor' => $item['flavor'],
+                    'variety' => $item['variety'],
+                    'price_adjustment_percent' => $item['price_adjustment_percent'] ?? 0,
                 ];
             }
             
@@ -207,7 +252,8 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             
         } catch (\Exception $e) {
             DB::rollBack();
-            $this->dispatch('show-toast', type: 'error', message: 'Failed to place order: ' . $e->getMessage());
+            \Log::error('Order placement error: ' . $e->getMessage());
+            $this->dispatch('show-toast', type: 'error', message: 'Failed to place order. Please try again.');
         }
     }
     
@@ -245,12 +291,44 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             
             <div class="space-y-3 mb-4">
                 @foreach($cartItems as $item)
-                <div class="flex justify-between items-center border-b pb-3">
-                    <div>
-                        <p class="font-medium">{{ $item['name'] }}</p>
-                        <p class="text-sm text-gray-500">Qty: {{ $item['quantity'] }}</p>
+                <div class="border-b pb-3">
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex-1">
+                            <p class="font-medium">{{ $item['name'] }}</p>
+                            
+                            <!-- Display selected options -->
+                            <div class="mt-1 flex flex-wrap gap-1">
+                                @if($item['size'])
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">
+                                        Size: {{ $item['size'] }}
+                                    </span>
+                                @endif
+                                
+                                @if($item['flavor'])
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800">
+                                        Flavor: {{ $item['flavor'] }}
+                                    </span>
+                                @endif
+                                
+                                @if($item['variety'])
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-800">
+                                        Variety: {{ $item['variety'] }}
+                                    </span>
+                                @endif
+                                
+                                @if(($item['price_adjustment_percent'] ?? 0) > 0)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
+                                        +{{ $item['price_adjustment_percent'] }}%
+                                    </span>
+                                @endif
+                            </div>
+                        </div>
+                        <p class="font-bold">₱{{ number_format($item['total'], 2) }}</p>
                     </div>
-                    <p class="font-bold">₱{{ number_format($item['total'], 2) }}</p>
+                    <div class="flex justify-between text-sm text-gray-500">
+                        <span>Qty: {{ $item['quantity'] }}</span>
+                        <span>₱{{ number_format($item['price'], 2) }} each</span>
+                    </div>
                 </div>
                 @endforeach
             </div>
@@ -399,14 +477,46 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                 <!-- Order Items -->
                 <div class="mb-6">
                     <h3 class="font-bold text-lg mb-4">Order Details</h3>
-                    <div class="space-y-3">
+                    <div class="space-y-4">
                         @foreach($orderDetails as $item)
-                        <div class="flex justify-between items-center py-3 border-b">
-                            <div>
-                                <p class="font-medium">{{ $item['name'] }}</p>
-                                <p class="text-sm text-gray-500">Qty: {{ $item['quantity'] }}</p>
+                        <div class="border rounded-lg p-3">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex-1">
+                                    <p class="font-medium">{{ $item['name'] }}</p>
+                                    
+                                    <!-- Display selected options -->
+                                    <div class="mt-1 flex flex-wrap gap-1">
+                                        @if($item['size'])
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">
+                                                Size: {{ $item['size'] }}
+                                            </span>
+                                        @endif
+                                        
+                                        @if($item['flavor'])
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800">
+                                                Flavor: {{ $item['flavor'] }}
+                                            </span>
+                                        @endif
+                                        
+                                        @if($item['variety'])
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-800">
+                                                Variety: {{ $item['variety'] }}
+                                            </span>
+                                        @endif
+                                        
+                                        @if($item['price_adjustment_percent'] > 0)
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
+                                                +{{ $item['price_adjustment_percent'] }}%
+                                            </span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <p class="font-bold">₱{{ number_format($item['total'], 2) }}</p>
                             </div>
-                            <p class="font-bold">₱{{ number_format($item['total'], 2) }}</p>
+                            <div class="flex justify-between text-sm text-gray-500">
+                                <span>Qty: {{ $item['quantity'] }}</span>
+                                <span>₱{{ number_format($item['price'], 2) }} each</span>
+                            </div>
                         </div>
                         @endforeach
                         
@@ -528,7 +638,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                 if (toast.parentNode) {
                     toast.remove();
                 }
-            }, 300);
+            }, 3000);
         }, 3000);
     }
     
@@ -553,4 +663,3 @@ new #[Layout('components.layouts.customerapp')] class extends Component
     }
 </script>
 @endscript
-

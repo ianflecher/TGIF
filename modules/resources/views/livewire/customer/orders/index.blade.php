@@ -20,6 +20,14 @@ new #[Layout('components.layouts.customerapp')] class extends Component
     public $showOrderDetails = false;
     public $orderItems = [];
     
+    // Return functionality properties
+    public $returnOrderId = null;
+    public $returnReason = '';
+    public $returnNotes = '';
+    
+    // Debug property
+    public $debugInfo = '';
+    
     // Status options with colors
     public $statuses = [
         'draft' => ['label' => 'Draft', 'color' => 'bg-gray-100 text-gray-800'],
@@ -28,6 +36,18 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         'shipped' => ['label' => 'Shipped', 'color' => 'bg-purple-100 text-purple-800'],
         'delivered' => ['label' => 'Delivered', 'color' => 'bg-green-100 text-green-800'],
         'cancelled' => ['label' => 'Cancelled', 'color' => 'bg-red-100 text-red-800'],
+        'return_requested' => ['label' => 'Return Requested', 'color' => 'bg-orange-100 text-orange-800'],
+        'returned' => ['label' => 'Returned', 'color' => 'bg-red-100 text-red-800'],
+    ];
+    
+    // Return reasons
+    public $returnReasons = [
+        'defective' => 'Defective/Damaged Product',
+        'wrong_item' => 'Wrong Item Received',
+        'not_as_described' => 'Not as Described',
+        'size_issue' => 'Size Issue',
+        'changed_mind' => 'Changed Mind',
+        'other' => 'Other Reason'
     ];
     
     // Initialize orders as computed property using DB
@@ -91,7 +111,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         // Get paginated results
         $orders = $query->paginate($this->perPage);
         
-        // For each order, get item count
+        // For each order, get item count and check if return requested
         foreach ($orders as $order) {
             $order->item_count = DB::table('order_items')
                 ->where('order_id', $order->order_id)
@@ -103,6 +123,8 @@ new #[Layout('components.layouts.customerapp')] class extends Component
     
     public function viewOrderDetails($orderId)
     {
+        $this->debugInfo = "viewOrderDetails called with orderId: " . $orderId;
+        
         $userId = Auth::id();
         
         // Get customer ID
@@ -111,6 +133,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             ->first();
             
         if (!$customer) {
+            $this->debugInfo .= " - Customer not found";
             return;
         }
         
@@ -121,18 +144,29 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             ->first();
             
         if ($this->selectedOrder) {
-            // Get order items with product details
+            $this->debugInfo .= " - Order found: " . $this->selectedOrder->order_number . " Status: " . $this->selectedOrder->status;
+            
+            // Get order items with product details and custom options
             $this->orderItems = DB::table('order_items')
                 ->join('products', 'order_items.product_id', '=', 'products.product_id')
                 ->where('order_items.order_id', $orderId)
                 ->select(
                     'order_items.*',
                     'products.product_name',
-                    'products.images'
+                    'products.images',
+                    // Check if option columns exist in order_items
+                    DB::raw('COALESCE(order_items.size, NULL) as size'),
+                    DB::raw('COALESCE(order_items.flavor, NULL) as flavor'),
+                    DB::raw('COALESCE(order_items.variety, NULL) as variety'),
+                    DB::raw('COALESCE(order_items.base_price, order_items.price_per_unit) as base_price'),
+                    DB::raw('COALESCE(order_items.price_adjustment_percent, 0) as price_adjustment_percent'),
+                    DB::raw('COALESCE(order_items.final_price, order_items.price_per_unit) as final_price')
                 )
                 ->get();
                 
             $this->showOrderDetails = true;
+        } else {
+            $this->debugInfo .= " - Order not found or doesn't belong to customer";
         }
     }
     
@@ -145,6 +179,8 @@ new #[Layout('components.layouts.customerapp')] class extends Component
     
     public function cancelOrder($orderId)
     {
+        $this->debugInfo = "cancelOrder called with orderId: " . $orderId;
+        
         $userId = Auth::id();
         
         // Get customer ID
@@ -154,6 +190,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             
         if (!$customer) {
             session()->flash('error', 'Customer not found.');
+            $this->debugInfo .= " - Customer not found";
             return;
         }
         
@@ -165,18 +202,25 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             ->first();
             
         if ($order) {
+            $this->debugInfo .= " - Order found and can be cancelled. Current status: " . $order->status;
+            
             DB::table('sales_orders')
                 ->where('order_id', $orderId)
                 ->update(['status' => 'cancelled', 'updated_at' => now()]);
                 
             session()->flash('success', 'Order cancelled successfully.');
+            $this->debugInfo .= " - Order cancelled successfully";
         } else {
             session()->flash('error', 'Order cannot be cancelled at this stage.');
+            $this->debugInfo .= " - Order cannot be cancelled";
         }
     }
     
-    public function reorder($orderId)
+    // New method to prepare return request
+    public function prepareReturnRequest($orderId)
     {
+        $this->debugInfo = "prepareReturnRequest called with orderId: " . $orderId;
+        
         $userId = Auth::id();
         
         // Get customer ID
@@ -186,34 +230,147 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             
         if (!$customer) {
             session()->flash('error', 'Customer not found.');
+            $this->debugInfo .= " - Customer not found";
             return;
         }
         
-        // Get order items
-        $items = DB::table('order_items')
+        $this->debugInfo .= " - Customer ID: " . $customer->customer_id;
+        
+        // Check if order is eligible for return
+        $order = DB::table('sales_orders')
             ->where('order_id', $orderId)
-            ->get();
+            ->where('customer_id', $customer->customer_id)
+            ->first();
             
-        if ($items->isEmpty()) {
-            session()->flash('error', 'No items found in this order.');
+        if ($order) {
+            $this->debugInfo .= " - Order found. Status: " . $order->status;
+            
+            if ($order->status !== 'delivered') {
+                session()->flash('error', 'Order not found or not eligible for return. Only delivered orders can be returned. Current status: ' . $order->status);
+                $this->debugInfo .= " - Order not delivered, status is: " . $order->status;
+                return;
+            }
+        } else {
+            session()->flash('error', 'Order not found.');
+            $this->debugInfo .= " - Order not found";
             return;
         }
         
-        $cart = session()->get('cart', []);
-        
-        foreach ($items as $item) {
-            $productId = $item->product_id;
-            if (isset($cart[$productId])) {
-                $cart[$productId] += $item->quantity;
+        // Check if return is already requested or processed
+        $existingReturn = DB::table('sales_orders')
+            ->where('order_id', $orderId)
+            ->whereIn('status', ['return_requested', 'returned'])
+            ->first();
+            
+        if ($existingReturn) {
+            if ($existingReturn->status === 'return_requested') {
+                session()->flash('error', 'Return already requested for this order. Please wait for processing.');
             } else {
-                $cart[$productId] = $item->quantity;
+                session()->flash('error', 'This order has already been returned.');
             }
+            $this->debugInfo .= " - Return already exists with status: " . $existingReturn->status;
+            return;
         }
         
-        session()->put('cart', $cart);
-        session()->flash('success', 'Items added to cart successfully.');
+        $this->returnOrderId = $orderId;
+        $this->debugInfo .= " - Return prepared for order: " . $orderId;
         
-        return redirect()->route('customer.cart.index');
+        // Dispatch event to show modal via JavaScript
+        $this->dispatch('showReturnModal', orderId: $orderId);
+    }
+    
+    public function submitReturnRequest()
+    {
+        $this->debugInfo = "submitReturnRequest called for order: " . $this->returnOrderId;
+        
+        $this->validate([
+            'returnReason' => 'required|in:' . implode(',', array_keys($this->returnReasons)),
+            'returnNotes' => 'nullable|string|max:1000',
+        ]);
+        
+        $this->debugInfo .= " - Validation passed";
+        
+        $userId = Auth::id();
+        
+        // Get customer ID
+        $customer = DB::table('customers')
+            ->where('user_id', $userId)
+            ->first();
+            
+        if (!$customer) {
+            session()->flash('error', 'Customer not found.');
+            $this->debugInfo .= " - Customer not found";
+            return;
+        }
+        
+        $this->debugInfo .= " - Customer ID: " . $customer->customer_id;
+        
+        // Check if order is eligible for return
+        $order = DB::table('sales_orders')
+            ->where('order_id', $this->returnOrderId)
+            ->where('customer_id', $customer->customer_id)
+            ->first();
+            
+        if ($order) {
+            $this->debugInfo .= " - Order found. Current status: " . $order->status;
+            
+            if ($order->status !== 'delivered') {
+                session()->flash('error', 'Order not eligible for return. Current status: ' . $order->status);
+                $this->debugInfo .= " - Order not delivered";
+                return;
+            }
+        } else {
+            session()->flash('error', 'Order not found.');
+            $this->debugInfo .= " - Order not found";
+            return;
+        }
+        
+        // Check if return is already requested
+        $hasReturnRequest = DB::table('sales_orders')
+            ->where('order_id', $this->returnOrderId)
+            ->whereIn('status', ['return_requested', 'returned'])
+            ->exists();
+            
+        if ($hasReturnRequest) {
+            session()->flash('error', 'Return already requested or processed for this order.');
+            $this->debugInfo .= " - Return already requested";
+            return;
+        }
+        
+        try {
+            // Update order status to return_requested
+            $this->debugInfo .= " - Attempting to update order status...";
+            
+            $result = DB::table('sales_orders')
+                ->where('order_id', $this->returnOrderId)
+                ->update([
+                    'status' => 'return_requested',
+                    'updated_at' => now()
+                ]);
+            
+            $this->debugInfo .= " - Update result: " . ($result ? "Success" : "Failed");
+            
+            if ($result) {
+                session()->flash('success', 'Return request submitted successfully. We will contact you soon for further instructions.');
+                $this->debugInfo .= " - Return request submitted successfully";
+                
+                // Hide modal via JavaScript
+                $this->dispatch('hideReturnModal');
+            } else {
+                session()->flash('error', 'Failed to update order status.');
+                $this->debugInfo .= " - Failed to update order status";
+            }
+            
+            // Reset form
+            $this->returnOrderId = null;
+            $this->returnReason = '';
+            $this->returnNotes = '';
+            $this->closeOrderDetails();
+            
+        } catch (\Exception $e) {
+            session()->flash('error', 'Failed to submit return request. Error: ' . $e->getMessage());
+            $this->debugInfo .= " - Exception: " . $e->getMessage();
+        }
     }
     
     public function sortBy($field)
@@ -227,7 +384,6 @@ new #[Layout('components.layouts.customerapp')] class extends Component
     }
 }
 ?>
-
 <div>
     <div class="container mx-auto px-4 py-8">
         <!-- Page Header -->
@@ -236,6 +392,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             <p class="text-gray-600 mt-2">View and manage your order history</p>
         </div>
 
+ 
         <!-- Filters and Search -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -315,6 +472,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         <div class="text-sm font-medium text-gray-900">{{ $order->order_number }}</div>
+                                        <div class="text-xs text-gray-500">ID: {{ $order->order_id }}</div>
                                     </td>
                                     <td class="px-6 py-4">
                                         <div class="text-sm text-gray-900">
@@ -357,14 +515,21 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                                 </button>
                                             @endif
                                             
-                                            @if(in_array($order->status, ['delivered']))
+                                            @if($order->status === 'delivered')
+                                                <!-- Return Button -->
                                                 <button
-                                                    wire:click="reorder({{ $order->order_id }})"
-                                                    class="text-blue-600 hover:text-blue-900"
-                                                    title="Reorder"
+                                                    onclick="showReturnModal({{ $order->order_id }})"
+                                                    class="text-orange-600 hover:text-orange-900"
+                                                    title="Return Order"
                                                 >
-                                                    <i class="fas fa-redo"></i>
+                                                    <i class="fas fa-undo"></i>
                                                 </button>
+                                            @endif
+                                            
+                                            @if(in_array($order->order_id, ['return_requested', 'returned']))
+                                                <span class="text-xs {{ $order->status === 'return_requested' ? 'text-orange-600' : 'text-red-600' }}">
+                                                    {{ $order->status === 'return_requested' ? 'Return Requested' : 'Returned' }}
+                                                </span>
                                             @endif
                                         </div>
                                     </td>
@@ -407,13 +572,14 @@ new #[Layout('components.layouts.customerapp')] class extends Component
 
         <!-- Order Details Modal -->
         @if($showOrderDetails && $selectedOrder)
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4" x-data="{ show: @entangle('showOrderDetails') }" x-show="show" @click.away="show = false">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-40 p-4">
                 <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
                     <!-- Modal Header -->
                     <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                         <div>
                             <h2 class="text-xl font-bold text-gray-900">Order Details</h2>
                             <p class="text-sm text-gray-600">{{ $selectedOrder->order_number }}</p>
+                            <p class="text-xs text-gray-500">ID: {{ $selectedOrder->order_id }}</p>
                         </div>
                         <button
                             wire:click="closeOrderDetails"
@@ -469,29 +635,79 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                             <div class="bg-gray-50 rounded-lg p-4">
                                 <div class="space-y-4">
                                     @foreach($orderItems as $item)
-                                        <div class="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
-                                            <div class="flex items-center">
-                                                @if($item->images)
-                                                    @php
-                                                        $images = json_decode($item->images, true);
-                                                        $image = $images[0] ?? null;
-                                                    @endphp
-                                                    @if($image)
-                                                        <div class="w-16 h-16 bg-gray-200 rounded mr-4">
-                                                            <img src="{{ asset('storage/' . $image) }}" 
-                                                                 class="w-full h-full object-cover rounded" 
-                                                                 alt="{{ $item->product_name }}">
-                                                        </div>
+                                        <div class="border border-gray-200 rounded-lg p-4">
+                                            <div class="flex items-start justify-between">
+                                                <div class="flex items-start">
+                                                    @if($item->images)
+                                                        @php
+                                                            $images = json_decode($item->images, true);
+                                                            $image = $images[0] ?? null;
+                                                        @endphp
+                                                        @if($image)
+                                                            <div class="w-20 h-20 bg-gray-200 rounded mr-4 flex-shrink-0">
+                                                                <img src="{{ asset('storage/' . $image) }}" 
+                                                                     class="w-full h-full object-cover rounded" 
+                                                                     alt="{{ $item->product_name }}"
+                                                                     onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmMWY1ZjkiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNzM3MzczIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Tm8gSW1hZ2U8L3RleHQ+PC9zdmc+'">
+                                                            </div>
+                                                        @endif
                                                     @endif
-                                                @endif
-                                                <div>
-                                                    <h4 class="font-medium text-gray-900">{{ $item->product_name }}</h4>
-                                                    <p class="text-sm text-gray-600">Quantity: {{ $item->quantity }}</p>
+                                                    <div>
+                                                        <h4 class="font-medium text-gray-900">{{ $item->product_name }}</h4>
+                                                        <p class="text-sm text-gray-600">Quantity: {{ $item->quantity }}</p>
+                                                        
+                                                        <!-- Display Size, Flavor, Variety -->
+                                                        <div class="mt-2 flex flex-wrap gap-2">
+                                                            @if($item->size)
+                                                                <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
+                                                                    <i class="fas fa-expand-alt text-xs"></i>
+                                                                    Size: {{ $item->size }}
+                                                                </span>
+                                                            @endif
+                                                            
+                                                            @if($item->flavor)
+                                                                <span class="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-medium">
+                                                                    <i class="fas fa-utensils text-xs"></i>
+                                                                    Flavor: {{ $item->flavor }}
+                                                                </span>
+                                                            @endif
+                                                            
+                                                            @if($item->variety)
+                                                                <span class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 text-xs rounded-full font-medium">
+                                                                    <i class="fas fa-layer-group text-xs"></i>
+                                                                    Variety: {{ $item->variety }}
+                                                                </span>
+                                                            @endif
+                                                            
+                                                            @if($item->price_adjustment_percent > 0)
+                                                                <span class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
+                                                                    <i class="fas fa-percentage text-xs"></i>
+                                                                    Price Adjustment: +{{ $item->price_adjustment_percent }}%
+                                                                </span>
+                                                            @endif
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div class="text-right">
-                                                <p class="font-medium">${{ number_format($item->price_per_unit, 2) }} each</p>
-                                                <p class="text-lg font-bold">${{ number_format($item->total, 2) }}</p>
+                                                <div class="text-right">
+                                                    <!-- Price breakdown -->
+                                                    <div class="mb-2">
+                                                        @if($item->base_price != $item->final_price)
+                                                            <div class="flex items-center justify-end gap-2">
+                                                                <span class="text-gray-500 line-through text-sm">
+                                                                    ₱{{ number_format($item->base_price, 2) }} each
+                                                                </span>
+                                                                <span class="text-green-600 font-medium">
+                                                                    ₱{{ number_format($item->final_price, 2) }} each
+                                                                </span>
+                                                            </div>
+                                                        @else
+                                                            <p class="text-green-600 font-medium">
+                                                                ₱{{ number_format($item->final_price, 2) }} each
+                                                            </p>
+                                                        @endif
+                                                    </div>
+                                                    <p class="text-lg font-bold">₱{{ number_format($item->total, 2) }}</p>
+                                                </div>
                                             </div>
                                         </div>
                                     @endforeach
@@ -505,19 +721,19 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                             <div class="space-y-2">
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Subtotal:</span>
-                                    <span class="font-medium">${{ number_format($selectedOrder->total_amount, 2) }}</span>
+                                    <span class="font-medium">₱{{ number_format($selectedOrder->total_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Tax:</span>
-                                    <span class="font-medium">${{ number_format($selectedOrder->tax_amount, 2) }}</span>
+                                    <span class="font-medium">₱{{ number_format($selectedOrder->tax_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Discount:</span>
-                                    <span class="font-medium text-green-600">-${{ number_format($selectedOrder->discount_amount, 2) }}</span>
+                                    <span class="font-medium text-green-600">-₱{{ number_format($selectedOrder->discount_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between border-t border-gray-300 pt-2 mt-2">
                                     <span class="text-lg font-bold text-gray-900">Grand Total:</span>
-                                    <span class="text-lg font-bold text-gray-900">${{ number_format($selectedOrder->grand_total, 2) }}</span>
+                                    <span class="text-lg font-bold text-gray-900">₱{{ number_format($selectedOrder->grand_total, 2) }}</span>
                                 </div>
                             </div>
                         </div>
@@ -531,13 +747,14 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                         >
                             Close
                         </button>
-                        @if(in_array($selectedOrder->status, ['delivered']))
+                        
+                        @if($selectedOrder->status === 'delivered')
                             <button
-                                wire:click="reorder({{ $selectedOrder->order_id }})"
-                                class="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700"
+                                onclick="showReturnModal({{ $selectedOrder->order_id }})"
+                                class="px-4 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700"
                             >
-                                <i class="fas fa-redo mr-2"></i>
-                                Reorder
+                                <i class="fas fa-undo mr-2"></i>
+                                Request Return
                             </button>
                         @endif
                     </div>
@@ -545,31 +762,221 @@ new #[Layout('components.layouts.customerapp')] class extends Component
             </div>
         @endif
 
+        <!-- Return Request Modal (Hidden by default) -->
+        <div id="returnModal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full">
+                <!-- Modal Header -->
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-900">Request Return</h2>
+                        <p id="modalOrderNumber" class="text-sm text-gray-600">Order #</p>
+                    </div>
+                    <button
+                        onclick="hideReturnModal()"
+                        class="text-gray-400 hover:text-gray-600"
+                    >
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Modal Content -->
+                <div class="p-6">
+                    <form id="returnForm" onsubmit="submitReturnForm(event)">
+                        <input type="hidden" id="modalOrderId" name="orderId">
+                        
+                        <!-- Return Reason -->
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Reason for Return <span class="text-red-500">*</span>
+                            </label>
+                            <select
+                                id="returnReasonSelect"
+                                name="returnReason"
+                                required
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            >
+                                <option value="">Select a reason</option>
+                                @foreach($returnReasons as $key => $reason)
+                                    <option value="{{ $key }}">{{ $reason }}</option>
+                                @endforeach
+                            </select>
+                            <p id="reasonError" class="text-red-500 text-sm mt-1 hidden"></p>
+                        </div>
+
+                        <!-- Additional Notes -->
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Additional Notes (Optional)
+                            </label>
+                            <textarea
+                                id="returnNotesText"
+                                name="returnNotes"
+                                rows="3"
+                                placeholder="Please provide any additional details about your return..."
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            ></textarea>
+                            <p id="notesError" class="text-red-500 text-sm mt-1 hidden"></p>
+                        </div>
+
+                        <!-- Return Policy Note -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                            <div class="flex items-start">
+                                <i class="fas fa-info-circle text-blue-500 mt-1 mr-3"></i>
+                                <div>
+                                    <h4 class="font-medium text-blue-800 mb-1">Return Policy</h4>
+                                    <ul class="text-sm text-blue-700 list-disc list-inside space-y-1">
+                                        <li>Returns are accepted within 30 days of delivery</li>
+                                        <li>Items must be in original condition and packaging</li>
+                                        <li>Refunds will be processed within 5-10 business days</li>
+                                        <li>Shipping costs for returns may apply</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Modal Footer -->
+                        <div class="flex justify-end space-x-4 pt-4 border-t border-gray-200">
+                            <button
+                                type="button"
+                                onclick="hideReturnModal()"
+                                class="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                class="px-4 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700"
+                            >
+                                <i class="fas fa-paper-plane mr-2"></i>
+                                Submit Return Request
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- Flash Messages -->
         @if(session()->has('success'))
-            <div class="fixed bottom-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg">
+            <div class="fixed bottom-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg shadow-lg" id="flash-success">
                 {{ session('success') }}
             </div>
         @endif
 
         @if(session()->has('error'))
-            <div class="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg">
+            <div class="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg" id="flash-error">
                 {{ session('error') }}
             </div>
         @endif
     </div>
 
-    @script
+    <!-- Simple JavaScript for Modal -->
     <script>
-        // Auto-hide flash messages after 5 seconds
-        setTimeout(() => {
-            const flashMessages = document.querySelectorAll('[x-data]');
-            flashMessages.forEach(msg => {
-                if (msg.textContent.includes('success') || msg.textContent.includes('error')) {
-                    msg.remove();
-                }
+        // Show return modal
+        function showReturnModal(orderId) {
+            // First check with Livewire if order is eligible
+            @this.call('prepareReturnRequest', orderId)
+                .then(result => {
+                    // If successful, show the modal
+                    const modal = document.getElementById('returnModal');
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    
+                    // Set order ID in hidden input
+                    document.getElementById('modalOrderId').value = orderId;
+                    document.getElementById('modalOrderNumber').textContent = 'Order #' + orderId;
+                    
+                    // Reset form
+                    document.getElementById('returnReasonSelect').value = '';
+                    document.getElementById('returnNotesText').value = '';
+                    
+                    // Clear errors
+                    document.getElementById('reasonError').classList.add('hidden');
+                    document.getElementById('notesError').classList.add('hidden');
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    // Livewire will show error via flash message
+                });
+        }
+
+        // Hide return modal
+        function hideReturnModal() {
+            const modal = document.getElementById('returnModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // Submit return form
+        function submitReturnForm(event) {
+            event.preventDefault();
+            
+            // Get form data
+            const orderId = document.getElementById('modalOrderId').value;
+            const returnReason = document.getElementById('returnReasonSelect').value;
+            const returnNotes = document.getElementById('returnNotesText').value;
+            
+            // Validate
+            if (!returnReason) {
+                document.getElementById('reasonError').textContent = 'Please select a reason for return';
+                document.getElementById('reasonError').classList.remove('hidden');
+                return;
+            }
+            
+            // Clear errors
+            document.getElementById('reasonError').classList.add('hidden');
+            document.getElementById('notesError').classList.add('hidden');
+            
+            // Set Livewire properties and submit
+            @this.set('returnOrderId', orderId, true);
+            @this.set('returnReason', returnReason, true);
+            @this.set('returnNotes', returnNotes, true);
+            
+            // Call Livewire submit method
+            @this.call('submitReturnRequest')
+                .then(result => {
+                    // Close modal on success
+                    hideReturnModal();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        // Listen for Livewire events to show/hide modal
+        document.addEventListener('livewire:initialized', () => {
+            @this.on('showReturnModal', (event) => {
+                const modal = document.getElementById('returnModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                
+                document.getElementById('modalOrderId').value = event.orderId;
+                document.getElementById('modalOrderNumber').textContent = 'Order #' + event.orderId;
+                
+                // Reset form
+                document.getElementById('returnReasonSelect').value = '';
+                document.getElementById('returnNotesText').value = '';
             });
+            
+            @this.on('hideReturnModal', () => {
+                hideReturnModal();
+            });
+        });
+
+        // Auto-hide flash messages
+        setTimeout(() => {
+            const successMsg = document.getElementById('flash-success');
+            const errorMsg = document.getElementById('flash-error');
+            
+            if (successMsg) successMsg.remove();
+            if (errorMsg) errorMsg.remove();
         }, 5000);
+
+        // Close modal when clicking outside
+        document.getElementById('returnModal')?.addEventListener('click', function(event) {
+            if (event.target === this) {
+                hideReturnModal();
+            }
+        });
     </script>
-    @endscript
 </div>
