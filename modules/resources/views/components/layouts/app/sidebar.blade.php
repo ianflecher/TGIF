@@ -571,157 +571,124 @@
                 <div class="company-tagline">Admin Portal</div>
             </div>
         </div>
-        <div class="user-info">
-            <div class="user-badge">
-                <span style="color: var(--mint-green);">👤</span>
-                <span>{{ Auth::user()->name ?? 'User' }}</span>
-            </div>
-                        <form method="POST" action="{{ route('admin.logout') }}">
-                    @csrf
-                    <button type="submit" class="logout-btn">
-                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                    </button>
-                </form>
-        </div>
+        <!-- Update the user badge in the header -->
+<div class="user-info">
+    <div class="user-badge">
+        <span style="color: var(--mint-green);">👤</span>
+        <span>{{ Auth::user()->full_name ?? Auth::user()->name ?? 'User' }}</span>
+        <span style="color: var(--mint-green); font-size: 0.8rem;">
+            ({{ ucfirst(Auth::user()->username ?? Auth::user()->role ?? 'User') }})
+        </span>
+    </div>
+    <form method="POST" action="{{ route('admin.logout') }}">
+        @csrf
+        <button type="submit" class="logout-btn">
+            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+        </button>
+    </form>
+</div>
     </div>
 </header>
 
-<!-- Sidebar with Collapsible Categories -->
-<!-- Sidebar with Collapsible Categories -->
+<!-- Sidebar with Role-Based Modules -->
 <aside class="sidebar" id="sidebar">
-    <h3>🌿 Modules</h3>
+    <h3>🌿 My Modules</h3>
     <nav>
         <ul>
-            <!-- Core Modules -->
-            <li class="category-item">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <span class="module-icon">⭐</span>
-                    <span class="category-text">Core</span>
-                    <span class="category-arrow">▶</span>
-                    <span class="category-tooltip">Core Modules</span>
-                </div>
-                <ul class="submenu">
-                    <li>
-                        <a href="{{ route('admin.dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
-                            <span class="module-icon">📊</span>
-                            <span class="nav-text">Dashboard</span>
-                            <span class="nav-tooltip">Dashboard</span>
-                            <span class="status-badge" style="display: {{ request()->routeIs('dashboard') ? 'block' : 'none' }};">Active</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ route('ecommerce.home') }}" class="nav-item {{ request()->routeIs('ecommerce.*') ? 'active' : '' }}">
-                            <span class="module-icon">🛒</span>
-                            <span class="nav-text">E-Commerce</span>
-                            <span class="nav-tooltip">E-Commerce</span>
-                        </a>
-                    </li>
-                    <!-- FIXED: Sales module goes to customerservice.home -->
-                    <li>
-                        <a href="{{ route('customerservice.home') }}" class="nav-item {{ request()->routeIs('customerservice.*') ? 'active' : '' }}">
-                            <span class="module-icon">📞</span>
-                            <span class="nav-text">Sales</span>
-                            <span class="nav-tooltip">Sales & CRM</span>
-                        </a>
-                    </li>
-                </ul>
-            </li>
+            @php
+                // Get current user's username/role
+                $currentUser = Auth::user();
+                $username = strtolower($currentUser->username ?? '');
+                $role = strtolower($currentUser->role ?? '');
+                
+                // Define which modules each role can access
+                $roleModules = [
+                    'admin' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'E-Commerce', 'route' => 'ecommerce.home', 'icon' => '🛒'],
+                        ['name' => 'Sales', 'route' => 'customerservice.home', 'icon' => '📞'],
+                        ['name' => 'Inventory', 'route' => 'inventory.home', 'icon' => '🏭'],
+                        ['name' => 'Procurement', 'route' => 'procurement.home', 'icon' => '📦'],
+                        ['name' => 'Supply Chain', 'route' => 'supplychain.home', 'icon' => '🔄'],
+                        ['name' => 'Customer Service', 'route' => 'sales.home', 'icon' => '💬'],
+                        ['name' => 'Finance', 'route' => 'finance.home', 'icon' => '💰'],
+                        ['name' => 'Human Resources', 'route' => 'hr.home', 'icon' => '👥'],
+                        ['name' => 'Projects', 'route' => 'projects.home', 'icon' => '📋'],
+                        ['name' => 'Reports', 'route' => 'reports.home', 'icon' => '📈']
+                    ],
+                    'inventory' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Inventory', 'route' => 'inventory.home', 'icon' => '🏭']
+                    ],
+                    'customerservice' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Customer Service', 'route' => 'sales.home', 'icon' => '💬']
+                    ],
+                    'procurement' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Procurement', 'route' => 'procurement.home', 'icon' => '📦']
+                    ],
+                    'supplychain' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Supply Chain', 'route' => 'supplychain.home', 'icon' => '🔄']
+                    ],
+                    'finance' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Finance', 'route' => 'finance.home', 'icon' => '💰']
+                    ],
+                    'ecommerce' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'E-Commerce', 'route' => 'ecommerce.home', 'icon' => '🛒']
+                    ],
+                    'businessintelligence' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Reports', 'route' => 'reports.home', 'icon' => '📈']
+                    ],
+                    'sales' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Sales', 'route' => 'customerservice.home', 'icon' => '📞']
+                    ],
+                    'project' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Projects', 'route' => 'projects.home', 'icon' => '📋']
+                    ],
+                    'hr' => [
+                        ['name' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => '📊'],
+                        ['name' => 'Human Resources', 'route' => 'hr.home', 'icon' => '👥']
+                    ]
+                ];
+                
+                // Default to admin if role not found
+                $userModules = $roleModules[$username] ?? $roleModules[$role] ?? $roleModules['admin'];
+            @endphp
             
-            <!-- Operations Modules -->
-            <li class="category-item">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <span class="module-icon">⚙️</span>
-                    <span class="category-text">Operations</span>
-                    <span class="category-arrow">▶</span>
-                    <span class="category-tooltip">Operations</span>
-                </div>
-                <ul class="submenu">
-                    <li>
-                        <a href="{{ route('inventory.home') }}" class="nav-item {{ request()->routeIs('inventory.*') ? 'active' : '' }}">
-                            <span class="module-icon">🏭</span>
-                            <span class="nav-text">Inventory</span>
-                            <span class="nav-tooltip">Inventory & Warehouse</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ route('procurement.home') }}" class="nav-item {{ request()->routeIs('procurement.*') ? 'active' : '' }}">
-                            <span class="module-icon">📦</span>
-                            <span class="nav-text">Procurement</span>
-                            <span class="nav-tooltip">Procurement</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ route('supplychain.home') }}" class="nav-item {{ request()->routeIs('supplychain.*') ? 'active' : '' }}">
-                            <span class="module-icon">🔄</span>
-                            <span class="nav-text">Supply Chain</span>
-                            <span class="nav-tooltip">Supply Chain</span>
-                        </a>
-                    </li>
-                </ul>
-            </li>
+            <!-- Display only modules for current user's role -->
+            @foreach($userModules as $module)
+                <li>
+                    <a href="{{ route($module['route']) }}" class="nav-item {{ request()->routeIs(str_replace('.home', '.*', $module['route'])) ? 'active' : '' }}">
+                        <span class="module-icon">{{ $module['icon'] }}</span>
+                        <span class="nav-text">{{ $module['name'] }}</span>
+                        <span class="nav-tooltip">{{ $module['name'] }}</span>
+                        <span class="status-badge" style="display: {{ request()->routeIs(str_replace('.home', '.*', $module['route'])) ? 'block' : 'none' }};">Active</span>
+                    </a>
+                </li>
+            @endforeach
             
-            <!-- Support Modules -->
-            <li class="category-item">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <span class="module-icon">💼</span>
-                    <span class="category-text">Support</span>
-                    <span class="category-arrow">▶</span>
-                    <span class="category-tooltip">Support</span>
-                </div>
-                <ul class="submenu expanded"> <!-- Expanded by default -->
-                    <!-- FIXED: Customer Service module goes to sales.home -->
-                    <li>
-                        <a href="{{ route('sales.home') }}" class="nav-item {{ request()->routeIs('sales.*') ? 'active' : '' }}">
-                            <span class="module-icon">💬</span>
-                            <span class="nav-text">Customer Service</span>
-                            <span class="nav-tooltip">Customer Service</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ route('finance.home') }}" class="nav-item {{ request()->routeIs('finance.*') ? 'active' : '' }}">
-                            <span class="module-icon">💰</span>
-                            <span class="nav-text">Finance</span>
-                            <span class="nav-tooltip">Finance & Accounting</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ route('hr.home') }}" class="nav-item {{ request()->routeIs('hr.*') ? 'active' : '' }}">
-                            <span class="module-icon">👥</span>
-                            <span class="nav-text">Human Resources</span>
-                            <span class="nav-tooltip">Human Resources</span>
-                        </a>
-                    </li>
-                </ul>
-            </li>
-            
-            <!-- Project & Analytics -->
-            <li class="category-item">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <span class="module-icon">📈</span>
-                    <span class="category-text">Analytics</span>
-                    <span class="category-arrow">▶</span>
-                    <span class="category-tooltip">Analytics</span>
-                </div>
-                <ul class="submenu">
-                    <li>
-                        <a href="{{ route('projects.home') }}" class="nav-item {{ request()->routeIs('projects.*') ? 'active' : '' }}">
-                            <span class="module-icon">📋</span>
-                            <span class="nav-text">Projects</span>
-                            <span class="nav-tooltip">Project Management</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ route('reports.home') }}" class="nav-item {{ request()->routeIs('reports.*') ? 'active' : '' }}">
-                            <span class="module-icon">📈</span>
-                            <span class="nav-text">Reports</span>
-                            <span class="nav-tooltip">Reports & BI</span>
-                        </a>
-                    </li>
-                </ul>
+            <!-- Always show logout option -->
+            <li>
+                <a href="{{ route('admin.logout') }}" class="nav-item" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                    <span class="module-icon" style="color: #ef4444;">🚪</span>
+                    <span class="nav-text">Logout</span>
+                    <span class="nav-tooltip">Logout</span>
+                </a>
+                <form id="logout-form" action="{{ route('admin.logout') }}" method="POST" style="display: none;">
+                    @csrf
+                </form>
             </li>
         </ul>
     </nav>
 </aside>
+
 
 <!-- Main Content -->
 <main class="main-content" id="mainContent">
