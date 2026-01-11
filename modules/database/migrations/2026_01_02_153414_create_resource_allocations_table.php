@@ -11,6 +11,24 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Create resources table first
+        Schema::create('resources', function (Blueprint $table) {
+            $table->id('resource_id');
+            $table->unsignedBigInteger('inventory_id')->nullable();
+            $table->string('resource_name');
+            $table->string('type');
+            $table->decimal('unit_cost', 10, 2)->default(0.00);
+            $table->decimal('availability_quantity', 10, 2)->default(0.00);
+            $table->string('status');
+            $table->timestamps();
+            
+            // Indexes
+            $table->index('inventory_id');
+            $table->index('type');
+            $table->index('status');
+        });
+
+        // Then create resource_allocations table with foreign key to resources
         Schema::create('resource_allocations', function (Blueprint $table) {
             $table->id('allocation_id');
             $table->foreignId('task_id')->constrained('tasks', 'task_id')->onDelete('cascade');
@@ -40,6 +58,8 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Drop in reverse order (child tables first)
         Schema::dropIfExists('resource_allocations');
+        Schema::dropIfExists('resources');
     }
 };

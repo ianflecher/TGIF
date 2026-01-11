@@ -27,8 +27,9 @@ return new class extends Migration
                 $table->string('contact_email')->nullable();
                 
                 // Delivery information
-                $table->decimal('latitude', 10, 8)->nullable();
-                $table->decimal('longitude', 10, 8)->nullable();
+                // For GPS coordinates (latitude/longitude)
+$table->decimal('latitude', 10, 6)->nullable();  // 10 total digits, 6 decimal places
+$table->decimal('longitude', 11, 6)->nullable(); // 11 total digits, 6 decimal places
                 $table->string('delivery_window')->nullable(); // Preferred delivery hours
                 $table->text('delivery_instructions')->nullable();
                 
@@ -163,7 +164,7 @@ return new class extends Migration
                 $table->time('preferred_delivery_window_start')->nullable();
                 $table->time('preferred_delivery_window_end')->nullable();
                 $table->timestamp('estimated_departure_time')->nullable();
-                $table->timestamp('estimated_arrival_time');
+                $table->timestamp('estimated_arrival_time')->nullable(); // Changed from NOT NULL to NULLABLE
                 
                 // Goods information
                 $table->json('shipment_items'); // Array of {inventory_id, quantity, unit_price, total}
@@ -256,7 +257,61 @@ return new class extends Migration
         }
 
         // 5. Delivery Route Optimizations table
-        
+        if (!Schema::hasTable('delivery_route_optimizations')) {
+            Schema::create('delivery_route_optimizations', function (Blueprint $table) {
+                $table->id('route_id');
+                $table->date('delivery_date');
+                $table->unsignedBigInteger('warehouse_id')->nullable();
+                $table->string('warehouse_name');
+                
+                // Route information
+                $table->json('stores_to_deliver'); // Array of store_ids
+                $table->json('optimized_sequence'); // Optimized delivery order
+                $table->decimal('total_distance_km', 10, 2)->default(0);
+                $table->integer('total_travel_minutes')->default(0);
+                $table->integer('total_stops')->default(0);
+                $table->decimal('total_fuel_cost', 10, 2)->default(0);
+                
+                // Vehicle assignment
+                $table->json('assigned_vehicles'); // Array of {vehicle_id, driver_id, store_ids}
+                
+                // Time windows
+                $table->time('route_start_time');
+                $table->time('route_end_time');
+                $table->json('store_time_windows')->nullable(); // Array of {store_id, window_start, window_end}
+                
+                // Load planning
+                $table->json('load_distribution')->nullable(); // How items are distributed among vehicles
+                $table->decimal('total_weight_kg', 10, 2)->default(0);
+                $table->decimal('total_volume_m3', 10, 2)->default(0);
+                
+                // Refrigeration requirements
+                $table->boolean('has_refrigerated_items')->default(false);
+                $table->json('temperature_requirements')->nullable();
+                
+                // Status
+                $table->enum('status', ['planned', 'in_progress', 'completed', 'cancelled'])->default('planned');
+                $table->timestamp('execution_start_time')->nullable();
+                $table->timestamp('execution_end_time')->nullable();
+                
+                // Performance metrics
+                $table->integer('on_time_deliveries')->default(0);
+                $table->integer('delayed_deliveries')->default(0);
+                $table->decimal('fuel_efficiency_kmpl', 5, 2)->nullable();
+                $table->decimal('average_speed_kmh', 5, 2)->nullable();
+                
+                // Traffic considerations
+                $table->json('traffic_conditions')->nullable();
+                $table->json('weather_conditions')->nullable();
+                
+                $table->timestamps();
+                
+                // Indexes
+                $table->index(['delivery_date', 'status']);
+                $table->index(['warehouse_id', 'delivery_date']);
+                $table->index('status');
+            });
+        }
     }
 
     /**
