@@ -442,12 +442,7 @@ class extends Component
                     </svg>
                     Recruitment Active
                 </span>
-                <button class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-md hover:shadow-lg">
-                    <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    New Position
-                </button>
+
             </div>
         </div>
     </div>
@@ -707,20 +702,6 @@ class extends Component
                 </div>
             </a>
 
-            <!-- Reports -->
-            <a href="#" class="group">
-                <div class="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-green-500 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-                    <div class="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-md">
-                        <svg class="w-8 h-8 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                    </div>
-                    <h3 class="font-bold text-gray-900 mb-2">Reports</h3>
-                    <p class="text-sm text-gray-700 font-medium">Generate analytics</p>
-                    <div class="mt-2 text-green-600 text-xs font-bold">
-                        HR insights
-                    </div>
-                </div>
             </a>
         </div>
     </div>

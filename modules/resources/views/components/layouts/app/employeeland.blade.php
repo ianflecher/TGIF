@@ -5,12 +5,52 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Add custom green theme colors for employee -->
+    <!-- Add custom department-based theme colors -->
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
+                        // Support Department Theme (Blue)
+                        support: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                        // Warehouse Department Theme (Orange)
+                        warehouse: {
+                            50: '#fff7ed',
+                            100: '#ffedd5',
+                            200: '#fed7aa',
+                            300: '#fdba74',
+                            400: '#fb923c',
+                            500: '#f97316',
+                            600: '#ea580c',
+                            700: '#c2410c',
+                            800: '#9a3412',
+                            900: '#7c2d12',
+                        },
+                        // Procurement Department Theme (Purple)
+                        procurement: {
+                            50: '#faf5ff',
+                            100: '#f3e8ff',
+                            200: '#e9d5ff',
+                            300: '#d8b4fe',
+                            400: '#c084fc',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            700: '#7e22ce',
+                            800: '#6b21a8',
+                            900: '#581c87',
+                        },
+                        // Default Green Theme
                         primary: {
                             50: '#f0fdf4',
                             100: '#dcfce7',
@@ -22,18 +62,6 @@
                             700: '#15803d',
                             800: '#166534',
                             900: '#14532d',
-                        },
-                        emerald: {
-                            50: '#ecfdf5',
-                            100: '#d1fae5',
-                            200: '#a7f3d0',
-                            300: '#6ee7b7',
-                            400: '#34d399',
-                            500: '#10b981',
-                            600: '#059669',
-                            700: '#047857',
-                            800: '#065f46',
-                            900: '#064e3b',
                         }
                     }
                 }
@@ -41,7 +69,7 @@
         }
     </script>
     
-    <title>Thanks G Its Fries Day - Employee Portal</title>
+    <title>Thanks G Its Fries Day - {{ ucfirst(strtolower(Auth::user()->employee->department->department_name ?? 'Employee')) }} Portal</title>
 
     <style>
         :root {
@@ -52,18 +80,47 @@
             --mint-green: #86efac;
         }
         
+        /* Dynamic department colors */
+        .department-support {
+            --dept-primary: #2563eb;
+            --dept-dark: #1d4ed8;
+            --dept-light: #dbeafe;
+            --dept-accent: #60a5fa;
+        }
+        
+        .department-warehouse {
+            --dept-primary: #f97316;
+            --dept-dark: #c2410c;
+            --dept-light: #ffedd5;
+            --dept-accent: #fb923c;
+        }
+        
+        .department-procurement {
+            --dept-primary: #a855f7;
+            --dept-dark: #7e22ce;
+            --dept-light: #f3e8ff;
+            --dept-accent: #c084fc;
+        }
+        
+        .department-default {
+            --dept-primary: #22c55e;
+            --dept-dark: #15803d;
+            --dept-light: #dcfce7;
+            --dept-accent: #86efac;
+        }
+        
         body {
             margin: 0;
             padding: 0;
             overflow-x: hidden;
-            background: linear-gradient(135deg, #f9fafb 0%, #f0fdf4 50%);
+            background: linear-gradient(135deg, #f9fafb 0%, var(--dept-light) 50%);
         }
         
         .main-header {
-            background: linear-gradient(135deg, var(--dark-green) 0%, var(--forest-green) 100%);
+            background: linear-gradient(135deg, var(--dept-dark) 0%, var(--dept-primary) 100%);
             color: white;
             padding: 0.8rem 1.5rem;
-            box-shadow: 0 2px 12px rgba(34, 197, 94, 0.2);
+            box-shadow: 0 2px 12px rgba(var(--dept-primary-rgb), 0.2);
             position: fixed;
             top: 0;
             left: 0;
@@ -74,27 +131,28 @@
         }
         
         .sidebar {
-            background: linear-gradient(180deg, var(--forest-green) 0%, #0c4224 100%);
+            background: linear-gradient(180deg, var(--dept-dark) 0%, var(--dept-primary) 100%);
             color: white;
-            width: 65px; /* Compact sidebar */
+            width: 65px;
             min-height: calc(100vh - 60px);
             position: fixed;
             left: 0;
-            top: 60px; /* Below header */
+            top: 60px;
             overflow-y: auto;
             overflow-x: hidden;
             padding: 15px 0;
             box-shadow: 3px 0 15px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);        }
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
         
         .sidebar:hover {
-            width: 200px; /* Expand on hover */
+            width: 200px;
         }
         
         .sidebar h3 {
             padding: 0 15px;
             margin-bottom: 15px;
-            color: var(--mint-green);
+            color: var(--dept-accent);
             font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -122,7 +180,7 @@
             display: flex;
             align-items: center;
             padding: 12px 15px;
-            color: #d1fae5;
+            color: rgba(255, 255, 255, 0.9);
             text-decoration: none;
             transition: all 0.3s ease;
             border-radius: 6px;
@@ -133,28 +191,28 @@
         }
         
         .nav-item:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.15);
             color: white;
         }
         
         .nav-item.active {
-            background: var(--primary-green);
+            background: var(--dept-primary);
             color: white;
-            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+            box-shadow: 0 2px 8px rgba(var(--dept-primary-rgb), 0.3);
         }
         
         .main-content {
-            margin-left: 65px; /* Match sidebar width */
-            margin-top: 60px; /* Match header height */
+            margin-left: 65px;
+            margin-top: 60px;
             padding: 1.5rem;
             min-height: calc(100vh - 60px);
-            background: linear-gradient(135deg, #f8fafc 0%, #f0fdf4 50%);
+            background: linear-gradient(135deg, #f8fafc 0%, var(--dept-light) 50%);
             transition: margin-left 0.3s ease;
         }
         
         .sidebar:hover + .main-content,
         .main-content:hover {
-            margin-left: 200px; /* Expand when sidebar expands */
+            margin-left: 200px;
         }
         
         .module-icon {
@@ -180,7 +238,7 @@
         }
         
         .employee-badge {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
+            background: linear-gradient(135deg, var(--dept-accent), var(--dept-primary));
             color: white;
             padding: 2px 6px;
             border-radius: 10px;
@@ -195,7 +253,6 @@
             opacity: 1;
         }
         
-        /* Compact header content */
         .header-content {
             display: flex;
             justify-content: space-between;
@@ -229,10 +286,9 @@
         .company-tagline {
             font-size: 0.75rem;
             opacity: 0.9;
-            color: var(--mint-green);
+            color: var(--dept-accent);
         }
         
-        /* User info in header */
         .user-info {
             display: flex;
             align-items: center;
@@ -252,7 +308,7 @@
         }
         
         .employee-role {
-            background: linear-gradient(135deg, #f59e0b, #d97706);
+            background: linear-gradient(135deg, var(--dept-accent), var(--dept-primary));
             color: white;
             padding: 2px 8px;
             border-radius: 12px;
@@ -279,13 +335,12 @@
             box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4);
         }
         
-        /* Tooltip for compact mode */
         .nav-tooltip {
             position: absolute;
             left: 100%;
             top: 50%;
             transform: translateY(-50%);
-            background: var(--forest-green);
+            background: var(--dept-dark);
             color: white;
             padding: 6px 12px;
             border-radius: 4px;
@@ -307,7 +362,7 @@
             transform: translateY(-50%);
             border-width: 6px;
             border-style: solid;
-            border-color: transparent var(--forest-green) transparent transparent;
+            border-color: transparent var(--dept-dark) transparent transparent;
         }
         
         .nav-item:hover .nav-tooltip {
@@ -319,7 +374,6 @@
             display: none;
         }
         
-        /* Responsive design */
         @media (max-width: 768px) {
             .sidebar {
                 width: 55px;
@@ -351,7 +405,6 @@
             }
         }
         
-        /* Green scrollbar */
         .sidebar::-webkit-scrollbar {
             width: 4px;
         }
@@ -361,21 +414,19 @@
         }
         
         .sidebar::-webkit-scrollbar-thumb {
-            background: var(--primary-green);
+            background: var(--dept-primary);
             border-radius: 2px;
         }
         
-        /* Animation for active state */
-        @keyframes gentle-pulse-green {
-            0%, 100% { box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3); }
-            50% { box-shadow: 0 2px 12px rgba(34, 197, 94, 0.5); }
+        @keyframes gentle-pulse-dept {
+            0%, 100% { box-shadow: 0 2px 8px rgba(var(--dept-primary-rgb), 0.3); }
+            50% { box-shadow: 0 2px 12px rgba(var(--dept-primary-rgb), 0.5); }
         }
         
         .nav-item.active {
-            animation: gentle-pulse-green 3s infinite;
+            animation: gentle-pulse-dept 3s infinite;
         }
         
-        /* Mobile menu toggle */
         .menu-toggle {
             display: none;
             background: none;
@@ -406,14 +457,13 @@
             }
         }
         
-        /* Green theme enhancements */
         .greenery-pattern {
             position: absolute;
             top: 0;
             right: 0;
             width: 200px;
             height: 200px;
-            background: radial-gradient(circle at 30% 30%, rgba(134, 239, 172, 0.1) 0%, transparent 70%);
+            background: radial-gradient(circle at 30% 30%, rgba(var(--dept-accent-rgb), 0.1) 0%, transparent 70%);
             pointer-events: none;
         }
         
@@ -423,47 +473,26 @@
             right: 20px;
             width: 100px;
             height: 100px;
-            background: radial-gradient(circle at 70% 70%, rgba(34, 197, 94, 0.05) 0%, transparent 70%);
+            background: radial-gradient(circle at 70% 70%, rgba(var(--dept-primary-rgb), 0.05) 0%, transparent 70%);
             pointer-events: none;
         }
         
-        /* Green theme cards */
-        .green-card {
+        .dept-card {
             background: white;
-            border: 1px solid #dcfce7;
+            border: 1px solid var(--dept-light);
             border-radius: 12px;
             padding: 1.5rem;
-            box-shadow: 0 2px 10px rgba(34, 197, 94, 0.08);
+            box-shadow: 0 2px 10px rgba(var(--dept-primary-rgb), 0.08);
             transition: all 0.3s ease;
         }
         
-        .green-card:hover {
-            box-shadow: 0 4px 20px rgba(34, 197, 94, 0.12);
-            border-color: #86efac;
+        .dept-card:hover {
+            box-shadow: 0 4px 20px rgba(var(--dept-primary-rgb), 0.12);
+            border-color: var(--dept-accent);
         }
         
-        /* Success status indicators */
-        .status-success {
-            background: linear-gradient(135deg, #dcfce7, #bbf7d0);
-            color: #166534;
-            border: 1px solid #86efac;
-        }
-        
-        .status-warning {
-            background: linear-gradient(135deg, #fef3c7, #fde68a);
-            color: #92400e;
-            border: 1px solid #fbbf24;
-        }
-        
-        .status-danger {
-            background: linear-gradient(135deg, #fee2e2, #fecaca);
-            color: #991b1b;
-            border: 1px solid #f87171;
-        }
-        
-        /* Green theme buttons */
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary-green), var(--dark-green));
+            background: linear-gradient(135deg, var(--dept-primary), var(--dept-dark));
             color: white;
             border: none;
             padding: 8px 20px;
@@ -471,18 +500,18 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
+            box-shadow: 0 2px 8px rgba(var(--dept-primary-rgb), 0.3);
         }
         
         .btn-primary:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+            box-shadow: 0 4px 12px rgba(var(--dept-primary-rgb), 0.4);
         }
         
         .btn-secondary {
             background: white;
-            color: var(--dark-green);
-            border: 2px solid var(--primary-green);
+            color: var(--dept-dark);
+            border: 2px solid var(--dept-primary);
             padding: 8px 20px;
             border-radius: 8px;
             font-weight: 600;
@@ -491,14 +520,153 @@
         }
         
         .btn-secondary:hover {
-            background: var(--light-green);
-            border-color: var(--dark-green);
+            background: var(--dept-light);
+            border-color: var(--dept-dark);
+        }
+        
+        /* Access control styles */
+        .nav-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        
+        .access-denied {
+            color: #9ca3af;
+            font-style: italic;
         }
     </style>
+    
+    <script>
+        // Set department class and RGB values
+        document.addEventListener('DOMContentLoaded', function() {
+            const departmentName = "{{ strtolower(Auth::user()->employee->department->department_name ?? 'default') }}";
+            const departmentClass = getDepartmentClass(departmentName);
+            const colors = getDepartmentColors(departmentClass);
+            
+            // Add department class to body
+            document.body.classList.add(departmentClass);
+            
+            // Set CSS custom properties
+            document.documentElement.style.setProperty('--dept-primary', colors.primary);
+            document.documentElement.style.setProperty('--dept-dark', colors.dark);
+            document.documentElement.style.setProperty('--dept-light', colors.light);
+            document.documentElement.style.setProperty('--dept-accent', colors.accent);
+            document.documentElement.style.setProperty('--dept-primary-rgb', colors.primaryRgb);
+            document.documentElement.style.setProperty('--dept-accent-rgb', colors.accentRgb);
+            
+            // Control module access based on department
+            controlModuleAccess(departmentName);
+            
+            function getDepartmentClass(deptName) {
+                const dept = deptName.toLowerCase();
+                if (dept.includes('support') || dept.includes('help') || dept.includes('service')) {
+                    return 'department-support';
+                } else if (dept.includes('warehouse') || dept.includes('storage') || dept.includes('inventory')) {
+                    return 'department-warehouse';
+                } else if (dept.includes('procurement') || dept.includes('purchasing') || dept.includes('purchase')) {
+                    return 'department-procurement';
+                } else {
+                    return 'department-default';
+                }
+            }
+            
+            function getDepartmentColors(deptClass) {
+                const colorMap = {
+                    'department-support': {
+                        primary: '#2563eb',
+                        dark: '#1d4ed8',
+                        light: '#dbeafe',
+                        accent: '#60a5fa',
+                        primaryRgb: '37, 99, 235',
+                        accentRgb: '96, 165, 250'
+                    },
+                    'department-warehouse': {
+                        primary: '#f97316',
+                        dark: '#c2410c',
+                        light: '#ffedd5',
+                        accent: '#fb923c',
+                        primaryRgb: '249, 115, 22',
+                        accentRgb: '251, 146, 60'
+                    },
+                    'department-procurement': {
+                        primary: '#a855f7',
+                        dark: '#7e22ce',
+                        light: '#f3e8ff',
+                        accent: '#c084fc',
+                        primaryRgb: '168, 85, 247',
+                        accentRgb: '192, 132, 252'
+                    },
+                    'department-default': {
+                        primary: '#22c55e',
+                        dark: '#15803d',
+                        light: '#dcfce7',
+                        accent: '#86efac',
+                        primaryRgb: '34, 197, 94',
+                        accentRgb: '134, 239, 172'
+                    }
+                };
+                
+                return colorMap[deptClass] || colorMap['department-default'];
+            }
+            
+            function controlModuleAccess(deptName) {
+                const dept = deptName.toLowerCase();
+                const supportModules = ['dashboard', 'tasks', 'support', 'attendance', 'payroll', 'leave'];
+                const warehouseModules = ['dashboard', 'tasks', 'attendance', 'payroll', 'leave', 'warehouse'];
+                const procurementModules = ['dashboard', 'tasks', 'attendance', 'payroll', 'leave', 'procurement.create'];
+                
+                let allowedModules = [];
+                
+                if (dept.includes('support')) {
+                    allowedModules = supportModules;
+                } else if (dept.includes('warehouse')) {
+                    allowedModules = warehouseModules;
+                } else if (dept.includes('procurement') || dept.includes('purchasing')) {
+                    allowedModules = procurementModules;
+                } else {
+                    // Default: show all modules
+                    allowedModules = ['dashboard', 'tasks', 'support', 'attendance', 'payroll', 'leave', 'warehouse', 'procurement.create'];
+                }
+                
+                // Disable modules not allowed for this department
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    const href = item.getAttribute('href');
+                    const moduleName = href ? href.split('/').pop() : '';
+                    const routeName = href ? href.replace(/^\//, '').replace(/\//g, '.') : '';
+                    
+                    let isAllowed = false;
+                    for (const allowedModule of allowedModules) {
+                        if (routeName.includes(allowedModule) || href.includes(allowedModule)) {
+                            isAllowed = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!isAllowed && href) {
+                        item.classList.add('disabled');
+                        const icon = item.querySelector('.module-icon');
+                        const text = item.querySelector('.nav-text');
+                        const tooltip = item.querySelector('.nav-tooltip');
+                        
+                        if (icon) icon.textContent = '🚫';
+                        if (text) {
+                            text.textContent = 'Access Restricted';
+                            text.classList.add('access-denied');
+                        }
+                        if (tooltip) {
+                            tooltip.textContent = 'Not Available for Your Department';
+                            tooltip.style.background = '#9ca3af';
+                        }
+                    }
+                });
+            }
+        });
+    </script>
 </head>
-<body class="bg-gray-50">
+<body>
 
-<!-- Decorative greenery patterns -->
+<!-- Decorative patterns -->
 <div class="greenery-pattern"></div>
 <div class="leaf-decoration"></div>
 
@@ -506,31 +674,33 @@
 <header class="main-header">
     <div class="header-content">
         <button class="menu-toggle" onclick="toggleMobileMenu()">☰</button>
+        
         <!-- Logo -->
         <div class="logo-container">
-            <div class="logo-icon" style="display: flex; align-items: center; justify-content: center;">
-            @if(file_exists(public_path('TGIF.png')))
-                <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 100px; width: auto; filter: brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(90deg);">
-            @else
-                <div style="background: rgba(255, 255, 255, 0.2); color: white; font-weight: bold; padding: 4px 8px; border-radius: 6px;">
-                    🌿 TGIF
-                </div>
-            @endif
+            <div class="logo-icon">
+                @if(file_exists(public_path('TGIF.png')))
+                    <img src="{{ asset('TGIF.png') }}" alt="TGIF Logo" style="height: 40px; width: auto; filter: brightness(0) invert(1);">
+                @else
+                    <div style="background: rgba(255, 255, 255, 0.2); color: white; font-weight: bold; padding: 4px 8px; border-radius: 6px;">
+                        TGIF
+                    </div>
+                @endif
             </div>
             <div class="logo-text">
                 <div class="company-name">Thanks G Its Fries Day</div>
                 <div class="company-tagline">
-                    {{ ucfirst(Auth::user()->role) }} Portal 🌱
+                    {{ ucfirst(Auth::user()->employee->department->department_name ?? 'Employee') }} Portal
                 </div>
             </div>
         </div>
+        
         <!-- User info and logout -->
         <div class="user-info">
             <div class="user-badge">
-                <span style="color: var(--mint-green);">👤</span>
+                <span style="color: var(--dept-accent);">👤</span>
                 <span>{{ Auth::user()->name ?? 'Employee' }}</span>
                 <span class="employee-role">
-                    {{ strtoupper(Auth::user()->role) }}
+                    {{ strtoupper(Auth::user()->employee->department->department_name ?? 'EMPLOYEE') }}
                 </span>
             </div>
             
@@ -546,11 +716,10 @@
 
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
-    <h3>👨‍💼 Employee Modules</h3>
+    <h3>{{ strtoupper(Auth::user()->employee->department->department_name ?? 'EMPLOYEE') }} MODULES</h3>
 
     <nav>
         <ul>
-
             <!-- Dashboard -->
             <li>
                 <a href="{{ route('employee.dashboard') }}"
@@ -575,7 +744,12 @@
                 </a>
             </li>
 
-            <!-- Support -->
+            <!-- Support (Only for Support Department) -->
+            @php
+                $deptName = strtolower(Auth::user()->employee->department->department_name ?? '');
+            @endphp
+            
+            @if(str_contains($deptName, 'support'))
             <li>
                 <a href="{{ route('employee.support') }}"
                    class="nav-item {{ request()->routeIs('employee.support') ? 'active' : '' }}">
@@ -584,6 +758,7 @@
                     <span class="nav-tooltip">Support Tickets</span>
                 </a>
             </li>
+            @endif
 
             <!-- Attendance -->
             <li>
@@ -615,12 +790,11 @@
                 </a>
             </li>
 
-            <!-- SECTION TITLE -->
+            <!-- Warehouse (Only for Warehouse Department) -->
+            @if(str_contains($deptName, 'warehouse'))
             <li class="mt-5">
-                <h3>📦 Operations</h3>
+                <h3>📦 WAREHOUSE OPERATIONS</h3>
             </li>
-
-            <!-- Warehouse -->
             <li>
                 <a href="{{ route('employee.warehouse') }}"
                    class="nav-item {{ request()->routeIs('employee.warehouse.*') ? 'active' : '' }}">
@@ -629,8 +803,13 @@
                     <span class="nav-tooltip">Warehouse Management</span>
                 </a>
             </li>
+            @endif
 
-            <!-- Purchase Requisition -->
+            <!-- Purchase Requisition (Only for Procurement/Purchasing Department) -->
+            @if(str_contains($deptName, 'procurement') || str_contains($deptName, 'purchasing'))
+            <li class="mt-5">
+                <h3>📋 PROCUREMENT OPERATIONS</h3>
+            </li>
             <li>
                 <a href="{{ route('procurement.create') }}"
                    class="nav-item {{ request()->routeIs('procurement.create') ? 'active' : '' }}">
@@ -639,7 +818,7 @@
                     <span class="nav-tooltip">Create Purchase Requisition</span>
                 </a>
             </li>
-
+            @endif
         </ul>
     </nav>
 </aside>
@@ -684,6 +863,8 @@
         const navItems = document.querySelectorAll('.nav-item');
         
         navItems.forEach(item => {
+            if (item.classList.contains('disabled')) return;
+            
             const href = item.getAttribute('href');
             if (href && currentPath.includes(href.replace(/\/$/, '')) && href !== '/') {
                 item.classList.add('active');
@@ -696,7 +877,7 @@
         
         // Auto-close mobile menu on item click
         if (window.innerWidth <= 480) {
-            document.querySelectorAll('.nav-item').forEach(item => {
+            document.querySelectorAll('.nav-item:not(.disabled)').forEach(item => {
                 item.addEventListener('click', () => {
                     const sidebar = document.getElementById('sidebar');
                     if (sidebar) sidebar.classList.remove('mobile-open');
