@@ -419,12 +419,12 @@
                 <span style="color: var(--mint-green);">👤</span>
                 <span>{{ Auth::user()->name ?? 'User' }}</span>
             </div>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" class="logout-btn">
-                    Logout
-                </button>
-            </form>
+            <form method="POST" action="{{ route('admin.logout') }}">
+                    @csrf
+                    <button type="submit" class="logout-btn">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </form>
         </div>
     </div>
 </header>

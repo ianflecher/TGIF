@@ -978,13 +978,12 @@
         <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
             <div style="color: #bbf7d0; font-size: 0.85rem; margin-bottom: 0.5rem;">Logged in as:</div>
             <div style="color: white; font-weight: 600; margin-bottom: 1rem;">{{ Auth::user()->full_name }}</div>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
-                <button type="submit" style="width: 100%; background: rgba(239, 68, 68, 0.9); color: white; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                    <i class="fas fa-sign-out-alt"></i>
-                    <span>Logout</span>
-                </button>
-            </form>
+                        <form method="POST" action="{{ route('admin.logout') }}">
+                    @csrf
+                    <button type="submit" class="logout-btn">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </form>
         </div>
         @endauth
     </nav>

@@ -22,58 +22,91 @@ new #[Layout('components.layouts.employee')] class extends Component
     }
 
     public function login()
+{
+    $this->validate();
+
+    // Prepare credentials for authentication
+    $credentials = ['password' => $this->password];
+    
+    // Determine if input is email or username
+    if (filter_var($this->username, FILTER_VALIDATE_EMAIL)) {
+        $credentials['email'] = $this->username;
+    } else {
+        $credentials['username'] = $this->username;
+    }
+
+    // DEBUG: Log what we're looking for
+    \Log::info('Login attempt:', $credentials);
+    
+    // Check if user exists
+    $user = DB::table('users')
+        ->where(function($query) use ($credentials) {
+            if (isset($credentials['email'])) {
+                $query->where('email', $credentials['email']);
+            } else {
+                $query->where('username', $credentials['username']);
+            }
+        })
+        ->whereNull('deleted_at')
+        ->first(); // Use first() instead of exists() to see the actual user
+
+    \Log::info('Found user:', $user ? (array)$user : ['not found']);
+    
+    if (!$user) {
+        throw ValidationException::withMessages([
+            'username' => __('User not found.'),
+        ]);
+    }
+
+    // Check if user has admin role
+    if ($user->role !== 'admin') {
+        \Log::info('User role is not admin:', ['role' => $user->role]);
+        throw ValidationException::withMessages([
+            'username' => __('Access denied. Administrator credentials required.'),
+        ]);
+    }
+
+    // Attempt authentication
+    if (!Auth::attempt($credentials, $this->remember)) {
+        throw ValidationException::withMessages([
+            'username' => __('Invalid credentials.'),
+        ]);
+    }
+
+    // Get the authenticated user
+    $user = Auth::user();
+    
+    if ($user->role !== 'admin') {
+        Auth::logout();
+        throw ValidationException::withMessages([
+            'username' => __('Insufficient permissions. Administrator access required.'),
+        ]);
+    }
+
+    session()->regenerate();
+
+    // Redirect based on username
+    return $this->redirectBasedOnUsername($user->username);
+}
+
+    private function redirectBasedOnUsername(string $username)
     {
-        $this->validate();
+        $redirects = [
+            'admin' => route('admin.dashboard'), // Super admin
+            'inventory' => route('inventory.home'),
+            'customerservice' => route('customerservice.home'),
+            'procurement' => route('procurement.home'),
+            'supplychain' => route('supplychain.home'),
+            'finance' => route('finance.home'),
+            'ecommerce' => route('ecommerce.home'),
+            'businessintelligence' => route('reports.home'), // BI goes to reports
+            'sales' => route('sales.home'),
+            'project' => route('projects.home'),
+            'hr' => route('hr.home'),
+        ];
 
-        // Prepare credentials for authentication
-        $credentials = ['password' => $this->password];
-        
-        // Determine if input is email or username
-        if (filter_var($this->username, FILTER_VALIDATE_EMAIL)) {
-            $credentials['email'] = $this->username;
-        } else {
-            $credentials['username'] = $this->username;
-        }
-
-        // Check if user exists with admin role ONLY
-        $userExists = DB::table('users')
-            ->where(function($query) use ($credentials) {
-                if (isset($credentials['email'])) {
-                    $query->where('email', $credentials['email']);
-                } else {
-                    $query->where('username', $credentials['username']);
-                }
-            })
-            ->where('role', 'admin') // Only admin role
-            ->whereNull('deleted_at')
-            ->exists();
-
-        if (!$userExists) {
-            throw ValidationException::withMessages([
-                'username' => __('Access denied. Administrator credentials required.'),
-            ]);
-        }
-
-        // Attempt authentication
-        if (!Auth::attempt($credentials, $this->remember)) {
-            throw ValidationException::withMessages([
-                'username' => __('Invalid credentials.'),
-            ]);
-        }
-
-        // Verify the user is an admin
-        $user = Auth::user();
-        if ($user->role !== 'admin') {
-            Auth::logout();
-            throw ValidationException::withMessages([
-                'username' => __('Insufficient permissions. Administrator access required.'),
-            ]);
-        }
-
-        session()->regenerate();
-
-        // Redirect to admin dashboard using the named route
-        return redirect()->route('admin.dashboard');
+        // Default to admin dashboard if username not found
+        return redirect()->to($redirects[$username] ?? route('admin.dashboard'));
     }
 }
 ?>
@@ -84,8 +117,8 @@ new #[Layout('components.layouts.employee')] class extends Component
             <div class="mx-auto h-20 w-20 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mb-4 overflow-hidden border-2 border-emerald-200 shadow-lg">
                 <i class="fas fa-crown text-3xl text-white"></i>
             </div>
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Administrator Portal</h1>
-            <p class="text-gray-600">System Administrator Access Only</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">ERP System Portal</h1>
+            <p class="text-gray-600">Module-Based Administrator Access</p>
         </div>
 
         <!-- Login Card -->
@@ -107,7 +140,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                                 x-ref="username"
                                 required
                                 autofocus
-                                placeholder="admin@tgif.local"
+                                placeholder="admin, inventory, sales, etc."
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
@@ -123,7 +156,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                     <div>
                         <div class="flex items-center justify-between mb-2">
                             <label for="password" class="block text-sm font-medium text-gray-700">
-                                Admin Password
+                                Password
                             </label>
                         </div>
                         <div class="relative">
@@ -161,7 +194,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                         >
                             <span wire:loading.remove wire:target="login">
                                 <i class="fas fa-sign-in-alt"></i>
-                                Access Control Panel
+                                Access Module
                             </span>
                             <span wire:loading wire:target="login">
                                 <i class="fas fa-spinner fa-spin"></i>
@@ -169,29 +202,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                             </span>
                         </button>
                     </div>
-                </form>
-
-                <!-- Admin Only Warning -->
-                <div class="mt-6 p-4 bg-red-50 border border-red-100 rounded-lg">
-                    <div class="flex items-start">
-                        <i class="fas fa-shield-alt text-red-500 mt-0.5 mr-2"></i>
-                        <div>
-                            <p class="text-xs font-medium text-red-800 mb-1">🔐 Restricted Access</p>
-                            <p class="text-xs text-red-700">
-                                This portal is for <span class="font-bold">System Administrators only</span>. 
-                                All access attempts are logged and monitored.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Admin Information -->
-                <div class="mt-6 text-center">
-                    <div class="inline-flex items-center px-4 py-2 bg-emerald-100 text-emerald-800 rounded-full">
-                        <i class="fas fa-crown mr-2"></i>
-                        <span class="text-sm font-medium">System Administrator Role</span>
-                    </div>
-                </div>
+                </form>              
             </div>
             
             <!-- Footer -->
@@ -199,24 +210,34 @@ new #[Layout('components.layouts.employee')] class extends Component
                 <div class="flex items-center justify-center">
                     <i class="fas fa-server text-green-600 mr-2"></i>
                     <p class="text-xs text-center text-green-800 font-medium">
-                        TGIF Admin Control System
+                        TGIF ERP System - Module Authentication
                     </p>
                 </div>
             </div>
         </div>
 
-        <!-- Default Admin Credentials (Optional - remove in production) -->
+        <!-- Default Credentials -->
         <div class="mt-8 text-center">
             <details class="inline-block">
                 <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Default Admin Credentials
+                    <i class="fas fa-key mr-1"></i>
+                    Available Logins (Password: password)
                 </summary>
                 <div class="mt-2 p-3 bg-gray-50 rounded-lg text-left">
-                    <p class="text-xs text-gray-600 mb-1"><strong>Username:</strong> admin</p>
-                    <p class="text-xs text-gray-600 mb-1"><strong>Email:</strong> admin@tgif.local</p>
-                    <p class="text-xs text-gray-600"><strong>Password:</strong> password</p>
-                    <p class="text-xs text-gray-500 mt-2 italic">Change these credentials after first login</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="text-xs"><strong>admin</strong> → Super Admin</div>
+                        <div class="text-xs"><strong>inventory</strong> → Inventory</div>
+                        <div class="text-xs"><strong>sales</strong> → Sales</div>
+                        <div class="text-xs"><strong>hr</strong> → HR</div>
+                        <div class="text-xs"><strong>finance</strong> → Finance</div>
+                        <div class="text-xs"><strong>project</strong> → Projects</div>
+                        <div class="text-xs"><strong>procurement</strong> → Procurement</div>
+                        <div class="text-xs"><strong>ecommerce</strong> → E-commerce</div>
+                        <div class="text-xs"><strong>customerservice</strong> → Customer Service</div>
+                        <div class="text-xs"><strong>supplychain</strong> → Supply Chain</div>
+                        <div class="text-xs"><strong>businessintelligence</strong> → Reports</div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2 italic">All passwords: "password"</p>
                 </div>
             </details>
         </div>

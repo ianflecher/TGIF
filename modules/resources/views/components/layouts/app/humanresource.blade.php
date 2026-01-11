@@ -674,11 +674,10 @@
                     <i class="fas fa-user-tie"></i>
                     <span>{{ Auth::user()->name ?? 'HR Manager' }}</span>
                 </div>
-                <form method="POST" action="{{ route('logout') }}">
+                            <form method="POST" action="{{ route('admin.logout') }}">
                     @csrf
                     <button type="submit" class="logout-btn">
-                        <i class="fas fa-sign-out-alt"></i>
-                        <span class="hidden md:inline">Logout</span>
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
                     </button>
                 </form>
             @else

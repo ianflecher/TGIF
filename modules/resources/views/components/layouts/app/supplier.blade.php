@@ -585,27 +585,16 @@
 
         <!-- User Actions -->
         <div class="user-actions">
-            @auth
-                @if(Auth::user()->role === 'supplier')
                     <div class="user-badge supplier">
                         <i class="fas fa-truck"></i>
                         <span>{{ Auth::user()->full_name ?? 'Supplier' }}</span>
                     </div>
-                    <form method="POST" action="{{ route('logout') }}">
+                    <form method="POST" action="{{ route('supplier.logout') }}">
                         @csrf
                         <button type="submit" class="logout-btn">
                             <i class="fas fa-sign-out-alt"></i>Logout
                         </button>
                     </form>
-                @endif
-            @else
-                <a href="{{ route('supplier.login') }}" class="nav-link">
-                    <i class="fas fa-sign-in-alt"></i>Login
-                </a>
-                <a href="{{ route('supplier.register') }}" class="nav-link" style="background: var(--supplier-amber);">
-                    <i class="fas fa-user-plus"></i>Register
-                </a>
-            @endauth
         </div>
     </div>
 

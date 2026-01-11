@@ -19,8 +19,6 @@ Volt::route('/employee/login', 'auth.employeelogin')->name('employee.login');
 Volt::route('/applicant/login', 'auth.applicantlogin')->name('applicant.login');
 Volt::route('/supplier/login', 'auth.supplier')->name('supplier.login');
 Volt::route('/register', 'auth.register')->name('register');
-Volt::route('/forgot-password', 'auth.forgot-password')->name('password.request');
-Volt::route('/reset-password/{token}', 'auth.reset-password')->name('password.reset');
 
 // Public Product Pages
 Volt::route('/products', 'products.index')->name('products.index');
@@ -246,6 +244,18 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
     \Log::info('Gantt data: ' . json_encode($ganttData));
     return response()->json($ganttData);
 });
+
+// In routes/web.php
+use App\Livewire\Actions\LogoutApplicant;
+use App\Livewire\Actions\LogoutAdmin;
+use App\Livewire\Actions\LogoutEmployee;
+use App\Livewire\Actions\LogoutSupplier;
+
+// Use standard Laravel route for POST
+Route::post('/applicant/logout', LogoutApplicant::class)->name('applicant.logout');
+Route::post('/admin/logout', LogoutAdmin::class)->name('admin.logout');
+Route::post('/employee/logout', LogoutEmployee::class)->name('employee.logout');
+Route::post('/supplier/logout', LogoutSupplier::class)->name('supplier.logout');
 
 Route::fallback(function () {
     return redirect()->route('landing');

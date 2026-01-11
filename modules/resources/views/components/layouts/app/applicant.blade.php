@@ -386,7 +386,7 @@
                     <i class="fas fa-user-circle text-career-200"></i>
                     <span>{{ Auth::user()->full_name ?? Auth::user()->name ?? 'Applicant' }}</span>
                 </div>
-                <form method="POST" action="{{ route('logout') }}">
+                <form method="POST" action="{{ route('applicant.logout') }}">
                     @csrf
                     <button type="submit" class="logout-btn">
                         <i class="fas fa-sign-out-alt mr-2"></i>Logout
