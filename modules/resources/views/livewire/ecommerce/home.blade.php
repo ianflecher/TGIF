@@ -5,6 +5,7 @@ namespace App\Http\Livewire\Volt;
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 new #[Layout('components.layouts.app')] class extends Component
 {
@@ -22,118 +23,216 @@ new #[Layout('components.layouts.app')] class extends Component
     
     public function loadEcommerceData()
     {
-        // E-commerce Overview Statistics
+        // Check which tables exist
+        $hasEcommerceOrders = DB::getSchemaBuilder()->hasTable('ecommerce_orders');
+        $hasSalesOrders = DB::getSchemaBuilder()->hasTable('sales_orders');
+        $hasProducts = DB::getSchemaBuilder()->hasTable('products');
+        $hasCustomers = DB::getSchemaBuilder()->hasTable('customers');
+        $hasOrderItems = DB::getSchemaBuilder()->hasTable('order_items');
+        
+        // E-commerce Overview Statistics - Use sales_orders since you have it
+        if ($hasSalesOrders) {
+            $salesOrdersData = DB::table('sales_orders')
+                ->selectRaw('COUNT(*) as total_orders')
+                ->selectRaw('SUM(COALESCE(grand_total, 0)) as total_revenue')
+                ->selectRaw("SUM(CASE WHEN status IN ('draft', 'confirmed') THEN 1 ELSE 0 END) as pending_orders")
+                ->selectRaw("SUM(CASE WHEN status IN ('processing') THEN 1 ELSE 0 END) as processing_orders")
+                ->selectRaw("SUM(CASE WHEN status IN ('delivered') THEN 1 ELSE 0 END) as completed_orders")
+                ->first();
+            
+            $totalRevenue = $salesOrdersData->total_revenue ?? 0;
+            $totalOrders = $salesOrdersData->total_orders ?? 0;
+            $pendingOrders = $salesOrdersData->pending_orders ?? 0;
+            $processingOrders = $salesOrdersData->processing_orders ?? 0;
+            $completedOrders = $salesOrdersData->completed_orders ?? 0;
+            
+            // Calculate average order value from delivered orders
+            $avgOrderValueResult = $completedOrders > 0 
+                ? DB::table('sales_orders')
+                    ->where('status', 'delivered')
+                    ->selectRaw('AVG(grand_total) as avg_value')
+                    ->first()
+                : (object)['avg_value' => 0];
+                
+            $avgOrderValue = $avgOrderValueResult->avg_value ?? 0;
+        } else {
+            $totalRevenue = 0;
+            $totalOrders = 0;
+            $pendingOrders = 0;
+            $processingOrders = 0;
+            $completedOrders = 0;
+            $avgOrderValue = 0;
+        }
+        
+        // If ecommerce_orders exists, combine data
+        if ($hasEcommerceOrders) {
+            $ecommerceData = DB::table('ecommerce_orders')
+                ->selectRaw('COUNT(*) as total_orders')
+                ->selectRaw('SUM(COALESCE(total_amount, 0)) as total_revenue')
+                ->selectRaw("SUM(CASE WHEN order_status IN ('new', 'pending') THEN 1 ELSE 0 END) as pending_orders")
+                ->selectRaw("SUM(CASE WHEN order_status IN ('processing') THEN 1 ELSE 0 END) as processing_orders")
+                ->selectRaw("SUM(CASE WHEN order_status IN ('delivered', 'completed') THEN 1 ELSE 0 END) as completed_orders")
+                ->first();
+            
+            $totalRevenue += $ecommerceData->total_revenue ?? 0;
+            $totalOrders += $ecommerceData->total_orders ?? 0;
+            $pendingOrders += $ecommerceData->pending_orders ?? 0;
+            $processingOrders += $ecommerceData->processing_orders ?? 0;
+            $completedOrders += $ecommerceData->completed_orders ?? 0;
+            
+            // Calculate average for ecommerce orders if any
+            if ($ecommerceData->completed_orders > 0) {
+                $ecommerceAvg = DB::table('ecommerce_orders')
+                    ->whereIn('order_status', ['delivered', 'completed'])
+                    ->selectRaw('AVG(total_amount) as avg_value')
+                    ->first();
+                    
+                if ($totalOrders > 0) {
+                    // Weighted average
+                    $salesOrderCount = $salesOrdersData->completed_orders ?? 0;
+                    $ecommerceOrderCount = $ecommerceData->completed_orders ?? 0;
+                    $totalCompleted = $salesOrderCount + $ecommerceOrderCount;
+                    
+                    $salesAvg = $avgOrderValueResult->avg_value ?? 0;
+                    $ecommerceAvgValue = $ecommerceAvg->avg_value ?? 0;
+                    
+                    if ($totalCompleted > 0) {
+                        $avgOrderValue = (($salesOrderCount * $salesAvg) + ($ecommerceOrderCount * $ecommerceAvgValue)) / $totalCompleted;
+                    }
+                }
+            }
+        }
+        
         $this->ecommerceStats = [
-            'total_orders' => DB::table('ecommerce_orders')->count(),
-            'total_revenue' => DB::table('ecommerce_orders')->sum('total_amount') ?? 0,
-            'total_products' => DB::table('products')->count(),
-            'total_customers' => DB::table('customers')->count(),
-            'pending_orders' => DB::table('ecommerce_orders')->where('order_status', 'new')->count(),
-            'processing_orders' => DB::table('ecommerce_orders')->where('order_status', 'processing')->count(),
-            'completed_orders' => DB::table('ecommerce_orders')->where('order_status', 'delivered')->count(),
-            'avg_order_value' => $this->calculateAverageOrderValue(),
+            'total_orders' => $totalOrders,
+            'total_revenue' => $totalRevenue,
+            'total_products' => $hasProducts ? DB::table('products')->count() : 0,
+            'total_customers' => $hasCustomers ? DB::table('customers')->count() : 0,
+            'pending_orders' => $pendingOrders,
+            'processing_orders' => $processingOrders,
+            'completed_orders' => $completedOrders,
+            'avg_order_value' => $avgOrderValue,
         ];
         
-        // Recent E-commerce Orders
-        $this->recentEcommerceOrders = DB::table('ecommerce_orders')
-            ->select(
-                'ecommerce_orders.*',
-                'customers.first_name',
-                'customers.last_name',
-                'customers.email'
-            )
-            ->leftJoin('customers', 'ecommerce_orders.customer_id', '=', 'customers.customer_id')
-            ->orderBy('ecommerce_orders.order_date', 'desc')
-            ->limit(5)
-            ->get()
-            ->toArray();
+        // Recent E-commerce Orders (if table exists)
+        if ($hasEcommerceOrders) {
+            $this->recentEcommerceOrders = DB::table('ecommerce_orders')
+                ->select(
+                    'ecommerce_orders.*',
+                    'customers.first_name',
+                    'customers.last_name',
+                    'customers.email'
+                )
+                ->leftJoin('customers', 'ecommerce_orders.customer_id', '=', 'customers.customer_id')
+                ->orderBy('ecommerce_orders.order_date', 'desc')
+                ->limit(5)
+                ->get()
+                ->toArray();
+        } else {
+            $this->recentEcommerceOrders = [];
+        }
         
         // Recent Sales Orders (from main system)
-        $this->recentOrders = DB::table('sales_orders')
-            ->select(
-                'sales_orders.*',
-                'customers.first_name',
-                'customers.last_name'
-            )
-            ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.customer_id')
-            ->orderBy('sales_orders.order_date', 'desc')
-            ->limit(5)
-            ->get()
-            ->toArray();
+        if ($hasSalesOrders) {
+            $this->recentOrders = DB::table('sales_orders')
+                ->select(
+                    'sales_orders.*',
+                    'customers.first_name',
+                    'customers.last_name'
+                )
+                ->leftJoin('customers', 'sales_orders.customer_id', '=', 'customers.customer_id')
+                ->orderBy('sales_orders.order_date', 'desc')
+                ->limit(5)
+                ->get()
+                ->toArray();
+        } else {
+            $this->recentOrders = [];
+        }
         
-            // Top Products
-        $this->topProducts = DB::table('order_items')
-            ->select(
-                'products.product_name',
-                'products.product_id',  // Use product_id instead of sku
-                DB::raw('SUM(order_items.quantity) as total_sold'),
-                DB::raw('SUM(order_items.total) as total_revenue')
-            )
-            ->leftJoin('products', 'order_items.product_id', '=', 'products.product_id')
-            ->groupBy('products.product_id', 'products.product_name', 'products.product_id')
-            ->orderBy('total_sold', 'desc')
-            ->limit(5)
-            ->get()
-            ->toArray();
-        // Platform Statistics
-        $this->platformStats = DB::table('ecommerce_orders')
-            ->select(
-                'platform',
-                DB::raw('COUNT(*) as order_count'),
-                DB::raw('SUM(total_amount) as total_revenue'),
-                DB::raw('AVG(total_amount) as avg_order_value')
-            )
-            ->groupBy('platform')
-            ->orderBy('total_revenue', 'desc')
-            ->get()
-            ->toArray();
+        // Top Products
+        if ($hasOrderItems && $hasProducts) {
+            $this->topProducts = DB::table('order_items')
+                ->select(
+                    'products.product_name',
+                    'products.product_id',
+                    DB::raw('SUM(order_items.quantity) as total_sold'),
+                    DB::raw('SUM(order_items.total) as total_revenue')
+                )
+                ->join('products', 'order_items.product_id', '=', 'products.product_id')
+                ->groupBy('products.product_id', 'products.product_name')
+                ->orderBy('total_sold', 'desc')
+                ->limit(5)
+                ->get()
+                ->toArray();
+        } else {
+            $this->topProducts = [];
+        }
+        
+        // Platform Statistics (only if ecommerce_orders exists)
+        if ($hasEcommerceOrders && DB::getSchemaBuilder()->hasColumn('ecommerce_orders', 'platform')) {
+            $this->platformStats = DB::table('ecommerce_orders')
+                ->select(
+                    'platform',
+                    DB::raw('COUNT(*) as order_count'),
+                    DB::raw('SUM(COALESCE(total_amount, 0)) as total_revenue'),
+                    DB::raw('AVG(COALESCE(total_amount, 0)) as avg_order_value')
+                )
+                ->whereNotNull('platform')
+                ->groupBy('platform')
+                ->orderBy('total_revenue', 'desc')
+                ->get()
+                ->toArray();
+        } else {
+            $this->platformStats = [];
+        }
         
         // Customer Metrics
-        $this->customerMetrics = [
-            'new_customers' => DB::table('customers')
-                ->where('date_registered', '>=', now()->subDays(30))
-                ->count(),
-            'repeat_customers' => DB::table('customers')
+        $newCustomers = 0;
+        $repeatCustomers = 0;
+        $avgCustomerValue = 0;
+        
+        if ($hasCustomers && $hasSalesOrders) {
+            // New customers in last 30 days
+            if (DB::getSchemaBuilder()->hasColumn('customers', 'created_at')) {
+                $newCustomers = DB::table('customers')
+                    ->where('created_at', '>=', now()->subDays(30))
+                    ->count();
+            }
+            
+            // Count repeat customers (customers with more than 1 order)
+            $repeatCustomers = DB::table('customers')
                 ->whereExists(function ($query) {
                     $query->select(DB::raw(1))
-                          ->from('sales_orders')
-                          ->whereColumn('sales_orders.customer_id', 'customers.customer_id')
-                          ->groupBy('sales_orders.customer_id')
-                          ->havingRaw('COUNT(*) > 1');
+                        ->from('sales_orders')
+                        ->whereColumn('sales_orders.customer_id', 'customers.customer_id')
+                        ->groupBy('sales_orders.customer_id')
+                        ->havingRaw('COUNT(*) > 1');
                 })
-                ->count(),
-            'avg_customer_value' => $this->calculateAverageCustomerValue(),
+                ->count();
+            
+            // Calculate average customer value from delivered orders
+            $avgCustomerValueResult = DB::table('sales_orders')
+                ->where('status', 'delivered')
+                ->selectRaw('AVG(grand_total) as avg_value')
+                ->first();
+            $avgCustomerValue = $avgCustomerValueResult->avg_value ?? 0;
+        }
+        
+        $this->customerMetrics = [
+            'new_customers' => $newCustomers,
+            'repeat_customers' => $repeatCustomers,
+            'avg_customer_value' => $avgCustomerValue,
         ];
-    }
-    
-    private function calculateAverageOrderValue()
-    {
-        $result = DB::table('ecommerce_orders')
-            ->select(DB::raw('AVG(total_amount) as avg_value'))
-            ->where('order_status', 'delivered')
-            ->first();
-        
-        return $result->avg_value ?? 0;
-    }
-    
-    private function calculateAverageCustomerValue()
-    {
-        $result = DB::table('sales_orders')
-            ->select(DB::raw('AVG(grand_total) as avg_value'))
-            ->where('status', 'delivered')
-            ->first();
-        
-        return $result->avg_value ?? 0;
     }
     
     public function formatCurrency($amount)
     {
-        return '₱' . number_format($amount, 2);
+        return '₱' . number_format(floatval($amount), 2);
     }
     
     public function formatNumber($number)
     {
-        return number_format($number);
+        return number_format(intval($number));
     }
     
     public function formatDate($date)
@@ -150,6 +249,8 @@ new #[Layout('components.layouts.app')] class extends Component
             'shipped', 'in_progress' => 'bg-orange-100 text-orange-800',
             'delivered', 'completed' => 'bg-green-100 text-green-800',
             'cancelled' => 'bg-red-100 text-red-800',
+            'return_requested' => 'bg-orange-100 text-orange-800',
+            'returned' => 'bg-red-100 text-red-800',
             default => 'bg-gray-100 text-gray-800',
         };
     }
@@ -159,7 +260,8 @@ new #[Layout('components.layouts.app')] class extends Component
         return match(strtolower($status)) {
             'paid' => 'bg-green-100 text-green-800',
             'pending' => 'bg-yellow-100 text-yellow-800',
-            'failed' => 'bg-red-100 text-red-800',
+            'failed', 'refunded' => 'bg-red-100 text-red-800',
+            'partial' => 'bg-blue-100 text-blue-800',
             default => 'bg-gray-100 text-gray-800',
         };
     }
@@ -172,6 +274,7 @@ new #[Layout('components.layouts.app')] class extends Component
             'amazon' => 'bg-orange-100 text-orange-800',
             'ebay' => 'bg-red-100 text-red-800',
             'magento' => 'bg-purple-100 text-purple-800',
+            'website' => 'bg-indigo-100 text-indigo-800',
             default => 'bg-gray-100 text-gray-800',
         };
     }
@@ -189,7 +292,7 @@ new #[Layout('components.layouts.app')] class extends Component
         if ($diff < 604800) return floor($diff/86400) . 'd ago';
         return date('M d, Y', $time);
     }
-};
+}
 ?>
 
 <div class="p-6">
@@ -451,7 +554,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <div class="flex-1">
                                 <h4 class="font-medium text-gray-800">{{ $product->product_name ?? 'Unknown Product' }}</h4>
                                 <div class="flex items-center space-x-2 mt-1">
-                                    <span class="text-xs text-gray-600">SKU: {{ $product->sku ?? 'N/A' }}</span>
+                                    <span class="text-xs text-gray-600">ID: {{ $product->product_id ?? 'N/A' }}</span>
                                     <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
                                         {{ $product->total_sold ?? 0 }} sold
                                     </span>
@@ -551,7 +654,6 @@ new #[Layout('components.layouts.app')] class extends Component
                 </svg>
                 <span class="font-medium text-gray-800">Manage Products</span>
             </a>
-        
         </div>
     </div>
 </div>
