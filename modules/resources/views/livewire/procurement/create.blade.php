@@ -11,9 +11,9 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     public int $step = 1; // current step
     public int $supplierId = 0;
     public array $suppliers = [];
-    public array $products = [];
-    public array $selectedProducts = []; // product_id => quantity
-    public array $productPrices = []; // product_id => price
+    public array $inventories = []; // Changed from products to inventories
+    public array $selectedInventories = []; // inventory_id => quantity (Changed from selectedProducts)
+    public array $inventoryPrices = []; // inventory_id => unit_price (Changed from productPrices)
     public string $status = 'pending';
     public string $date = '';
     public string $message = '';
@@ -39,7 +39,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
             ->toArray();
 
         $this->supplierId = $this->suppliers[0]->supplier_id ?? 0;
-        $this->loadProducts();
+        $this->loadInventories(); // Changed from loadProducts
         $this->date = Carbon::now()->toDateString();
         
         // Load user's requisition history
@@ -53,9 +53,9 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         ->leftJoin('suppliers as s', function($join) {
             $join->whereRaw('EXISTS (
                 SELECT 1 FROM requisition_items ri 
-                JOIN products p ON ri.product_id = p.product_id 
+                JOIN inventories i ON ri.inventory_id = i.inventory_id 
                 WHERE ri.requisition_id = pr.requisition_id 
-                AND p.supplier_id = s.supplier_id
+                AND i.supplier_id = s.supplier_id
                 LIMIT 1
             )');
         })
@@ -95,19 +95,19 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     
     $this->requisitionDetails = $requisition ? (array) $requisition : [];
     
-    // Load requisition items with product details
+    // Load requisition items with inventory details
     $this->requisitionItems = DB::table('requisition_items as ri')
-        ->join('products as p', 'ri.product_id', '=', 'p.product_id')
-        ->join('suppliers as s', 'p.supplier_id', '=', 's.supplier_id')
+        ->join('inventories as i', 'ri.inventory_id', '=', 'i.inventory_id') // Changed from products to inventories
+        ->join('suppliers as s', 'i.supplier_id', '=', 's.supplier_id')
         ->select(
             'ri.*',
-            'p.product_name',
-            'p.category',
-            'p.price as unit_price',
+            'i.product_name', // Changed from products table
+            'i.category',
+            'i.unit_price',
             's.name as supplier_name'
         )
         ->where('ri.requisition_id', $requisitionId)
-        ->orderBy('ri.product_id')
+        ->orderBy('ri.inventory_id')
         ->get()
         ->toArray();
     
@@ -122,16 +122,16 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         }
         
         if ($this->step === 2) {
-            $hasSelectedProducts = false;
-            foreach ($this->selectedProducts as $quantity) {
+            $hasSelectedInventories = false;
+            foreach ($this->selectedInventories as $quantity) {
                 if ($quantity > 0) {
-                    $hasSelectedProducts = true;
+                    $hasSelectedInventories = true;
                     break;
                 }
             }
             
-            if (!$hasSelectedProducts) {
-                $this->message = '⚠ Please select at least one product with quantity.';
+            if (!$hasSelectedInventories) {
+                $this->message = '⚠ Please select at least one inventory item with quantity.';
                 return;
             }
             
@@ -142,34 +142,34 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         $this->step++;
     }
 
-    public function incrementQuantity($productId)
+    public function incrementQuantity($inventoryId)
     {
-        if (!isset($this->selectedProducts[$productId])) {
-            $this->selectedProducts[$productId] = 1;
+        if (!isset($this->selectedInventories[$inventoryId])) {
+            $this->selectedInventories[$inventoryId] = 1;
         } else {
-            $this->selectedProducts[$productId]++;
+            $this->selectedInventories[$inventoryId]++;
         }
         
         $this->calculateEstimatedCost();
     }
 
-    public function decrementQuantity($productId)
+    public function decrementQuantity($inventoryId)
     {
-        if (isset($this->selectedProducts[$productId]) && $this->selectedProducts[$productId] > 0) {
-            $this->selectedProducts[$productId]--;
+        if (isset($this->selectedInventories[$inventoryId]) && $this->selectedInventories[$inventoryId] > 0) {
+            $this->selectedInventories[$inventoryId]--;
             
-            if ($this->selectedProducts[$productId] == 0) {
-                unset($this->selectedProducts[$productId]);
+            if ($this->selectedInventories[$inventoryId] == 0) {
+                unset($this->selectedInventories[$inventoryId]);
             }
             
             $this->calculateEstimatedCost();
         }
     }
 
-    public function updatedSelectedProducts($value, $key)
+    public function updatedSelectedInventories($value, $key)
     {
-        if (isset($this->selectedProducts[$key]) && $this->selectedProducts[$key] <= 0) {
-            unset($this->selectedProducts[$key]);
+        if (isset($this->selectedInventories[$key]) && $this->selectedInventories[$key] <= 0) {
+            unset($this->selectedInventories[$key]);
         }
         
         $this->calculateEstimatedCost();
@@ -183,27 +183,28 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
     public function updatedSupplierId(): void
     {
-        $this->loadProducts();
-        $this->selectedProducts = [];
+        $this->loadInventories(); // Changed from loadProducts
+        $this->selectedInventories = [];
         $this->estimatedCost = 0.00;
     }
 
-    protected function loadProducts(): void
+    protected function loadInventories(): void // Changed from loadProducts
     {
         if ($this->supplierId === 0) {
-            $this->products = [];
+            $this->inventories = [];
             return;
         }
 
-        $this->products = DB::table('products')
+        $this->inventories = DB::table('inventories')
             ->where('supplier_id', $this->supplierId)
-            ->select('product_id', 'product_name', 'category', 'price', 'stock_quantity')
+            ->where('status', 'active') // Only show active inventory items
+            ->select('inventory_id', 'product_name', 'category', 'unit_price', 'quantity as stock_quantity', 'sku')
             ->orderBy('product_name')
             ->get()
             ->toArray();
         
-        foreach ($this->products as $product) {
-            $this->productPrices[$product->product_id] = $product->price;
+        foreach ($this->inventories as $inventory) {
+            $this->inventoryPrices[$inventory->inventory_id] = $inventory->unit_price;
         }
     }
 
@@ -211,16 +212,16 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     {
         $this->estimatedCost = 0.00;
         
-        foreach ($this->selectedProducts as $productId => $quantity) {
-            if ($quantity > 0 && isset($this->productPrices[$productId])) {
-                $this->estimatedCost += $quantity * $this->productPrices[$productId];
+        foreach ($this->selectedInventories as $inventoryId => $quantity) {
+            if ($quantity > 0 && isset($this->inventoryPrices[$inventoryId])) {
+                $this->estimatedCost += $quantity * $this->inventoryPrices[$inventoryId];
             }
         }
     }
 
     public function submit()
 {
-    if ($this->userId === 0 || $this->supplierId === 0 || empty($this->selectedProducts)) {
+    if ($this->userId === 0 || $this->supplierId === 0 || empty($this->selectedInventories)) {
         $this->message = '⚠ Please complete all steps.';
         return;
     }
@@ -242,19 +243,18 @@ new #[Layout('components.layouts.employeeland')] class extends Component
         'updated_at' => Carbon::now(),
     ]);
 
-    // Insert items
-    foreach ($this->selectedProducts as $productId => $quantity) {
+    // Insert items - now using inventory_id instead of product_id
+    foreach ($this->selectedInventories as $inventoryId => $quantity) {
         if ($quantity > 0) {
             DB::table('requisition_items')->insert([
                 'requisition_id' => $requisitionId,
-                'product_id' => $productId,
+                'inventory_id' => $inventoryId, // Changed from product_id to inventory_id
                 'quantity' => $quantity,
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
         }
     }
-
 
     $this->message = '✅ Requisition #' . $requisitionId . ' created successfully! Estimated Cost: ₱' . number_format($this->estimatedCost, 2);
     
@@ -269,9 +269,9 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     {
         $this->step = 1;
         $this->supplierId = $this->suppliers[0]->supplier_id ?? 0;
-        $this->selectedProducts = [];
+        $this->selectedInventories = [];
         $this->estimatedCost = 0.00;
-        $this->loadProducts();
+        $this->loadInventories(); // Changed from loadProducts
     }
 
     // Close requisition details view
@@ -321,7 +321,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
             <!-- Stepper -->
             <div class="flex justify-between mb-8 relative">
-                @foreach(['Select Supplier', 'Select Products', 'Review & Submit'] as $index => $label)
+                @foreach(['Select Supplier', 'Select Inventory Items', 'Review & Submit'] as $index => $label)
                     @php $stepNumber = $index + 1; @endphp
                     <div class="flex flex-col items-center z-10">
                         <div class="w-10 h-10 rounded-full {{ $step >= $stepNumber ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600' }} flex items-center justify-center font-bold mb-2 transition-all duration-300">
@@ -363,16 +363,16 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                     <div class="flex justify-end">
                         <button wire:click="nextStep" 
                                 class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition duration-200 shadow-md hover:shadow-lg">
-                            Next: Select Products <i class="fas fa-arrow-right ml-2"></i>
+                            Next: Select Inventory Items <i class="fas fa-arrow-right ml-2"></i>
                         </button>
                     </div>
                 </div>
             @endif
 
-            <!-- Step 2: Products -->
+            <!-- Step 2: Inventory Items -->
             @if($step === 2)
                 <div class="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Step 2: Select Products</h3>
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Step 2: Select Inventory Items</h3>
                     
                     <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
                         <div class="flex flex-wrap items-center justify-between">
@@ -382,57 +382,62 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                 <span class="ml-2 font-semibold text-blue-800">{{ collect($suppliers)->firstWhere('supplier_id', $supplierId)->name ?? '-' }}</span>
                             </div>
                             <div class="text-sm text-gray-600">
-                                <i class="fas fa-box mr-1"></i>
-                                {{ count(array_filter($selectedProducts, fn($qty) => $qty > 0)) }} product(s) selected
+                                <i class="fas fa-boxes mr-1"></i>
+                                {{ count(array_filter($selectedInventories, fn($qty) => $qty > 0)) }} item(s) selected
                             </div>
                         </div>
                     </div>
                     
-                    @if(count($products) > 0)
+                    @if(count($inventories) > 0)
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[500px] overflow-y-auto p-3">
-                            @foreach($products as $product)
-                                <div class="border rounded-xl p-5 hover:shadow-lg transition-shadow duration-300 {{ isset($selectedProducts[$product->product_id]) && $selectedProducts[$product->product_id] > 0 ? 'border-green-500 bg-green-50' : 'border-gray-300' }}">
+                            @foreach($inventories as $inventory)
+                                <div class="border rounded-xl p-5 hover:shadow-lg transition-shadow duration-300 {{ isset($selectedInventories[$inventory->inventory_id]) && $selectedInventories[$inventory->inventory_id] > 0 ? 'border-green-500 bg-green-50' : 'border-gray-300' }}">
                                     <div class="mb-4">
                                         <div class="flex justify-between items-start">
                                             <div>
-                                                <span class="font-bold text-gray-800 block">{{ $product->product_name }}</span>
-                                                <span class="text-sm text-gray-600">{{ $product->category }}</span>
+                                                <span class="font-bold text-gray-800 block">{{ $inventory->product_name }}</span>
+                                                <div class="mt-1">
+                                                    <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">{{ $inventory->category }}</span>
+                                                    @if($inventory->sku)
+                                                        <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded ml-1">SKU: {{ $inventory->sku }}</span>
+                                                    @endif
+                                                </div>
                                             </div>
-                                            @if($product->stock_quantity > 0)
+                                            @if($inventory->stock_quantity > 0)
                                                 <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                                                    In Stock: {{ $product->stock_quantity }}
+                                                    Stock: {{ $inventory->stock_quantity }}
                                                 </span>
                                             @endif
                                         </div>
-                                        @if($product->price > 0)
+                                        @if($inventory->unit_price > 0)
                                             <span class="text-lg font-bold text-green-700 block mt-2">
-                                                ₱{{ number_format($product->price, 2) }}
+                                                ₱{{ number_format($inventory->unit_price, 2) }}
                                             </span>
                                         @endif
                                     </div>
                                     
                                     <div class="mt-4">
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Quantity:</label>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Quantity to Request:</label>
                                         <div class="flex items-center space-x-2">
                                             <button type="button"
-                                                    wire:click="decrementQuantity({{ $product->product_id }})"
+                                                    wire:click="decrementQuantity({{ $inventory->inventory_id }})"
                                                     class="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center hover:bg-gray-300 transition duration-200">
                                                 <i class="fas fa-minus text-gray-700"></i>
                                             </button>
                                             <input type="number" 
                                                    min="0"
-                                                   max="{{ $product->stock_quantity }}"
-                                                   wire:model.live="selectedProducts.{{ $product->product_id }}"
+                                                   max="{{ $inventory->stock_quantity }}"
+                                                   wire:model.live="selectedInventories.{{ $inventory->inventory_id }}"
                                                    class="w-20 h-10 border border-gray-300 rounded-lg text-center font-semibold focus:ring-2 focus:ring-green-500 focus:border-transparent">
                                             <button type="button"
-                                                    wire:click="incrementQuantity({{ $product->product_id }})"
+                                                    wire:click="incrementQuantity({{ $inventory->inventory_id }})"
                                                     class="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center hover:bg-gray-300 transition duration-200">
                                                 <i class="fas fa-plus text-gray-700"></i>
                                             </button>
                                         </div>
-                                        @if(isset($selectedProducts[$product->product_id]) && $selectedProducts[$product->product_id] > 0)
+                                        @if(isset($selectedInventories[$inventory->inventory_id]) && $selectedInventories[$inventory->inventory_id] > 0)
                                             <p class="text-sm font-medium text-green-700 mt-2">
-                                                Subtotal: ₱{{ number_format(($selectedProducts[$product->product_id] ?? 0) * ($product->price ?? 0), 2) }}
+                                                Subtotal: ₱{{ number_format(($selectedInventories[$inventory->inventory_id] ?? 0) * ($inventory->unit_price ?? 0), 2) }}
                                             </p>
                                         @endif
                                     </div>
@@ -449,12 +454,12 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                             <i class="fas fa-calculator mr-2"></i>
                                             Estimated Cost Summary
                                         </h4>
-                                        <p class="text-sm text-green-600 mt-1">Total for all selected items</p>
+                                        <p class="text-sm text-green-600 mt-1">Total for all selected inventory items</p>
                                     </div>
                                     <div class="text-center md:text-right">
                                         <p class="text-3xl font-bold text-green-700">₱{{ number_format($estimatedCost, 2) }}</p>
                                         <p class="text-sm text-green-600">
-                                            {{ count(array_filter($selectedProducts, fn($qty) => $qty > 0)) }} item(s) selected
+                                            {{ count(array_filter($selectedInventories, fn($qty) => $qty > 0)) }} item(s) selected
                                         </p>
                                     </div>
                                 </div>
@@ -462,8 +467,8 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                         @endif
                     @else
                         <div class="text-center py-12 text-gray-500">
-                            <i class="fas fa-box-open text-5xl mb-4"></i>
-                            <p class="text-lg">No products available for this supplier.</p>
+                            <i class="fas fa-boxes text-5xl mb-4"></i>
+                            <p class="text-lg">No inventory items available from this supplier.</p>
                             <p class="text-sm mt-2">Please select a different supplier or contact procurement.</p>
                         </div>
                     @endif
@@ -474,7 +479,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                             <i class="fas fa-arrow-left mr-2"></i> Back to Supplier
                         </button>
                         
-                        @if(count(array_filter($selectedProducts, fn($qty) => $qty > 0)) > 0)
+                        @if(count(array_filter($selectedInventories, fn($qty) => $qty > 0)) > 0)
                             <button wire:click="nextStep" 
                                     class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition duration-200 shadow-md hover:shadow-lg">
                                 Next: Review & Submit <i class="fas fa-arrow-right ml-2"></i>
@@ -493,7 +498,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                     <div class="border-2 border-gray-300 rounded-xl p-8 mb-8 bg-gradient-to-br from-white to-gray-50 shadow-inner">
                         <div class="text-center mb-8">
                             <h3 class="text-2xl font-bold text-green-800">PURCHASE REQUISITION</h3>
-                            <p class="text-gray-600 mt-1">Request Summary</p>
+                            <p class="text-gray-600 mt-1">Inventory Request Summary</p>
                         </div>
                         
                         <!-- Requisition Info -->
@@ -556,7 +561,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                         <i class="fas fa-money-bill-wave mr-3"></i>
                                         TOTAL ESTIMATED COST
                                     </h4>
-                                    <p class="text-blue-700 mt-1">Inclusive of all selected items</p>
+                                    <p class="text-blue-700 mt-1">Inclusive of all selected inventory items</p>
                                 </div>
                                 <div class="mt-4 md:mt-0 text-center">
                                     <p class="text-4xl font-black text-blue-900">₱{{ number_format($estimatedCost, 2) }}</p>
@@ -569,13 +574,13 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                         <div class="mb-8">
                             <h4 class="font-bold text-gray-800 mb-4 text-lg border-b pb-2">
                                 <i class="fas fa-boxes text-green-600 mr-2"></i>
-                                Requested Items
+                                Requested Inventory Items
                             </h4>
                             <div class="overflow-x-auto rounded-lg border border-gray-300">
                                 <table class="min-w-full divide-y divide-gray-300">
                                     <thead class="bg-gray-100">
                                         <tr>
-                                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Product</th>
+                                            <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Inventory Item</th>
                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Category</th>
                                             <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Unit Price</th>
                                             <th class="px6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Quantity</th>
@@ -583,16 +588,16 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-200 bg-white">
-                                        @foreach($selectedProducts as $productId => $qty)
+                                        @foreach($selectedInventories as $inventoryId => $qty)
                                             @if($qty > 0)
                                                 @php
-                                                    $prod = collect($products)->firstWhere('product_id', $productId);
-                                                    $price = $prod->price ?? 0;
+                                                    $inv = collect($inventories)->firstWhere('inventory_id', $inventoryId);
+                                                    $price = $inv->unit_price ?? 0;
                                                     $subtotal = $qty * $price;
                                                 @endphp
                                                 <tr class="hover:bg-gray-50">
-                                                    <td class="px-6 py-4 font-medium text-gray-900">{{ $prod->product_name ?? 'Unknown' }}</td>
-                                                    <td class="px-6 py-4 text-gray-700">{{ $prod->category ?? '-' }}</td>
+                                                    <td class="px-6 py-4 font-medium text-gray-900">{{ $inv->product_name ?? 'Unknown' }}</td>
+                                                    <td class="px-6 py-4 text-gray-700">{{ $inv->category ?? '-' }}</td>
                                                     <td class="px-6 py-4 text-gray-700">₱{{ number_format($price, 2) }}</td>
                                                     <td class="px-6 py-4">
                                                         <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">
@@ -608,7 +613,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                                         <tr>
                                             <td colspan="3" class="px-6 py-4 text-right font-bold text-gray-900">TOTAL:</td>
                                             <td class="px-6 py-4 font-bold text-blue-900">
-                                                {{ count(array_filter($selectedProducts, fn($qty) => $qty > 0)) }} items
+                                                {{ count(array_filter($selectedInventories, fn($qty) => $qty > 0)) }} items
                                             </td>
                                             <td class="px-6 py-4 font-bold text-green-900 text-xl">
                                                 ₱{{ number_format($estimatedCost, 2) }}
@@ -623,7 +628,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
                     <div class="flex flex-col md:flex-row justify-between mt-8 pt-6 border-t border-gray-300">
                         <button wire:click="previousStep" 
                                 class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-8 py-3 rounded-lg font-medium transition duration-200 mb-3 md:mb-0">
-                            <i class="fas fa-edit mr-2"></i> Edit Products
+                            <i class="fas fa-edit mr-2"></i> Edit Inventory Items
                         </button>
                         
                         <div class="space-x-4">
@@ -862,12 +867,12 @@ new #[Layout('components.layouts.employeeland')] class extends Component
 
                     <!-- Items List -->
                     <div class="mb-6">
-                        <h4 class="font-bold text-gray-700 mb-4 text-lg">Requested Items</h4>
+                        <h4 class="font-bold text-gray-700 mb-4 text-lg">Requested Inventory Items</h4>
                         <div class="overflow-x-auto rounded-lg border border-gray-300">
                             <table class="min-w-full divide-y divide-gray-300">
                                 <thead class="bg-gray-100">
                                     <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Product</th>
+                                        <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Inventory Item</th>
                                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Supplier</th>
                                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Unit Price</th>
                                         <th class="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Quantity</th>
