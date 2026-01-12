@@ -566,7 +566,7 @@ new #[Layout('components.layouts.project')] class extends Component
         $task = DB::table('tasks')->where('task_id', $allocation->task_id)->first();
         if (!$task) return;
 
-        $phase = DB::table('project_phases')->where('id', $task->phase_id)->first();
+        $phase = DB::table('project_phases')->where('phase_id', $task->phase_id)->first();
         $project = DB::table('projects')->where('project_id', $phase->project_id)->first();
 
         $taskActualCost = DB::table('resource_allocations')
@@ -788,7 +788,7 @@ new #[Layout('components.layouts.project')] class extends Component
                 'quantity' => $this->allocatedQuantity,
                 'allocation_date' => now(),
                 'cost' => $totalCost,
-                'resource_type' => $resource->resource_type,
+                'resource_type' => $resource->type,
                 'resource_name' => $resource->resource_name,
             ]);
         }
@@ -815,7 +815,7 @@ new #[Layout('components.layouts.project')] class extends Component
         DB::table('budgets')->updateOrInsert(
             [
                 'project_id' => $project->project_id,
-                'phase_id' => $phase->id,
+                'phase_id' => $phase->phase_id,
                 'task_id' => $task->task_id,
             ],
             [
@@ -1059,7 +1059,7 @@ new #[Layout('components.layouts.project')] class extends Component
 
                             @foreach($allocs as $a)
                                 @php
-                                    $unit = match($a->resource_type) {
+                                    $unit = match($a->type) {
                                         'Food' => 'kg',
                                         'Equipment' => 'pcs',
                                         default => 'pcs',
