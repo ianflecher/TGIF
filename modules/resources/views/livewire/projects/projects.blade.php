@@ -5,6 +5,7 @@ namespace App\Http\Livewire\Volt;
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 new #[Layout('components.layouts.project')] class extends Component
 {
@@ -35,10 +36,23 @@ new #[Layout('components.layouts.project')] class extends Component
     public ?int $project_manager_id = null;
     public ?int $client_id = null;
 
+    // Accounting fields
+    public $accountingEnabled = false;
+
     public function mount()
     {
         $this->loadProjects();
         $this->loadManagers();
+        
+        // Check if accounting tables exist
+        $this->accountingEnabled = DB::getSchemaBuilder()->hasTable('chart_of_accounts') &&
+                                  DB::getSchemaBuilder()->hasTable('journal_entries') &&
+                                  DB::getSchemaBuilder()->hasTable('journal_details');
+        
+        // Ensure accounting accounts exist
+        if ($this->accountingEnabled) {
+            $this->ensureAccountsExist();
+        }
     }
 
     /***************
@@ -136,28 +150,260 @@ new #[Layout('components.layouts.project')] class extends Component
     {
         if (!isset($this->currentBudget['budget_id'])) return;
 
-        // Update the budget with new estimated cost
-        DB::table('budgets')
-            ->where('budget_id', $this->currentBudget['budget_id'])
-            ->update([
-                'estimated_cost' => $this->newEstimatedCost,
-                'variance' => $this->newEstimatedCost - ($this->currentBudget['actual_cost'] ?? 0),
+        try {
+            DB::beginTransaction();
+
+            $oldEstimatedCost = $this->currentBudget['estimated_cost'] ?? 0;
+            $difference = $this->newEstimatedCost - $oldEstimatedCost;
+            $projectId = $this->currentBudget['project_id'] ?? 0;
+
+            // Get project details
+            $project = DB::table('projects')
+                ->where('project_id', $projectId)
+                ->first();
+
+            if (!$project) {
+                throw new \Exception('Project not found');
+            }
+
+            // Update the budget with new estimated cost
+            DB::table('budgets')
+                ->where('budget_id', $this->currentBudget['budget_id'])
+                ->update([
+                    'estimated_cost' => $this->newEstimatedCost,
+                    'variance' => $this->newEstimatedCost - ($this->currentBudget['actual_cost'] ?? 0),
+                    'updated_at' => now(),
+                ]);
+
+            // Reset the approval status to 'pending' for finance to review again
+            DB::table('budget_approvals')
+                ->where('budget_id', $this->currentBudget['budget_id'])
+                ->update([
+                    'status' => 'pending',
+                    'remarks' => null,
+                    'reviewed_by' => null,
+                    'approved_at' => null,
+                    'updated_at' => now(),
+                ]);
+
+            // Update project budget total
+            DB::table('projects')
+                ->where('project_id', $projectId)
+                ->update([
+                    'budget_total' => DB::raw('budget_total + ' . $difference),
+                    'updated_at' => now(),
+                ]);
+
+            // ================================================
+            // CREATE ACCOUNTING JOURNAL ENTRIES
+            // ================================================
+            if ($this->accountingEnabled && $difference != 0) {
+                $this->createBudgetAdjustmentJournalEntries($project, $difference, $oldEstimatedCost);
+            }
+            // ================================================
+
+            DB::commit();
+
+            $this->closeEditBudgetModal();
+            $this->loadProjects();
+
+            session()->flash('success', 'Budget updated successfully. Accounting entries have been created.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Budget update error: ' . $e->getMessage());
+            session()->flash('error', 'Failed to update budget: ' . $e->getMessage());
+        }
+    }
+
+    /***************
+     * Accounting Methods
+     ***************/
+    private function createBudgetAdjustmentJournalEntries($project, $difference, $oldAmount)
+    {
+        // Generate journal number
+        $journalNumber = 'JE' . date('Ymd') . rand(1000, 9999);
+        $userId = Auth::id();
+
+        // Get or create necessary accounts
+        $accounts = [
+            'budget_reserve' => $this->getOrCreateAccountId('Budget Reserve', 'equity', '3200'),
+            'projects_in_progress' => $this->getOrCreateAccountId('Projects In Progress', 'asset', '1300'),
+        ];
+
+        // Create journal entry
+        $journalId = DB::table('journal_entries')->insertGetId([
+            'entry_date' => now()->format('Y-m-d'),
+            'journal_number' => $journalNumber,
+            'description' => 'Budget adjustment for project: ' . $project->project_name . 
+                           ' (Old: ₱' . number_format($oldAmount, 2) . 
+                           ', New: ₱' . number_format($this->newEstimatedCost, 2) . ')',
+            'created_by' => $userId,
+            'reference_type' => 'budget_adjustment',
+            'reference_id' => $this->currentBudget['budget_id'],
+            'status' => 'posted',
+            'total_debit' => abs($difference),
+            'total_credit' => abs($difference),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        if ($difference > 0) {
+            // Budget increase
+            DB::table('journal_details')->insert([
+                'journal_id' => $journalId,
+                'account_id' => $accounts['projects_in_progress'],
+                'debit' => $difference,
+                'credit' => 0.00,
+                'description' => 'Budget increase for project: ' . $project->project_name,
+                'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-        // Reset the approval status to 'pending' for finance to review again
-        DB::table('budget_approvals')
-            ->where('budget_id', $this->currentBudget['budget_id'])
-            ->update([
-                'status' => 'pending',
-                'remarks' => null,
-                'reviewed_by' => null,
-                'approved_at' => null,
+            DB::table('journal_details')->insert([
+                'journal_id' => $journalId,
+                'account_id' => $accounts['budget_reserve'],
+                'debit' => 0.00,
+                'credit' => $difference,
+                'description' => 'Budget allocation from reserve for project: ' . $project->project_name,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } else {
+            // Budget decrease
+            $decreaseAmount = abs($difference);
+            
+            DB::table('journal_details')->insert([
+                'journal_id' => $journalId,
+                'account_id' => $accounts['budget_reserve'],
+                'debit' => $decreaseAmount,
+                'credit' => 0.00,
+                'description' => 'Budget reduction returned to reserve for project: ' . $project->project_name,
+                'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-        $this->closeEditBudgetModal();
-        $this->loadProjects();
+            DB::table('journal_details')->insert([
+                'journal_id' => $journalId,
+                'account_id' => $accounts['projects_in_progress'],
+                'debit' => 0.00,
+                'credit' => $decreaseAmount,
+                'description' => 'Budget reduction for project: ' . $project->project_name,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        \Log::info('Budget adjustment journal entry created with ID: ' . $journalId . 
+                  ' for project: ' . $project->project_name . 
+                  ' (Difference: ' . $difference . ')');
+    }
+
+    // Helper function to get or create account ID
+    private function getOrCreateAccountId($accountName, $accountType, $accountCode = null, $normalBalance = null)
+    {
+        // Set default normal balance based on account type
+        if (!$normalBalance) {
+            $normalBalance = $this->getDefaultNormalBalance($accountType);
+        }
+        
+        // Try to get existing account
+        $account = DB::table('chart_of_accounts')
+            ->where(function($query) use ($accountName, $accountCode) {
+                $query->where('account_name', $accountName);
+                if ($accountCode) {
+                    $query->orWhere('account_code', $accountCode);
+                }
+            })
+            ->where('account_type', $accountType)
+            ->where('is_active', 1)
+            ->first();
+        
+        if ($account) {
+            return $account->account_id;
+        }
+        
+        // If account doesn't exist, create it
+        // Generate account code if not provided
+        if (!$accountCode) {
+            $accountCode = $this->generateAccountCode($accountType);
+        }
+        
+        $accountId = DB::table('chart_of_accounts')->insertGetId([
+            'account_code' => $accountCode,
+            'account_name' => $accountName,
+            'account_type' => $accountType,
+            'normal_balance' => $normalBalance,
+            'parent_account_id' => null,
+            'description' => 'Auto-created for project management system',
+            'is_active' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        
+        return $accountId;
+    }
+    
+    // Helper to get default normal balance based on account type
+    private function getDefaultNormalBalance($accountType)
+    {
+        switch ($accountType) {
+            case 'asset':
+            case 'expense':
+                return 'debit';
+            case 'liability':
+            case 'equity':
+            case 'revenue':
+                return 'credit';
+            default:
+                return 'debit';
+        }
+    }
+    
+    // Helper to generate account code based on account type
+    private function generateAccountCode($accountType)
+    {
+        // Get the highest account code for this type
+        $prefixMap = [
+            'asset' => '1',
+            'liability' => '2',
+            'equity' => '3',
+            'revenue' => '4',
+            'expense' => '5',
+        ];
+        
+        $prefix = $prefixMap[$accountType] ?? '9';
+        
+        // Find the highest existing account code with this prefix
+        $highestCode = DB::table('chart_of_accounts')
+            ->where('account_code', 'like', $prefix . '%')
+            ->orderBy('account_code', 'desc')
+            ->value('account_code');
+        
+        if ($highestCode) {
+            $lastNumber = intval(substr($highestCode, -4));
+            $newNumber = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+            return $prefix . $newNumber;
+        }
+        
+        return $prefix . '0001';
+    }
+    
+    // Ensure required accounts exist
+    private function ensureAccountsExist()
+    {
+        $requiredAccounts = [
+            ['Projects In Progress', 'asset', '1300'],
+            ['Budget Reserve', 'equity', '3200'],
+            ['Accounts Receivable', 'asset', '1100'],
+            ['Sales Revenue', 'revenue', '4100'],
+            ['Cost of Goods Sold', 'expense', '5100'],
+            ['Inventory', 'asset', '1200'],
+        ];
+        
+        foreach ($requiredAccounts as $account) {
+            $this->getOrCreateAccountId($account[0], $account[1], $account[2]);
+        }
     }
 
     public function loadManagers()
@@ -187,47 +433,121 @@ new #[Layout('components.layouts.project')] class extends Component
     {
         if (!$this->project_name || !$this->start_date || !$this->end_date) return;
 
-        // Insert project with status always 'on_hold' initially
-        $projectId = DB::table('projects')->insertGetId([
-            'project_name'       => $this->project_name,
-            'description'        => $this->description,
-            'start_date'         => $this->start_date,
-            'end_date'           => $this->end_date,
-            'status'             => 'on_hold', // Always on_hold initially
-            'budget_total'       => $this->budget_total,
-            'actual_cost'        => $this->actual_cost,
-            'project_manager_id' => $this->project_manager_id,
-            'client_id'          => $this->client_id,
-            'objectives'         => null,
-            'team_members'       => null,
-            'created_at'         => now(),
-            'updated_at'         => now(),
+        try {
+            DB::beginTransaction();
+
+            // Insert project with status always 'on_hold' initially
+            $projectId = DB::table('projects')->insertGetId([
+                'project_name'       => $this->project_name,
+                'description'        => $this->description,
+                'start_date'         => $this->start_date,
+                'end_date'           => $this->end_date,
+                'status'             => 'on_hold', // Always on_hold initially
+                'budget_total'       => $this->budget_total,
+                'actual_cost'        => $this->actual_cost,
+                'project_manager_id' => $this->project_manager_id,
+                'client_id'          => $this->client_id,
+                'objectives'         => null,
+                'team_members'       => null,
+                'created_at'         => now(),
+                'updated_at'         => now(),
+            ]);
+
+            // Create a main budget record for the project
+            $budgetId = DB::table('budgets')->insertGetId([
+                'project_id'     => $projectId,
+                'phase_id'       => 0,
+                'task_id'        => null,
+                'estimated_cost' => $this->budget_total,
+                'actual_cost'    => 0.00,
+                'variance'       => 0.00,
+                'created_at'     => now(),
+                'updated_at'     => now(),
+            ]);
+
+            // Insert into budget_approvals table
+            DB::table('budget_approvals')->insert([
+                'budget_id'    => $budgetId,
+                'requested_by' => auth()->id(),
+                'status'       => 'pending',
+                'remarks'      => null,
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+
+            // ================================================
+            // CREATE ACCOUNTING JOURNAL ENTRIES FOR NEW PROJECT
+            // ================================================
+            if ($this->accountingEnabled && $this->budget_total > 0) {
+                $this->createProjectJournalEntries($projectId, $this->project_name, $this->budget_total);
+            }
+            // ================================================
+
+            DB::commit();
+
+            $this->closeProjectModal();
+            $this->loadProjects();
+
+            session()->flash('success', 'Project created successfully. Accounting entries have been created.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Project creation error: ' . $e->getMessage());
+            session()->flash('error', 'Failed to create project: ' . $e->getMessage());
+        }
+    }
+
+    private function createProjectJournalEntries($projectId, $projectName, $budgetAmount)
+    {
+        // Generate journal number
+        $journalNumber = 'JE' . date('Ymd') . rand(1000, 9999);
+        $userId = Auth::id();
+
+        // Get or create necessary accounts
+        $accounts = [
+            'projects_in_progress' => $this->getOrCreateAccountId('Projects In Progress', 'asset', '1300'),
+            'budget_reserve' => $this->getOrCreateAccountId('Budget Reserve', 'equity', '3200'),
+        ];
+
+        // Create journal entry
+        $journalId = DB::table('journal_entries')->insertGetId([
+            'entry_date' => now()->format('Y-m-d'),
+            'journal_number' => $journalNumber,
+            'description' => 'Budget allocation for new project: ' . $projectName,
+            'created_by' => $userId,
+            'reference_type' => 'project_creation',
+            'reference_id' => $projectId,
+            'status' => 'posted',
+            'total_debit' => $budgetAmount,
+            'total_credit' => $budgetAmount,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
-        // Create a main budget record for the project
-        $budgetId = DB::table('budgets')->insertGetId([
-            'project_id'     => $projectId,
-            'phase_id'       => 0,
-            'task_id'        => null,
-            'estimated_cost' => $this->budget_total,
-            'actual_cost'    => 0.00,
-            'variance'       => 0.00,
-            'created_at'     => now(),
-            'updated_at'     => now(),
+        // Create journal details
+        DB::table('journal_details')->insert([
+            'journal_id' => $journalId,
+            'account_id' => $accounts['projects_in_progress'],
+            'debit' => $budgetAmount,
+            'credit' => 0.00,
+            'description' => 'Initial budget allocation for project: ' . $projectName,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
-        // Insert into budget_approvals table
-        DB::table('budget_approvals')->insert([
-            'budget_id'    => $budgetId,
-            'requested_by' => auth()->id(),
-            'status'       => 'pending',
-            'remarks'      => null,
-            'created_at'   => now(),
-            'updated_at'   => now(),
+        DB::table('journal_details')->insert([
+            'journal_id' => $journalId,
+            'account_id' => $accounts['budget_reserve'],
+            'debit' => 0.00,
+            'credit' => $budgetAmount,
+            'description' => 'Budget allocation from reserve for project: ' . $projectName,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
-        $this->closeProjectModal();
-        $this->loadProjects();
+        \Log::info('Project creation journal entry created with ID: ' . $journalId . 
+                  ' for project: ' . $projectName . 
+                  ' (Amount: ' . $budgetAmount . ')');
     }
 
     public function resetProjectFields()
@@ -270,23 +590,68 @@ new #[Layout('components.layouts.project')] class extends Component
     {
         if (!isset($this->editProject['project_id'])) return;
 
-        DB::table('projects')
-            ->where('project_id', $this->editProject['project_id'])
-            ->update([
-                'project_name'       => $this->editProject['project_name'] ?? '',
-                'description'        => $this->editProject['description'] ?? '',
-                'budget_total'       => $this->editProject['budget_total'] ?? 0,
-                'actual_cost'        => $this->editProject['actual_cost'] ?? 0,
-                'project_manager_id' => $this->editProject['project_manager_id'] ?? null,
-                'client_id'          => $this->editProject['client_id'] ?? null,
-                'start_date'         => $this->editProject['start_date'] ?? null,
-                'end_date'           => $this->editProject['end_date'] ?? null,
-                'status'             => $this->editProject['status'] ?? 'on_hold',
-                'updated_at'         => now(),
-            ]);
+        try {
+            DB::beginTransaction();
 
-        $this->closeEditModal();
-        $this->loadProjects();
+            // Get current project data
+            $oldProject = DB::table('projects')
+                ->where('project_id', $this->editProject['project_id'])
+                ->first();
+
+            $oldBudget = $oldProject->budget_total ?? 0;
+            $newBudget = $this->editProject['budget_total'] ?? 0;
+            $budgetDifference = $newBudget - $oldBudget;
+
+            // Update project
+            DB::table('projects')
+                ->where('project_id', $this->editProject['project_id'])
+                ->update([
+                    'project_name'       => $this->editProject['project_name'] ?? '',
+                    'description'        => $this->editProject['description'] ?? '',
+                    'budget_total'       => $newBudget,
+                    'actual_cost'        => $this->editProject['actual_cost'] ?? 0,
+                    'project_manager_id' => $this->editProject['project_manager_id'] ?? null,
+                    'client_id'          => $this->editProject['client_id'] ?? null,
+                    'start_date'         => $this->editProject['start_date'] ?? null,
+                    'end_date'           => $this->editProject['end_date'] ?? null,
+                    'status'             => $this->editProject['status'] ?? 'on_hold',
+                    'updated_at'         => now(),
+                ]);
+
+            // Update main budget record
+            DB::table('budgets')
+                ->where('project_id', $this->editProject['project_id'])
+                ->where('phase_id', 0)
+                ->update([
+                    'estimated_cost' => $newBudget,
+                    'variance' => $newBudget - ($this->editProject['actual_cost'] ?? 0),
+                    'updated_at' => now(),
+                ]);
+
+            // ================================================
+            // CREATE ACCOUNTING JOURNAL ENTRIES FOR BUDGET UPDATE
+            // ================================================
+            if ($this->accountingEnabled && $budgetDifference != 0) {
+                $this->createBudgetAdjustmentJournalEntries(
+                    $oldProject, 
+                    $budgetDifference, 
+                    $oldBudget
+                );
+            }
+            // ================================================
+
+            DB::commit();
+
+            $this->closeEditModal();
+            $this->loadProjects();
+
+            session()->flash('success', 'Project updated successfully.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Project update error: ' . $e->getMessage());
+            session()->flash('error', 'Failed to update project: ' . $e->getMessage());
+        }
     }
 
     /***************
@@ -307,22 +672,102 @@ new #[Layout('components.layouts.project')] class extends Component
     public function deleteProject()
     {
         if ($this->projectToDelete) {
-            $budgetIds = DB::table('budgets')
-                ->where('project_id', $this->projectToDelete)
-                ->pluck('budget_id')
-                ->toArray();
+            try {
+                DB::beginTransaction();
 
-            if (!empty($budgetIds)) {
-                DB::table('budget_approvals')->whereIn('budget_id', $budgetIds)->delete();
+                // Get project details for accounting
+                $project = DB::table('projects')
+                    ->where('project_id', $this->projectToDelete)
+                    ->first();
+
+                $budgetIds = DB::table('budgets')
+                    ->where('project_id', $this->projectToDelete)
+                    ->pluck('budget_id')
+                    ->toArray();
+
+                if (!empty($budgetIds)) {
+                    DB::table('budget_approvals')->whereIn('budget_id', $budgetIds)->delete();
+                }
+
+                DB::table('budgets')->where('project_id', $this->projectToDelete)->delete();
+                DB::table('tasks')->where('project_id', $this->projectToDelete)->delete();
+                DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
+
+                // ================================================
+                // CREATE ACCOUNTING JOURNAL ENTRIES FOR PROJECT DELETION
+                // ================================================
+                if ($this->accountingEnabled && $project && $project->budget_total > 0) {
+                    $this->createProjectDeletionJournalEntries($project);
+                }
+                // ================================================
+
+                DB::commit();
+
+                $this->closeDeleteModal();
+                $this->loadProjects();
+
+                session()->flash('success', 'Project deleted successfully. Accounting entries have been created.');
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                \Log::error('Project deletion error: ' . $e->getMessage());
+                session()->flash('error', 'Failed to delete project: ' . $e->getMessage());
             }
-
-            DB::table('budgets')->where('project_id', $this->projectToDelete)->delete();
-            DB::table('tasks')->where('project_id', $this->projectToDelete)->delete();
-            DB::table('projects')->where('project_id', $this->projectToDelete)->delete();
-
-            $this->closeDeleteModal();
-            $this->loadProjects();
         }
+    }
+
+    private function createProjectDeletionJournalEntries($project)
+    {
+        // Generate journal number
+        $journalNumber = 'JE' . date('Ymd') . rand(1000, 9999);
+        $userId = Auth::id();
+        $budgetAmount = $project->budget_total ?? 0;
+
+        // Get or create necessary accounts
+        $accounts = [
+            'budget_reserve' => $this->getOrCreateAccountId('Budget Reserve', 'equity', '3200'),
+            'projects_in_progress' => $this->getOrCreateAccountId('Projects In Progress', 'asset', '1300'),
+        ];
+
+        // Create journal entry
+        $journalId = DB::table('journal_entries')->insertGetId([
+            'entry_date' => now()->format('Y-m-d'),
+            'journal_number' => $journalNumber,
+            'description' => 'Project cancellation: ' . $project->project_name,
+            'created_by' => $userId,
+            'reference_type' => 'project_deletion',
+            'reference_id' => $project->project_id,
+            'status' => 'posted',
+            'total_debit' => $budgetAmount,
+            'total_credit' => $budgetAmount,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Create journal details (reverse the initial entry)
+        DB::table('journal_details')->insert([
+            'journal_id' => $journalId,
+            'account_id' => $accounts['budget_reserve'],
+            'debit' => $budgetAmount,
+            'credit' => 0.00,
+            'description' => 'Budget returned to reserve for cancelled project: ' . $project->project_name,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('journal_details')->insert([
+            'journal_id' => $journalId,
+            'account_id' => $accounts['projects_in_progress'],
+            'debit' => 0.00,
+            'credit' => $budgetAmount,
+            'description' => 'Budget reversal for cancelled project: ' . $project->project_name,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \Log::info('Project deletion journal entry created with ID: ' . $journalId . 
+                  ' for project: ' . $project->project_name . 
+                  ' (Amount: ' . $budgetAmount . ')');
     }
 };
 ?>
@@ -341,6 +786,19 @@ new #[Layout('components.layouts.project')] class extends Component
             Allocate Resources
         </a>
     </div>
+
+    <!-- Flash Messages -->
+    @if(session()->has('success'))
+        <div style="background: #d1fae5; border: 1px solid #10b981; color: #065f46; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    @if(session()->has('error'))
+        <div style="background: #fee2e2; border: 1px solid #ef4444; color: #7f1d1d; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            {{ session('error') }}
+        </div>
+    @endif
 
     <!-- Projects Table Container -->
     <div class="phase-table-container" style="overflow-x: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
@@ -531,11 +989,31 @@ new #[Layout('components.layouts.project')] class extends Component
                                    onblur="this.style.borderColor='#d1d5db';">
                         </label>
 
+                        <!-- Accounting Info -->
+                        @if($accountingEnabled)
+                        <div style="background: #dbeafe; border: 1px solid #60a5fa; border-radius: 8px; padding: 1rem;">
+                            <h5 style="font-weight: 600; color: #1e40af; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="fas fa-book" style="font-size: 0.875rem;"></i>
+                                Accounting Impact
+                            </h5>
+                            <p style="font-size: 0.875rem; color: #1e40af; margin: 0;">
+                                Changing the budget will create accounting journal entries to track the adjustment:
+                                <br>
+                                <strong>Budget increase:</strong> Debit Projects In Progress, Credit Budget Reserve
+                                <br>
+                                <strong>Budget decrease:</strong> Debit Budget Reserve, Credit Projects In Progress
+                            </p>
+                        </div>
+                        @endif
+
                         <!-- Warning Message -->
                         <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 1rem;">
                             <p style="font-size: 0.875rem; color: #92400e;">
                                 <strong style="display: block; margin-bottom: 0.25rem;">Note:</strong> 
-                                Changing the budget will reset the approval status to "Pending" and require finance department approval again.
+                                Changing the budget will:
+                                <br>1. Reset the approval status to "Pending" for finance review
+                                <br>2. Create accounting journal entries
+                                <br>3. Update the project's total budget
                             </p>
                         </div>
                     </div>
@@ -543,7 +1021,9 @@ new #[Layout('components.layouts.project')] class extends Component
 
                 <div class="modal-footer" style="padding: 1rem; background: #f8fafc; display: flex; justify-content: flex-end; gap: 0.5rem;">
                     <button wire:click="closeEditBudgetModal" class="btn btn-secondary" style="background: #6b7280; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 500;">Cancel</button>
-                    <button wire:click="updateBudget" class="btn btn-primary" style="background: #22c55e; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 500;">Update Budget</button>
+                    <button wire:click="updateBudget" class="btn btn-primary" style="background: #22c55e; color: white; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                        Update Budget
+                    </button>
                 </div>
             </div>
         </div>
@@ -574,13 +1054,13 @@ new #[Layout('components.layouts.project')] class extends Component
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                             <label style="display: block;">
                                 <span style="font-weight: 500; color: #374151; display: block; margin-bottom: 0.25rem;">Budget</span>
-                                <input type="number" wire:model="editProject.budget_total" 
+                                <input type="number" wire:model="editProject.budget_total" min="0" step="0.01"
                                        style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
                             </label>
 
                             <label style="display: block;">
                                 <span style="font-weight: 500; color: #374151; display: block; margin-bottom: 0.25rem;">Actual Cost</span>
-                                <input type="number" wire:model="editProject.actual_cost" 
+                                <input type="number" wire:model="editProject.actual_cost" min="0" step="0.01"
                                        style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
                             </label>
                         </div>
@@ -609,6 +1089,27 @@ new #[Layout('components.layouts.project')] class extends Component
                                        style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
                             </label>
                         </div>
+
+                        <label style="display: block;">
+                            <span style="font-weight: 500; color: #374151; display: block; margin-bottom: 0.25rem;">Status</span>
+                            <select wire:model="editProject.status" 
+                                    style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
+                                <option value="planning">Planning</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="on_hold">On Hold</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </label>
+
+                        <!-- Accounting Warning -->
+                        @if($accountingEnabled)
+                        <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 0.75rem;">
+                            <p style="font-size: 0.875rem; color: #92400e; margin: 0;">
+                                <strong>Note:</strong> Changing the budget will create accounting journal entries.
+                            </p>
+                        </div>
+                        @endif
                     </div>
                 </div>
                 <div class="modal-footer" style="padding: 1rem; background: #f8fafc; display: flex; justify-content: flex-end; gap: 0.5rem;">
@@ -628,7 +1129,15 @@ new #[Layout('components.layouts.project')] class extends Component
                     <button wire:click="closeDeleteModal" class="text-white font-bold text-xl" style="background: none; border: none; cursor: pointer;">&times;</button>
                 </div>
                 <div class="modal-body" style="padding: 1.5rem; text-align: center;">
-                    <p style="color: #4b5563; margin-bottom: 1.5rem;">Are you sure you want to delete this project? This action cannot be undone.</p>
+                    <p style="color: #4b5563; margin-bottom: 1rem;">Are you sure you want to delete this project? This action cannot be undone.</p>
+                    
+                    @if($accountingEnabled)
+                    <div style="background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem;">
+                        <p style="font-size: 0.875rem; color: #92400e; margin: 0;">
+                            <strong>Accounting Impact:</strong> This will create journal entries to reverse the budget allocation.
+                        </p>
+                    </div>
+                    @endif
                 </div>
                 <div class="modal-footer" style="padding: 1rem; background: #f8fafc; display: flex; justify-content: center; gap: 1rem;">
                     <button wire:click="closeDeleteModal" class="btn btn-secondary" style="background: #6b7280; color: white; border: none; padding: 8px 24px; border-radius: 6px; cursor: pointer; font-weight: 500;">Cancel</button>
@@ -702,6 +1211,15 @@ new #[Layout('components.layouts.project')] class extends Component
                                 @endforeach
                             </select>
                         </label>
+
+                        <!-- Accounting Info -->
+                        @if($accountingEnabled)
+                        <div style="background: #dbeafe; border: 1px solid #60a5fa; border-radius: 8px; padding: 0.75rem;">
+                            <p style="font-size: 0.875rem; color: #1e40af; margin: 0;">
+                                <strong>Accounting Note:</strong> Creating this project will generate accounting journal entries to allocate the budget.
+                            </p>
+                        </div>
+                        @endif
 
                         <button type="submit" 
                                 style="background: #22c55e; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 500; margin-top: 1rem;">

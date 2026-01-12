@@ -935,7 +935,7 @@
             <a href="{{ route('inventory.stock') }}" class="nav-link">
                 <i class="fas fa-boxes"></i>Stock Management
             </a>
-            <a href="{{ route('procurement.create') }}" class="nav-link">
+            <a href="{{ route('supplier.list') }}" class="nav-link">
                 <i class="fas fa-tags"></i>Inventory Tracking
             </a>
         </nav>
@@ -965,7 +965,7 @@
         <a href="{{ route('inventory.stock') }}" class="nav-link">
             <i class="fas fa-boxes"></i>Stock Management
         </a>
-        <a href="{{ route('procurement.create') }}" class="nav-link">
+        <a href="{{ route('supplier.list') }}" class="nav-link">
             <i class="fas fa-tags"></i>Inventory Tracking
         </a>
         <!-- LOGOUT FOR MOBILE ADDED HERE -->

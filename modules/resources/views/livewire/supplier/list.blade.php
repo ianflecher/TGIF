@@ -10,6 +10,8 @@ new #[Layout('components.layouts.procurement')] class extends Component
     public array $suppliers = [];
     public array $inventories = [];
     public array $warehouses = [];
+    public array $transfers = [];
+    public array $zones = [];
 
     // Supplier properties
     public int $supplier_id = 0;
@@ -31,6 +33,8 @@ new #[Layout('components.layouts.procurement')] class extends Component
     public string $expiration_date = '';
     public int $min_quantity = 10;
     public int $max_quantity = 100;
+    public string $inventory_warehouse = '';
+    public string $inventory_zone = '';
     public float $unit_price = 0.00;
     public float $cost_price = 0.00;
     public string $inventory_status = 'active';
@@ -45,21 +49,33 @@ new #[Layout('components.layouts.procurement')] class extends Component
     public float $capacity = 0.00;
     public string $warehouse_status = 'active';
 
+    // Transfer properties
+    public ?string $from_warehouse = null;
+    public ?string $to_warehouse = null;
+    public ?int $transfer_inventory_id = null;
+    public int $transfer_quantity = 1;
+    public string $transfer_remarks = '';
+    public string $transfer_date = '';
+
     public bool $isEditingSupplier = false;
     public bool $isEditingInventory = false;
     public bool $isEditingWarehouse = false;
     public string $supplierMessage = '';
     public string $inventoryMessage = '';
     public string $warehouseMessage = '';
+    public string $transferMessage = '';
 
     public function mount(): void
     {
         $this->loadSuppliers();
         $this->loadInventories();
         $this->loadWarehouses();
+        $this->loadTransfers();
+        $this->loadZones();
+        $this->transfer_date = date('Y-m-d');
     }
 
-    // ---------------- SUPPLIER FUNCTIONS ----------------
+    // ---------------- LOAD FUNCTIONS ----------------
     public function loadSuppliers(): void
     {
         $this->suppliers = DB::table('suppliers')
@@ -85,6 +101,33 @@ new #[Layout('components.layouts.procurement')] class extends Component
     {
         $this->warehouses = DB::table('warehouse_locations')
             ->orderBy('warehouse_name')
+            ->get()
+            ->toArray();
+    }
+
+    public function loadZones(): void
+    {
+        $this->zones = DB::table('inventories')
+            ->whereNotNull('zone')
+            ->where('zone', '!=', '')
+            ->distinct()
+            ->pluck('zone')
+            ->toArray();
+    }
+
+    public function loadTransfers(): void
+    {
+        $this->transfers = DB::table('stock_transactions as st')
+            ->leftJoin('inventories as i', 'st.inventory_id', '=', 'i.inventory_id')
+            ->select(
+                'st.*',
+                'i.product_name',
+                'i.sku',
+                'i.warehouse as to_warehouse_name',
+                DB::raw('NULL as from_warehouse_name')
+            )
+            ->where('st.type', 'transfer')
+            ->orderBy('st.transaction_date', 'desc')
             ->get()
             ->toArray();
     }
@@ -211,6 +254,8 @@ new #[Layout('components.layouts.procurement')] class extends Component
             'expiration_date' => $this->expiration_date ?: null,
             'min_quantity' => $this->min_quantity,
             'max_quantity' => $this->max_quantity,
+            'warehouse' => $this->inventory_warehouse,
+            'zone' => $this->inventory_zone,
             'unit_price' => $this->unit_price,
             'cost_price' => $this->cost_price,
             'status' => $this->inventory_status,
@@ -228,6 +273,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
         $this->resetInventoryForm();
         $this->loadInventories();
+        $this->loadZones();
     }
 
     private function generateSKU(string $productName): string
@@ -254,6 +300,8 @@ new #[Layout('components.layouts.procurement')] class extends Component
             $this->expiration_date = $inventory->expiration_date ? date('Y-m-d', strtotime($inventory->expiration_date)) : '';
             $this->min_quantity = (int)$inventory->min_quantity;
             $this->max_quantity = (int)$inventory->max_quantity;
+            $this->inventory_warehouse = $inventory->warehouse ?? '';
+            $this->inventory_zone = $inventory->zone ?? '';
             $this->unit_price = (float)$inventory->unit_price;
             $this->cost_price = (float)$inventory->cost_price;
             $this->inventory_status = $inventory->status ?? 'active';
@@ -274,6 +322,8 @@ new #[Layout('components.layouts.procurement')] class extends Component
         $this->expiration_date = '';
         $this->min_quantity = 10;
         $this->max_quantity = 100;
+        $this->inventory_warehouse = '';
+        $this->inventory_zone = '';
         $this->unit_price = 0.00;
         $this->cost_price = 0.00;
         $this->inventory_status = 'active';
@@ -286,6 +336,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
         DB::table('inventories')->where('inventory_id', $id)->delete();
         $this->inventoryMessage = 'Inventory item deleted successfully.';
         $this->loadInventories();
+        $this->loadZones();
     }
 
     // ---------------- WAREHOUSE CRUD ----------------
@@ -374,6 +425,163 @@ new #[Layout('components.layouts.procurement')] class extends Component
         $this->warehouse_status = 'active';
         $this->isEditingWarehouse = false;
         $this->warehouseMessage = '';
+    }
+
+    // ---------------- TRANSFER FUNCTIONS ----------------
+    public function getAvailableQuantity($inventoryId): int
+    {
+        $inventory = DB::table('inventories')->where('inventory_id', $inventoryId)->first();
+        return $inventory ? (int)$inventory->quantity : 0;
+    }
+
+    public function saveTransfer(): void
+    {
+        // Validate
+        if (!$this->from_warehouse) {
+            $this->transferMessage = 'Please select source warehouse.';
+            return;
+        }
+
+        if (!$this->to_warehouse) {
+            $this->transferMessage = 'Please select destination warehouse.';
+            return;
+        }
+
+        if ($this->from_warehouse == $this->to_warehouse) {
+            $this->transferMessage = 'Source and destination warehouses must be different.';
+            return;
+        }
+
+        if (!$this->transfer_inventory_id) {
+            $this->transferMessage = 'Please select inventory item.';
+            return;
+        }
+
+        if ($this->transfer_quantity <= 0) {
+            $this->transferMessage = 'Transfer quantity must be greater than 0.';
+            return;
+        }
+
+        // Get inventory details
+        $inventory = DB::table('inventories')->where('inventory_id', $this->transfer_inventory_id)->first();
+
+        if (!$inventory) {
+            $this->transferMessage = 'Inventory item not found.';
+            return;
+        }
+
+        // Check if item is in source warehouse
+        if ($inventory->warehouse != $this->from_warehouse) {
+            $this->transferMessage = "This item is not in {$this->from_warehouse}. Current location: {$inventory->warehouse}";
+            return;
+        }
+
+        // Check available stock
+        if ($inventory->quantity < $this->transfer_quantity) {
+            $this->transferMessage = "Insufficient stock. Only {$inventory->quantity} items available.";
+            return;
+        }
+
+        $unitCost = $inventory->cost_price ?? 0.00;
+
+        // Start database transaction
+        DB::beginTransaction();
+
+        try {
+            // Create transfer transaction
+            $transactionData = [
+                'inventory_id' => $this->transfer_inventory_id,
+                'type' => 'transfer',
+                'quantity' => $this->transfer_quantity,
+                'unit_cost' => $unitCost,
+                'reference_type' => 'warehouse_transfer',
+                'remarks' => $this->transfer_remarks . " [From: {$this->from_warehouse} → To: {$this->to_warehouse}]",
+                'transaction_date' => $this->transfer_date ?: now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            DB::table('stock_transactions')->insert($transactionData);
+
+            // Update inventory quantity and warehouse location
+            DB::table('inventories')
+                ->where('inventory_id', $this->transfer_inventory_id)
+                ->update([
+                    'quantity' => $inventory->quantity - $this->transfer_quantity,
+                    'warehouse' => $this->to_warehouse,
+                    'updated_at' => now(),
+                ]);
+
+            DB::commit();
+
+            $this->transferMessage = 'Transfer completed successfully!';
+            $this->resetTransferForm();
+            $this->loadInventories();
+            $this->loadTransfers();
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            $this->transferMessage = 'Transfer failed. Please try again.';
+        }
+    }
+
+    public function resetTransferForm(): void
+    {
+        $this->from_warehouse = null;
+        $this->to_warehouse = null;
+        $this->transfer_inventory_id = null;
+        $this->transfer_quantity = 1;
+        $this->transfer_remarks = '';
+        $this->transfer_date = date('Y-m-d');
+        $this->transferMessage = '';
+    }
+
+    public function deleteTransfer(int $id): void
+    {
+        $transaction = DB::table('stock_transactions')->where('transaction_id', $id)->first();
+        
+        if (!$transaction) {
+            $this->transferMessage = 'Transfer record not found.';
+            return;
+        }
+
+        DB::beginTransaction();
+        
+        try {
+            // Get inventory details
+            $inventory = DB::table('inventories')->where('inventory_id', $transaction->inventory_id)->first();
+            
+            if ($inventory) {
+                // Parse from and to warehouse from remarks
+                preg_match('/\[From: (.*?) → To: (.*?)\]/', $transaction->remarks, $matches);
+                
+                if (count($matches) >= 3) {
+                    $fromWarehouse = $matches[1];
+                    
+                    // Restore inventory to original warehouse and quantity
+                    DB::table('inventories')
+                        ->where('inventory_id', $transaction->inventory_id)
+                        ->update([
+                            'quantity' => $inventory->quantity + $transaction->quantity,
+                            'warehouse' => $fromWarehouse,
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+            
+            // Delete the transfer record
+            DB::table('stock_transactions')->where('transaction_id', $id)->delete();
+            
+            DB::commit();
+            
+            $this->transferMessage = 'Transfer record deleted successfully.';
+            $this->loadInventories();
+            $this->loadTransfers();
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            $this->transferMessage = 'Failed to delete transfer record.';
+        }
     }
 };
 ?>
@@ -582,6 +790,25 @@ new #[Layout('components.layouts.procurement')] class extends Component
                 <input wire:model="expiration_date" type="date" class="w-full border border-gray-300 rounded p-2">
             </div>
             <div>
+    <label class="block text-gray-700 mb-2">Warehouse</label>
+    <select wire:model="inventory_warehouse" class="w-full border border-gray-300 rounded p-2">
+        <option value="">— Select Warehouse —</option>
+        @foreach($warehouses as $warehouse)
+            <option value="{{ $warehouse->warehouse_name }}">{{ $warehouse->warehouse_name }} ({{ $warehouse->warehouse_code }})</option>
+        @endforeach
+        <option value="other">Other (specify below)</option>
+    </select>
+    @if($inventory_warehouse === 'other')
+        <div class="mt-2">
+            <input wire:model="inventory_warehouse" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Enter custom warehouse name">
+        </div>
+    @endif
+</div>
+            <div>
+                <label class="block text-gray-700 mb-2">Zone</label>
+                <input wire:model="inventory_zone" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="e.g., Zone A">
+            </div>
+            <div>
                 <label class="block text-gray-700 mb-2">Min Quantity</label>
                 <input wire:model="min_quantity" type="number" min="0" class="w-full border border-gray-300 rounded p-2" placeholder="Reorder level">
             </div>
@@ -626,6 +853,163 @@ new #[Layout('components.layouts.procurement')] class extends Component
                 </button>
             @endif
         </div>
+    </div>
+
+    <!-- Warehouse Transfer Form -->
+    <div class="bg-white p-6 rounded-lg shadow mb-8">
+        <h2 class="text-xl font-semibold mb-4 text-orange-700">
+            <i class="fas fa-exchange-alt mr-2"></i>Warehouse Transfer
+        </h2>
+        
+        @if($transferMessage)
+            <div class="mb-4 p-3 {{ str_contains($transferMessage, 'successfully') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }} rounded">
+                <div class="flex items-center">
+                    @if(str_contains($transferMessage, 'successfully'))
+                        <i class="fas fa-check-circle mr-2"></i>
+                    @else
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                    @endif
+                    <span>{{ $transferMessage }}</span>
+                </div>
+            </div>
+        @endif
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-gray-700 mb-2">From Warehouse *</label>
+                <select wire:model="from_warehouse" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-orange-500">
+                    <option value="">— Select Source —</option>
+                    @foreach($warehouses as $warehouse)
+                        <option value="{{ $warehouse->warehouse_name }}">{{ $warehouse->warehouse_name }} ({{ $warehouse->warehouse_code }})</option>
+                    @endforeach
+                </select>
+                @if($from_warehouse && $transfer_inventory_id)
+                    @php
+                        $inventory = DB::table('inventories')
+                            ->where('inventory_id', $transfer_inventory_id)
+                            ->where('warehouse', $from_warehouse)
+                            ->first();
+                    @endphp
+                    @if($inventory)
+                        <div class="mt-1 text-sm text-gray-600">
+                            Available: {{ $inventory->quantity }} units
+                        </div>
+                    @else
+                        <div class="mt-1 text-sm text-red-600">
+                            Item not found in this warehouse
+                        </div>
+                    @endif
+                @endif
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">To Warehouse *</label>
+                <select wire:model="to_warehouse" class="w-full border border-gray-300 rounded p-2">
+                    <option value="">— Select Destination —</option>
+                    @foreach($warehouses as $warehouse)
+                        <option value="{{ $warehouse->warehouse_name }}">{{ $warehouse->warehouse_name }} ({{ $warehouse->warehouse_code }})</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Inventory Item *</label>
+                <select wire:model="transfer_inventory_id" class="w-full border border-gray-300 rounded p-2">
+                    <option value="">— Select Item —</option>
+                    @foreach($inventories as $inventory)
+                        <option value="{{ $inventory->inventory_id }}">{{ $inventory->product_name }} ({{ $inventory->sku }})</option>
+                    @endforeach
+                </select>
+                @if($transfer_inventory_id)
+                    @php
+                        $selectedItem = collect($inventories)->firstWhere('inventory_id', $transfer_inventory_id);
+                    @endphp
+                    @if($selectedItem)
+                        <div class="mt-1 text-sm text-gray-600">
+                            Current: {{ $selectedItem->warehouse ?? 'No warehouse' }} | Stock: {{ $selectedItem->quantity }}
+                        </div>
+                    @endif
+                @endif
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Quantity *</label>
+                <input wire:model="transfer_quantity" type="number" min="1" class="w-full border border-gray-300 rounded p-2" placeholder="Number of units">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-gray-700 mb-2">Transfer Date</label>
+                <input wire:model="transfer_date" type="date" class="w-full border border-gray-300 rounded p-2">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-gray-700 mb-2">Remarks</label>
+                <input wire:model="transfer_remarks" type="text" class="w-full border border-gray-300 rounded p-2" placeholder="Optional notes">
+            </div>
+        </div>
+        <div class="mt-4">
+            <button wire:click="saveTransfer" 
+                    class="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-5 py-2 rounded-lg transition duration-200">
+                <i class="fas fa-exchange-alt"></i> Execute Transfer
+            </button>
+        </div>
+    </div>
+
+    <!-- Transfers History Table -->
+    <div class="overflow-x-auto bg-white rounded-lg shadow mb-8">
+        <div class="flex justify-between items-center p-4 border-b">
+            <h3 class="text-lg font-semibold text-gray-800">
+                <i class="fas fa-history mr-2 text-orange-600"></i>Transfer History ({{ count($transfers) }})
+            </h3>
+        </div>
+        <table class="min-w-full text-sm text-left border-collapse">
+            <thead class="bg-orange-700 text-white">
+                <tr>
+                    <th class="px-6 py-3">Date</th>
+                    <th class="px-6 py-3">Item</th>
+                    <th class="px-6 py-3">Quantity</th>
+                    <th class="px-6 py-3">Unit Cost</th>
+                    <th class="px-6 py-3">Remarks</th>
+                    <th class="px-6 py-3 text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y">
+                @forelse($transfers as $transfer)
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4">
+                            {{ date('Y-m-d', strtotime($transfer->transaction_date)) }}
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="font-medium">{{ $transfer->product_name }}</div>
+                            <div class="text-xs text-gray-500">{{ $transfer->sku }}</div>
+                        </td>
+                        <td class="px-6 py-4 font-semibold text-orange-700">
+                            {{ $transfer->quantity }}
+                        </td>
+                        <td class="px-6 py-4">
+                            ₱{{ number_format($transfer->unit_cost, 2) }}
+                        </td>
+                        <td class="px-6 py-4 text-gray-600">
+                            {{ $transfer->remarks ? Str::limit($transfer->remarks, 50) : '—' }}
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex justify-center">
+                                <button onclick="if(confirm('Delete this transfer record?')) { @this.deleteTransfer({{ $transfer->transaction_id }}) }" 
+                                        class="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg transition">
+                                    <i class="fas fa-trash text-sm"></i>
+                                    <span>Delete</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="text-center py-8 text-gray-500">
+                            <div class="flex flex-col items-center">
+                                <i class="fas fa-exchange-alt text-4xl mb-3 text-gray-300"></i>
+                                <p class="text-lg">No transfers found.</p>
+                                <p class="text-sm mt-1">Execute your first transfer above.</p>
+                            </div>
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
 
     <!-- Suppliers Table -->
@@ -793,6 +1177,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
                     <th class="px-6 py-3">Product Name</th>
                     <th class="px-6 py-3">Category</th>
                     <th class="px-6 py-3">Supplier</th>
+                    <th class="px-6 py-3">Warehouse</th>
                     <th class="px-6 py-3">Quantity</th>
                     <th class="px-6 py-3">Unit Price</th>
                     <th class="px-6 py-3">Status</th>
@@ -820,6 +1205,14 @@ new #[Layout('components.layouts.procurement')] class extends Component
                             @else
                                 <span class="text-gray-400">—</span>
                             @endif
+                        </td>
+                        <td class="px-6 py-4">
+                            <div>
+                                <span class="font-medium">{{ $inventory->warehouse ?? '—' }}</span>
+                                @if($inventory->zone)
+                                    <div class="text-xs text-gray-500">{{ $inventory->zone }}</div>
+                                @endif
+                            </div>
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex flex-col">
@@ -863,7 +1256,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="text-center py-8 text-gray-500">
+                        <td colspan="9" class="text-center py-8 text-gray-500">
                             <div class="flex flex-col items-center">
                                 <i class="fas fa-boxes text-4xl mb-3 text-gray-300"></i>
                                 <p class="text-lg">No inventory items found.</p>

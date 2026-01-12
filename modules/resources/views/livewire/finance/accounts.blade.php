@@ -8,6 +8,7 @@ use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Response;
 
 new #[Layout('components.layouts.finance')] class extends Component
 {
@@ -61,6 +62,150 @@ new #[Layout('components.layouts.finance')] class extends Component
         $this->entryDate = date('Y-m-d');
         $this->startDate = date('Y-m-01');
         $this->endDate = date('Y-m-t');
+    }
+    
+    // Format currency to Philippine Peso
+    public function formatCurrency($amount)
+    {
+        return '₱' . number_format($amount, 2);
+    }
+    
+    // Download Financial Statements as CSV
+    public function downloadCSV()
+    {
+        if (count($this->financialStatementData) === 0) {
+            session()->flash('error', 'No financial statement data to export');
+            return;
+        }
+        
+        $filename = $this->statementType . '_' . $this->statementPeriod . '_' . date('Ymd_His') . '.csv';
+        
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+        
+        $callback = function() {
+            $handle = fopen('php://output', 'w');
+            
+            // Add UTF-8 BOM for Excel compatibility
+            fwrite($handle, "\xEF\xBB\xBF");
+            
+            if ($this->statementType === 'balance_sheet') {
+                $this->generateCSVForBalanceSheet($handle);
+            } else {
+                $this->generateCSVForIncomeStatement($handle);
+            }
+            
+            fclose($handle);
+        };
+        
+        return Response::stream($callback, 200, $headers);
+    }
+    
+    private function generateCSVForBalanceSheet($handle)
+    {
+        // Header
+        fputcsv($handle, ['BALANCE SHEET']);
+        fputcsv($handle, ['Period: ' . ucfirst(str_replace('_', ' ', $this->statementPeriod))]);
+        fputcsv($handle, ['Generated: ' . now()->format('F d, Y H:i:s')]);
+        fputcsv($handle, ['Currency: Philippine Peso (₱)']);
+        fputcsv($handle, []);
+        fputcsv($handle, ['ASSETS', 'Amount']);
+        
+        // Assets
+        foreach ($this->financialStatementData['assets'] as $asset) {
+            fputcsv($handle, [
+                $asset->account_name,
+                '₱' . number_format($asset->balance, 2)
+            ]);
+        }
+        fputcsv($handle, ['TOTAL ASSETS', '₱' . number_format($this->financialStatementData['total_assets'], 2)]);
+        fputcsv($handle, []);
+        
+        // Liabilities
+        fputcsv($handle, ['LIABILITIES', 'Amount']);
+        foreach ($this->financialStatementData['liabilities'] as $liability) {
+            fputcsv($handle, [
+                $liability->account_name,
+                '₱' . number_format($liability->balance, 2)
+            ]);
+        }
+        fputcsv($handle, ['TOTAL LIABILITIES', '₱' . number_format($this->financialStatementData['total_liabilities'], 2)]);
+        fputcsv($handle, []);
+        
+        // Equity
+        fputcsv($handle, ['EQUITY', 'Amount']);
+        foreach ($this->financialStatementData['equity'] as $equity) {
+            fputcsv($handle, [
+                $equity->account_name,
+                '₱' . number_format($equity->balance, 2)
+            ]);
+        }
+        fputcsv($handle, ['TOTAL EQUITY', '₱' . number_format($this->financialStatementData['total_equity'], 2)]);
+        fputcsv($handle, []);
+        
+        // Summary
+        fputcsv($handle, ['TOTAL LIABILITIES & EQUITY', '₱' . number_format($this->financialStatementData['total_liabilities'] + $this->financialStatementData['total_equity'], 2)]);
+        fputcsv($handle, []);
+        
+        // Balance Check
+        $isBalanced = abs($this->financialStatementData['total_assets'] - ($this->financialStatementData['total_liabilities'] + $this->financialStatementData['total_equity'])) < 0.01;
+        fputcsv($handle, ['BALANCE CHECK', $isBalanced ? 'BALANCED' : 'NOT BALANCED']);
+        fputcsv($handle, ['Assets', '₱' . number_format($this->financialStatementData['total_assets'], 2)]);
+        fputcsv($handle, ['Liabilities + Equity', '₱' . number_format($this->financialStatementData['total_liabilities'] + $this->financialStatementData['total_equity'], 2)]);
+    }
+    
+    private function generateCSVForIncomeStatement($handle)
+    {
+        // Header
+        fputcsv($handle, ['INCOME STATEMENT']);
+        fputcsv($handle, ['Period: ' . ucfirst(str_replace('_', ' ', $this->statementPeriod))]);
+        fputcsv($handle, ['Generated: ' . now()->format('F d, Y H:i:s')]);
+        fputcsv($handle, ['Currency: Philippine Peso (₱)']);
+        fputcsv($handle, []);
+        fputcsv($handle, ['REVENUE', 'Amount']);
+        
+        // Revenue
+        foreach ($this->financialStatementData['revenues'] as $revenue) {
+            if ($revenue->amount > 0) {
+                fputcsv($handle, [
+                    $revenue->account_name,
+                    '₱' . number_format($revenue->amount, 2)
+                ]);
+            }
+        }
+        fputcsv($handle, ['TOTAL REVENUE', '₱' . number_format($this->financialStatementData['total_revenue'], 2)]);
+        fputcsv($handle, []);
+        
+        // Expenses
+        fputcsv($handle, ['EXPENSES', 'Amount']);
+        foreach ($this->financialStatementData['expenses'] as $expense) {
+            if ($expense->amount > 0) {
+                fputcsv($handle, [
+                    $expense->account_name,
+                    '₱' . number_format($expense->amount, 2)
+                ]);
+            }
+        }
+        fputcsv($handle, ['TOTAL EXPENSES', '₱' . number_format($this->financialStatementData['total_expense'], 2)]);
+        fputcsv($handle, []);
+        
+        // Net Income
+        $netIncome = $this->financialStatementData['net_income'];
+        fputcsv($handle, ['NET INCOME/LOSS', '₱' . number_format(abs($netIncome), 2) . ' ' . ($netIncome >= 0 ? 'Profit' : 'Loss')]);
+    }
+    
+    // Download as HTML/PDF using JavaScript
+    public function downloadPDF()
+    {
+        if (count($this->financialStatementData) === 0) {
+            session()->flash('error', 'No financial statement data to export');
+            return;
+        }
+        
+        // Just trigger the JavaScript function
+        $this->dispatch('download-pdf');
     }
     
     // Journal Entries Methods
@@ -210,7 +355,7 @@ new #[Layout('components.layouts.finance')] class extends Component
         $totalCredit = array_sum(array_column($this->journalItems, 'credit'));
         
         if (abs($totalDebit - $totalCredit) > 0.01) {
-            session()->flash('error', 'Journal entry must balance. Total debit (' . number_format($totalDebit, 2) . ') must equal total credit (' . number_format($totalCredit, 2) . ')');
+            session()->flash('error', 'Journal entry must balance. Total debit (' . $this->formatCurrency($totalDebit) . ') must equal total credit (' . $this->formatCurrency($totalCredit) . ')');
             return;
         }
         
@@ -500,7 +645,9 @@ new #[Layout('components.layouts.finance')] class extends Component
             'equity' => [],
             'total_assets' => 0,
             'total_liabilities' => 0,
-            'total_equity' => 0
+            'total_equity' => 0,
+            'start_date' => $startDate,
+            'end_date' => $endDate
         ];
         
         // Get all accounts with their balances
@@ -550,7 +697,9 @@ new #[Layout('components.layouts.finance')] class extends Component
             'expenses' => [],
             'total_revenue' => 0,
             'total_expense' => 0,
-            'net_income' => 0
+            'net_income' => 0,
+            'start_date' => $startDate,
+            'end_date' => $endDate
         ];
         
         // Get revenue accounts
@@ -638,7 +787,6 @@ new #[Layout('components.layouts.finance')] class extends Component
     }
 }
 ?>
-
 <div>
     <!-- Page Header -->
     <div class="page-header">
@@ -734,8 +882,8 @@ new #[Layout('components.layouts.finance')] class extends Component
                                 {{ ucfirst($entry->status) }}
                             </span>
                         </td>
-                        <td class="table-amount">${{ number_format($entry->total_debit, 2) }}</td>
-                        <td class="table-amount">${{ number_format($entry->total_credit, 2) }}</td>
+                        <td class="table-amount">{{ $this->formatCurrency($entry->total_debit) }}</td>
+                        <td class="table-amount">{{ $this->formatCurrency($entry->total_credit) }}</td>
                         <td>{{ $entry->created_by_name }}</td>
                         <td>
                             <button wire:click="showJournalEntryDetails({{ $entry->journal_id }})" 
@@ -919,16 +1067,16 @@ new #[Layout('components.layouts.finance')] class extends Component
                         </td>
                         <td class="table-amount">
                             @if($account->normal_balance === 'debit')
-                            <span class="font-bold">${{ number_format($account->total_debit - $account->total_credit, 2) }}</span>
+                            <span class="font-bold">{{ $this->formatCurrency($account->total_debit - $account->total_credit) }}</span>
                             @else
-                            <span class="text-gray-400">$0.00</span>
+                            <span class="text-gray-400">{{ $this->formatCurrency(0) }}</span>
                             @endif
                         </td>
                         <td class="table-amount">
                             @if($account->normal_balance === 'credit')
-                            <span class="font-bold">${{ number_format($account->total_credit - $account->total_debit, 2) }}</span>
+                            <span class="font-bold">{{ $this->formatCurrency($account->total_credit - $account->total_debit) }}</span>
                             @else
-                            <span class="text-gray-400">$0.00</span>
+                            <span class="text-gray-400">{{ $this->formatCurrency(0) }}</span>
                             @endif
                         </td>
                     </tr>
@@ -936,14 +1084,14 @@ new #[Layout('components.layouts.finance')] class extends Component
                     <tr class="bg-gray-50 font-bold">
                         <td colspan="3" class="text-right">Total:</td>
                         <td class="table-amount">
-                            ${{ number_format(collect($trialBalanceData)->sum(function($item) {
+                            {{ $this->formatCurrency(collect($trialBalanceData)->sum(function($item) {
                                 return $item->normal_balance === 'debit' ? $item->total_debit - $item->total_credit : 0;
-                            }), 2) }}
+                            })) }}
                         </td>
                         <td class="table-amount">
-                            ${{ number_format(collect($trialBalanceData)->sum(function($item) {
+                            {{ $this->formatCurrency(collect($trialBalanceData)->sum(function($item) {
                                 return $item->normal_balance === 'credit' ? $item->total_credit - $item->total_debit : 0;
-                            }), 2) }}
+                            })) }}
                         </td>
                     </tr>
                 </tbody>
@@ -983,9 +1131,19 @@ new #[Layout('components.layouts.finance')] class extends Component
                         </select>
                     </div>
                 </div>
-                <button wire:click="generateFinancialStatement" class="btn btn-primary mt-6">
-                    <i class="fas fa-file-export mr-2"></i>Generate
-                </button>
+                <div class="flex gap-2 mt-6">
+                    <button wire:click="generateFinancialStatement" class="btn btn-primary">
+                        <i class="fas fa-calculator mr-2"></i>Generate
+                    </button>
+                    @if(count($financialStatementData) > 0)
+                    <button wire:click="downloadCSV" class="btn btn-success">
+                        <i class="fas fa-file-excel mr-2"></i>CSV/Excel
+                    </button>
+                    <button wire:click="downloadPDF" class="btn btn-danger">
+                        <i class="fas fa-file-pdf mr-2"></i>PDF
+                    </button>
+                    @endif
+                </div>
             </div>
         </div>
         
@@ -1005,12 +1163,12 @@ new #[Layout('components.layouts.finance')] class extends Component
                                 @foreach($financialStatementData['assets'] as $asset)
                                 <tr class="border-b">
                                     <td class="py-2">{{ $asset->account_name }}</td>
-                                    <td class="py-2 text-right font-bold">${{ number_format($asset->balance, 2) }}</td>
+                                    <td class="py-2 text-right font-bold">{{ $this->formatCurrency($asset->balance) }}</td>
                                 </tr>
                                 @endforeach
                                 <tr class="border-t font-bold bg-gray-50">
                                     <td class="py-3">Total Assets</td>
-                                    <td class="py-3 text-right">${{ number_format($financialStatementData['total_assets'], 2) }}</td>
+                                    <td class="py-3 text-right">{{ $this->formatCurrency($financialStatementData['total_assets']) }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1031,12 +1189,12 @@ new #[Layout('components.layouts.finance')] class extends Component
                                     @foreach($financialStatementData['liabilities'] as $liability)
                                     <tr class="border-b">
                                         <td class="py-2">{{ $liability->account_name }}</td>
-                                        <td class="py-2 text-right font-bold">${{ number_format($liability->balance, 2) }}</td>
+                                        <td class="py-2 text-right font-bold">{{ $this->formatCurrency($liability->balance) }}</td>
                                     </tr>
                                     @endforeach
                                     <tr class="border-t">
                                         <td class="py-2 font-bold">Total Liabilities</td>
-                                        <td class="py-2 text-right font-bold">${{ number_format($financialStatementData['total_liabilities'], 2) }}</td>
+                                        <td class="py-2 text-right font-bold">{{ $this->formatCurrency($financialStatementData['total_liabilities']) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1050,12 +1208,12 @@ new #[Layout('components.layouts.finance')] class extends Component
                                     @foreach($financialStatementData['equity'] as $equity)
                                     <tr class="border-b">
                                         <td class="py-2">{{ $equity->account_name }}</td>
-                                        <td class="py-2 text-right font-bold">${{ number_format($equity->balance, 2) }}</td>
+                                        <td class="py-2 text-right font-bold">{{ $this->formatCurrency($equity->balance) }}</td>
                                     </tr>
                                     @endforeach
                                     <tr class="border-t">
                                         <td class="py-2 font-bold">Total Equity</td>
-                                        <td class="py-2 text-right font-bold">${{ number_format($financialStatementData['total_equity'], 2) }}</td>
+                                        <td class="py-2 text-right font-bold">{{ $this->formatCurrency($financialStatementData['total_equity']) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1067,7 +1225,7 @@ new #[Layout('components.layouts.finance')] class extends Component
                                 <tbody>
                                     <tr class="font-bold bg-gray-50">
                                         <td class="py-3">Total Liabilities & Equity</td>
-                                        <td class="py-3 text-right">${{ number_format($financialStatementData['total_liabilities'] + $financialStatementData['total_equity'], 2) }}</td>
+                                        <td class="py-3 text-right">{{ $this->formatCurrency($financialStatementData['total_liabilities'] + $financialStatementData['total_equity']) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1087,9 +1245,9 @@ new #[Layout('components.layouts.finance')] class extends Component
                     </div>
                     <div class="text-right">
                         <div class="text-2xl font-bold text-green-800">
-                            ${{ number_format($financialStatementData['total_assets'], 2) }}
+                            {{ $this->formatCurrency($financialStatementData['total_assets']) }}
                             <span class="text-lg">=</span>
-                            ${{ number_format($financialStatementData['total_liabilities'] + $financialStatementData['total_equity'], 2) }}
+                            {{ $this->formatCurrency($financialStatementData['total_liabilities'] + $financialStatementData['total_equity']) }}
                         </div>
                         <div class="text-sm text-green-600 mt-1">
                             @if(abs($financialStatementData['total_assets'] - ($financialStatementData['total_liabilities'] + $financialStatementData['total_equity'])) < 0.01)
@@ -1126,13 +1284,13 @@ new #[Layout('components.layouts.finance')] class extends Component
                                 @if($revenue->amount > 0)
                                 <tr class="border-b">
                                     <td class="py-2">{{ $revenue->account_name }}</td>
-                                    <td class="py-2 text-right font-bold">${{ number_format($revenue->amount, 2) }}</td>
+                                    <td class="py-2 text-right font-bold">{{ $this->formatCurrency($revenue->amount) }}</td>
                                 </tr>
                                 @endif
                                 @endforeach
                                 <tr class="border-t font-bold">
                                     <td class="py-3">Total Revenue</td>
-                                    <td class="py-3 text-right">${{ number_format($financialStatementData['total_revenue'], 2) }}</td>
+                                    <td class="py-3 text-right">{{ $this->formatCurrency($financialStatementData['total_revenue']) }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1147,13 +1305,13 @@ new #[Layout('components.layouts.finance')] class extends Component
                                 @if($expense->amount > 0)
                                 <tr class="border-b">
                                     <td class="py-2">{{ $expense->account_name }}</td>
-                                    <td class="py-2 text-right font-bold">${{ number_format($expense->amount, 2) }}</td>
+                                    <td class="py-2 text-right font-bold">{{ $this->formatCurrency($expense->amount) }}</td>
                                 </tr>
                                 @endif
                                 @endforeach
                                 <tr class="border-t font-bold">
                                     <td class="py-3">Total Expenses</td>
-                                    <td class="py-3 text-right">${{ number_format($financialStatementData['total_expense'], 2) }}</td>
+                                    <td class="py-3 text-right">{{ $this->formatCurrency($financialStatementData['total_expense']) }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1170,7 +1328,7 @@ new #[Layout('components.layouts.finance')] class extends Component
                                             'text-green-600' => $financialStatementData['net_income'] >= 0,
                                             'text-red-600' => $financialStatementData['net_income'] < 0
                                         ])>
-                                            ${{ number_format(abs($financialStatementData['net_income']), 2) }}
+                                            {{ $this->formatCurrency(abs($financialStatementData['net_income'])) }}
                                             {{ $financialStatementData['net_income'] >= 0 ? 'Profit' : 'Loss' }}
                                         </span>
                                     </td>
@@ -1189,6 +1347,170 @@ new #[Layout('components.layouts.finance')] class extends Component
             <p class="text-sm mt-2">Select statement type and period, then click "Generate".</p>
         </div>
         @endif
+        
+        <!-- Hidden HTML for PDF Generation -->
+        <div id="pdf-content" style="display: none;">
+            @if(count($financialStatementData) > 0)
+                @if($statementType === 'balance_sheet')
+                <div style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h1 style="text-align: center; color: #2c5282; margin-bottom: 5px;">Balance Sheet</h1>
+                    <p style="text-align: center; color: #666; margin-bottom: 20px;">
+                        Period: {{ ucfirst(str_replace('_', ' ', $statementPeriod)) }}<br>
+                        Generated: {{ now()->format('F d, Y H:i:s') }}
+                    </p>
+                    
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
+                        <div style="width: 48%;">
+                            <h3 style="background-color: #f7fafc; padding: 10px; border: 1px solid #e2e8f0;">ASSETS</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                @foreach($financialStatementData['assets'] as $asset)
+                                <tr style="border-bottom: 1px solid #e2e8f0;">
+                                    <td style="padding: 8px;">{{ $asset->account_name }}</td>
+                                    <td style="padding: 8px; text-align: right; font-weight: bold;">
+                                        {{ $this->formatCurrency($asset->balance) }}
+                                    </td>
+                                </tr>
+                                @endforeach
+                                <tr style="background-color: #f7fafc; font-weight: bold;">
+                                    <td style="padding: 10px; border-top: 2px solid #2c5282;">Total Assets</td>
+                                    <td style="padding: 10px; text-align: right; border-top: 2px solid #2c5282;">
+                                        {{ $this->formatCurrency($financialStatementData['total_assets']) }}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <div style="width: 48%;">
+                            <h3 style="background-color: #f7fafc; padding: 10px; border: 1px solid #e2e8f0;">LIABILITIES</h3>
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                                @foreach($financialStatementData['liabilities'] as $liability)
+                                <tr style="border-bottom: 1px solid #e2e8f0;">
+                                    <td style="padding: 8px;">{{ $liability->account_name }}</td>
+                                    <td style="padding: 8px; text-align: right; font-weight: bold;">
+                                        {{ $this->formatCurrency($liability->balance) }}
+                                    </td>
+                                </tr>
+                                @endforeach
+                                <tr style="background-color: #f7fafc; font-weight: bold;">
+                                    <td style="padding: 10px; border-top: 2px solid #2c5282;">Total Liabilities</td>
+                                    <td style="padding: 10px; text-align: right; border-top: 2px solid #2c5282;">
+                                        {{ $this->formatCurrency($financialStatementData['total_liabilities']) }}
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <h3 style="background-color: #f7fafc; padding: 10px; border: 1px solid #e2e8f0;">EQUITY</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                @foreach($financialStatementData['equity'] as $equity)
+                                <tr style="border-bottom: 1px solid #e2e8f0;">
+                                    <td style="padding: 8px;">{{ $equity->account_name }}</td>
+                                    <td style="padding: 8px; text-align: right; font-weight: bold;">
+                                        {{ $this->formatCurrency($equity->balance) }}
+                                    </td>
+                                </tr>
+                                @endforeach
+                                <tr style="background-color: #f7fafc; font-weight: bold;">
+                                    <td style="padding: 10px; border-top: 2px solid #2c5282;">Total Equity</td>
+                                    <td style="padding: 10px; text-align: right; border-top: 2px solid #2c5282;">
+                                        {{ $this->formatCurrency($financialStatementData['total_equity']) }}
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px; padding: 15px; background-color: #f0fff4; border: 1px solid #9ae6b4;">
+                        <h3 style="color: #276749; text-align: center; margin-bottom: 10px;">Balance Sheet Check</h3>
+                        <p style="text-align: center; font-size: 18px; margin: 0;">
+                            Assets = Liabilities + Equity<br>
+                            <strong style="font-size: 20px;">
+                                {{ $this->formatCurrency($financialStatementData['total_assets']) }}
+                                @if(abs($financialStatementData['total_assets'] - ($financialStatementData['total_liabilities'] + $financialStatementData['total_equity'])) < 0.01)
+                                <span style="color: #276749;">= {{ $this->formatCurrency($financialStatementData['total_liabilities'] + $financialStatementData['total_equity']) }}</span>
+                                @else
+                                <span style="color: #c53030;">≠ {{ $this->formatCurrency($financialStatementData['total_liabilities'] + $financialStatementData['total_equity']) }}</span>
+                                @endif
+                            </strong>
+                        </p>
+                    </div>
+                </div>
+                @else
+                <div style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h1 style="text-align: center; color: #2c5282; margin-bottom: 5px;">Income Statement</h1>
+                    <p style="text-align: center; color: #666; margin-bottom: 20px;">
+                        Period: {{ ucfirst(str_replace('_', ' ', $statementPeriod)) }}<br>
+                        Generated: {{ now()->format('F d, Y H:i:s') }}
+                    </p>
+                    
+                    <h3 style="background-color: #f7fafc; padding: 10px; border: 1px solid #e2e8f0;">REVENUE</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        @foreach($financialStatementData['revenues'] as $revenue)
+                            @if($revenue->amount > 0)
+                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                <td style="padding: 8px;">{{ $revenue->account_name }}</td>
+                                <td style="padding: 8px; text-align: right; font-weight: bold;">
+                                    {{ $this->formatCurrency($revenue->amount) }}
+                                </td>
+                            </tr>
+                            @endif
+                        @endforeach
+                        <tr style="background-color: #f7fafc; font-weight: bold;">
+                            <td style="padding: 10px; border-top: 2px solid #2c5282;">Total Revenue</td>
+                            <td style="padding: 10px; text-align: right; border-top: 2px solid #2c5282;">
+                                {{ $this->formatCurrency($financialStatementData['total_revenue']) }}
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <h3 style="background-color: #f7fafc; padding: 10px; border: 1px solid #e2e8f0;">EXPENSES</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        @foreach($financialStatementData['expenses'] as $expense)
+                            @if($expense->amount > 0)
+                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                <td style="padding: 8px;">{{ $expense->account_name }}</td>
+                                <td style="padding: 8px; text-align: right; font-weight: bold;">
+                                    {{ $this->formatCurrency($expense->amount) }}
+                                </td>
+                            </tr>
+                            @endif
+                        @endforeach
+                        <tr style="background-color: #f7fafc; font-weight: bold;">
+                            <td style="padding: 10px; border-top: 2px solid #2c5282;">Total Expenses</td>
+                            <td style="padding: 10px; text-align: right; border-top: 2px solid #2c5282;">
+                                {{ $this->formatCurrency($financialStatementData['total_expense']) }}
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <div style="padding: 20px; background-color: #f7fafc; border: 1px solid #e2e8f0;">
+                        <h3 style="color: #2c5282; text-align: center; margin-bottom: 15px;">Net Income Summary</h3>
+                        <div style="text-align: center;">
+                            <p style="font-size: 18px; margin: 5px 0;">
+                                <strong>Total Revenue:</strong> {{ $this->formatCurrency($financialStatementData['total_revenue']) }}
+                            </p>
+                            <p style="font-size: 18px; margin: 5px 0;">
+                                <strong>Total Expenses:</strong> {{ $this->formatCurrency($financialStatementData['total_expense']) }}
+                            </p>
+                            <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #2c5282;">
+                                <p style="font-size: 22px; font-weight: bold; margin: 0;">
+                                    NET INCOME/LOSS: 
+                                    @if($financialStatementData['net_income'] >= 0)
+                                    <span style="color: #276749;">
+                                        {{ $this->formatCurrency($financialStatementData['net_income']) }} PROFIT
+                                    </span>
+                                    @else
+                                    <span style="color: #c53030;">
+                                        {{ $this->formatCurrency(abs($financialStatementData['net_income'])) }} LOSS
+                                    </span>
+                                    @endif
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @endif
+            @endif
+        </div>
     </div>
     @endif
 
@@ -1241,8 +1563,8 @@ new #[Layout('components.layouts.finance')] class extends Component
                         <div class="flex justify-between items-center mb-4">
                             <h4 class="font-semibold text-gray-700">Journal Items</h4>
                             <span class="text-sm text-gray-500">
-                                Total Debit: ${{ number_format(array_sum(array_column($journalItems, 'debit')), 2) }} | 
-                                Total Credit: ${{ number_format(array_sum(array_column($journalItems, 'credit')), 2) }}
+                                Total Debit: {{ $this->formatCurrency(array_sum(array_column($journalItems, 'debit'))) }} | 
+                                Total Credit: {{ $this->formatCurrency(array_sum(array_column($journalItems, 'credit'))) }}
                             </span>
                         </div>
                         
@@ -1312,12 +1634,12 @@ new #[Layout('components.layouts.finance')] class extends Component
                                         <td class="p-2">{{ $item['description'] }}</td>
                                         <td class="p-2 text-right font-bold">
                                             @if($item['debit'] > 0)
-                                            ${{ number_format($item['debit'], 2) }}
+                                            {{ $this->formatCurrency($item['debit']) }}
                                             @endif
                                         </td>
                                         <td class="p-2 text-right font-bold">
                                             @if($item['credit'] > 0)
-                                            ${{ number_format($item['credit'], 2) }}
+                                            {{ $this->formatCurrency($item['credit']) }}
                                             @endif
                                         </td>
                                         <td class="p-2 text-center">
@@ -1330,8 +1652,8 @@ new #[Layout('components.layouts.finance')] class extends Component
                                     @endforeach
                                     <tr class="bg-gray-50 font-bold">
                                         <td colspan="2" class="p-2 text-right">Totals:</td>
-                                        <td class="p-2 text-right">${{ number_format(array_sum(array_column($journalItems, 'debit')), 2) }}</td>
-                                        <td class="p-2 text-right">${{ number_format(array_sum(array_column($journalItems, 'credit')), 2) }}</td>
+                                        <td class="p-2 text-right">{{ $this->formatCurrency(array_sum(array_column($journalItems, 'debit'))) }}</td>
+                                        <td class="p-2 text-right">{{ $this->formatCurrency(array_sum(array_column($journalItems, 'credit'))) }}</td>
                                         <td class="p-2"></td>
                                     </tr>
                                 </tbody>
@@ -1402,11 +1724,11 @@ new #[Layout('components.layouts.finance')] class extends Component
                             </div>
                             <div>
                                 <label class="form-label text-gray-500 text-sm">Total Debit</label>
-                                <div class="font-bold text-lg">${{ number_format($journalEntryDetails->total_debit, 2) }}</div>
+                                <div class="font-bold text-lg">{{ $this->formatCurrency($journalEntryDetails->total_debit) }}</div>
                             </div>
                             <div>
                                 <label class="form-label text-gray-500 text-sm">Total Credit</label>
-                                <div class="font-bold text-lg">${{ number_format($journalEntryDetails->total_credit, 2) }}</div>
+                                <div class="font-bold text-lg">{{ $this->formatCurrency($journalEntryDetails->total_credit) }}</div>
                             </div>
                             <div>
                                 <label class="form-label text-gray-500 text-sm">Created By</label>
@@ -1448,20 +1770,20 @@ new #[Layout('components.layouts.finance')] class extends Component
                                         <td class="p-2">{{ $item->description }}</td>
                                         <td class="p-2 text-right font-bold">
                                             @if($item->debit > 0)
-                                            ${{ number_format($item->debit, 2) }}
+                                            {{ $this->formatCurrency($item->debit) }}
                                             @endif
                                         </td>
                                         <td class="p-2 text-right font-bold">
                                             @if($item->credit > 0)
-                                            ${{ number_format($item->credit, 2) }}
+                                            {{ $this->formatCurrency($item->credit) }}
                                             @endif
                                         </td>
                                     </tr>
                                     @endforeach
                                     <tr class="bg-gray-50 font-bold">
                                         <td colspan="3" class="p-2 text-right">Totals:</td>
-                                        <td class="p-2 text-right">${{ number_format($items->sum('debit'), 2) }}</td>
-                                        <td class="p-2 text-right">${{ number_format($items->sum('credit'), 2) }}</td>
+                                        <td class="p-2 text-right">{{ $this->formatCurrency($items->sum('debit')) }}</td>
+                                        <td class="p-2 text-right">{{ $this->formatCurrency($items->sum('credit')) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1571,6 +1893,10 @@ new #[Layout('components.layouts.finance')] class extends Component
     </div>
     @endif
 
+    <!-- Add CDN for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <!-- JavaScript for Real-time Updates -->
     <script>
         document.addEventListener('livewire:init', () => {
@@ -1586,6 +1912,83 @@ new #[Layout('components.layouts.finance')] class extends Component
                     @this.dispatch('show-new-journal');
                 }
             });
+            
+            // Listen for PDF download event
+            Livewire.on('download-pdf', () => {
+                generatePDF();
+            });
+            
+            // PDF Generation Function using CDN
+            function generatePDF() {
+                // Load jsPDF from CDN
+                const { jsPDF } = window.jspdf;
+                
+                // Get the content to convert to PDF
+                const element = document.getElementById('pdf-content');
+                
+                if (!element) {
+                    alert('No content available for PDF generation');
+                    return;
+                }
+                
+                // Create a new jsPDF instance
+                const doc = new jsPDF('p', 'mm', 'a4');
+                const pageWidth = doc.internal.pageSize.getWidth();
+                
+                // Add company header
+                doc.setFontSize(20);
+                doc.setTextColor(40, 80, 130);
+                doc.text('Financial Statement Report', pageWidth / 2, 15, { align: 'center' });
+                
+                // Add period information
+                doc.setFontSize(10);
+                doc.setTextColor(100, 100, 100);
+                @if($this->statementType === 'balance_sheet')
+                doc.text('Balance Sheet', pageWidth / 2, 22, { align: 'center' });
+                @else
+                doc.text('Income Statement', pageWidth / 2, 22, { align: 'center' });
+                @endif
+                
+                doc.text('Period: {{ ucfirst(str_replace('_', ' ', $this->statementPeriod)) }}', pageWidth / 2, 28, { align: 'center' });
+                doc.text('Generated: {{ now()->format('F d, Y H:i:s') }}', pageWidth / 2, 34, { align: 'center' });
+                doc.text('Currency: Philippine Peso (₱)', pageWidth / 2, 40, { align: 'center' });
+                
+                // Add a separator line
+                doc.setDrawColor(200, 200, 200);
+                doc.line(20, 45, pageWidth - 20, 45);
+                
+                // Convert HTML content to canvas
+                html2canvas(element, {
+                    scale: 2, // Higher scale for better quality
+                    useCORS: true,
+                    logging: false
+                }).then(canvas => {
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgWidth = pageWidth - 40;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    // Add the image to PDF
+                    doc.addImage(imgData, 'PNG', 20, 50, imgWidth, imgHeight);
+                    
+                    // Add footer
+                    doc.setFontSize(8);
+                    doc.setTextColor(150, 150, 150);
+                    doc.text('Page 1 of 1', pageWidth / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+                    
+                    // Save the PDF
+                    const filename = '{{ $this->statementType }}_{{ $this->statementPeriod }}_{{ date("Ymd_His") }}.pdf';
+                    doc.save(filename);
+                }).catch(error => {
+                    console.error('Error generating PDF:', error);
+                    alert('Error generating PDF. Please try again.');
+                    
+                    // Fallback: Create simple PDF
+                    const doc = new jsPDF();
+                    doc.text('Financial Statement', 20, 20);
+                    doc.text('Error generating detailed PDF. Please try CSV export instead.', 20, 30);
+                    doc.save('financial_statement_fallback.pdf');
+                });
+            }
         });
     </script>
 </div>

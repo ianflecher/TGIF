@@ -388,6 +388,11 @@
             Track Status
         </a>
 
+        <a href="{{ route('inventory.home') }}" class="{{ request()->routeIs('inventory.home') ? 'active' : '' }}">
+            <i class="fas fa-chart-bar"></i>
+           Inventory 
+        </a>
+
         <!-- Spacer to push logout to bottom -->
         <div style="flex-grow: 1;"></div>
 
