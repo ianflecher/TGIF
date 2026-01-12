@@ -410,38 +410,17 @@ new #[Layout('components.layouts.project')] class extends Component
                                     </div>
                                 </td>
                                 <td style="padding: 12px;">
-                                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                        @if($task->status === 'Pending')
-                                            <button wire:click="startTask({{ $task->task_id }})" 
-                                                    style="background: #22c55e; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
-                                                Start
-                                            </button>
-                                        @elseif($task->status === 'In Progress')
-                                            <button wire:click="submitTaskForChecking({{ $task->task_id }})" 
-                                                    style="background: #8b5cf6; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
-                                                Submit
-                                            </button>
-                                        @elseif($task->status === 'Submit for Checking')
-                                            <button wire:click="approveTask({{ $task->task_id }})" 
-                                                    style="background: #22c55e; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
-                                                Approve
-                                            </button>
-                                            <button wire:click="rejectTask({{ $task->task_id }})" 
-                                                    style="background: #f59e0b; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
-                                                Reject
-                                            </button>
-                                        @endif
-                                        
-                                        <button wire:click="openEditTaskModal({{ $task->task_id }})" 
-                                                style="background: #facc15; color: #1f2937; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
-                                            Edit
-                                        </button>
-                                        <button wire:click="confirmDeleteTask({{ $task->task_id }})" 
-                                                style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
-                                            Delete
-                                        </button>
-                                    </div>
-                                </td>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button wire:click="openEditTaskModal({{ $task->task_id }})" 
+                style="background: #facc15; color: #1f2937; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
+            Edit
+        </button>
+        <button wire:click="confirmDeleteTask({{ $task->task_id }})" 
+                style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: background 0.2s ease;">
+            Delete
+        </button>
+    </div>
+</td>
                             </tr>
                         @endforeach
                     </tbody>
