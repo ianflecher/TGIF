@@ -26,23 +26,57 @@ new #[Layout('components.layouts.supplier')] class extends Component
     
     public function loadOrders($supplierId)
     {
-        $this->purchaseOrders = DB::table('purchase_orders as po')
-            ->join('users as u', 'po.created_by', '=', 'u.user_id')
-            ->where('po.supplier_id', $supplierId)
-            ->whereIn('po.status', ['sent', 'confirmed', 'partially_received'])
-            ->select(
-                'po.po_id',
-                'po.po_number',
-                'po.order_date',
-                'po.expected_delivery_date',
-                'po.total_amount',
-                'po.status',
-                'po.terms',
-                'u.full_name as created_by_name'
-            )
-            ->orderBy('po.order_date', 'desc')
-            ->get()
-            ->toArray();
+
+        
+        try {
+            // First, check if there are any orders for this supplier
+            $ordersCount = DB::table('purchase_orders')
+                ->where('supplier_id', $supplierId)
+                ->count();
+
+            
+            // Try query without join first
+            $testQuery = DB::table('purchase_orders as po')
+                ->where('po.supplier_id', $supplierId)
+                ->whereIn('po.status', ['sent', 'confirmed', 'partially_received', 'draft'])
+                ->select(
+                    'po.po_id',
+                    'po.po_number',
+                    'po.order_date',
+                    'po.expected_delivery_date',
+                    'po.total_amount',
+                    'po.status',
+                    'po.terms',
+                    'po.created_by'
+                )
+                ->orderBy('po.order_date', 'desc')
+                ->get();
+            
+            // If there are results, check if join is causing issues
+            if (count($testQuery) > 0) {
+                $this->purchaseOrders = DB::table('purchase_orders as po')
+                    ->leftJoin('users as u', 'po.created_by', '=', 'u.user_id')
+                    ->where('po.supplier_id', $supplierId)
+                    ->whereIn('po.status', ['sent', 'confirmed', 'partially_received', 'draft'])
+                    ->select(
+                        'po.po_id',
+                        'po.po_number',
+                        'po.order_date',
+                        'po.expected_delivery_date',
+                        'po.total_amount',
+                        'po.status',
+                        'po.terms',
+                        'u.full_name as created_by_name'
+                    )
+                    ->orderBy('po.order_date', 'desc')
+                    ->get()
+                    ->toArray();
+                    
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Error loading orders: ' . $e->getMessage());
+        }
     }
     
     public function viewOrder($poId)
@@ -199,7 +233,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 <th class="p-3 text-left text-emerald-800 font-semibold">PO Number</th>
                                 <th class="p-3 text-left text-emerald-800 font-semibold">Order Date</th>
                                 <th class="p-3 text-left text-emerald-800 font-semibold">Expected Delivery</th>
-                                <th class="p-3 text-left text-emerald-800 font-semibold">Total Amount</th>
+                                <!-- <th class="p-3 text-left text-emerald-800 font-semibold">Total Amount</th> -->
                                 <th class="p-3 text-left text-emerald-800 font-semibold">Status</th>
                                 <th class="p-3 text-left text-emerald-800 font-semibold">Actions</th>
                             </tr>
@@ -214,9 +248,9 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                     <td class="p-3 text-emerald-800">
                                         {{ Carbon::parse($order->expected_delivery_date)->format('M d, Y') }}
                                     </td>
-                                    <td class="p-3">
+                                    <!-- <td class="p-3">
                                         <div class="font-bold text-green-700">₱{{ number_format($order->total_amount, 2) }}</div>
-                                    </td>
+                                    </td> -->
                                     <td class="p-3">
                                         <span class="px-3 py-1 rounded-full text-xs font-medium {{ $this->getStatusColor($order->status) }}">
                                             {{ $this->getStatusText($order->status) }}
@@ -230,7 +264,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                                 View
                                             </button>
                                             
-                                            @if($order->status === 'sent')
+                                            @if($order->status === 'draft')
                                                 <button wire:click="acceptOrder({{ $order->po_id }})"
                                                         onclick="return confirm('Confirm acceptance of PO #{{ $order->po_number }}?')"
                                                         class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
