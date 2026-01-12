@@ -87,6 +87,7 @@ class extends Component
             'in_progress' => ['label' => 'In Progress', 'color' => 'bg-blue-100 text-blue-800', 'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
             'resolved' => ['label' => 'Resolved', 'color' => 'bg-green-100 text-green-800', 'icon' => 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'],
             'closed' => ['label' => 'Closed', 'color' => 'bg-gray-100 text-gray-800', 'icon' => 'M6 18L18 6M6 6l12 12'],
+            'cancelled' => ['label' => 'Cancelled', 'color' => 'bg-red-100 text-red-800', 'icon' => 'M6 18L18 6M6 6l12 12'],
         ];
     }
     
@@ -125,15 +126,15 @@ class extends Component
                 'tickets.category',
                 'tickets.created_at',
                 'tickets.updated_at',
+                'tickets.resolved_at',
                 'customers.first_name',
                 'customers.last_name',
                 'customers.email as customer_email',
                 'customers.phone as customer_phone',
-                DB::raw('COUNT(ticket_notes.note_id) as note_count'),
-                DB::raw('MAX(ticket_notes.created_at) as last_note_at')
+                DB::raw('(SELECT COUNT(*) FROM ticket_notes WHERE ticket_notes.ticket_id = tickets.ticket_id) as note_count'),
+                DB::raw('(SELECT MAX(created_at) FROM ticket_notes WHERE ticket_notes.ticket_id = tickets.ticket_id) as last_note_at')
             )
             ->join('customers', 'tickets.customer_id', '=', 'customers.customer_id')
-            ->leftJoin('ticket_notes', 'tickets.ticket_id', '=', 'ticket_notes.ticket_id')
             ->where('tickets.assigned_agent', $this->agentId);
         
         // Apply filters
@@ -148,16 +149,13 @@ class extends Component
         if ($this->searchQuery) {
             $query->where(function($q) {
                 $q->where('tickets.ticket_number', 'like', "%{$this->searchQuery}%")
-                  ->orWhere('tickets.subject', 'like', "%{$this->searchQuery}%")
-                  ->orWhere('customers.first_name', 'like', "%{$this->searchQuery}%")
-                  ->orWhere('customers.last_name', 'like', "%{$this->searchQuery}%");
+                ->orWhere('tickets.subject', 'like', "%{$this->searchQuery}%")
+                ->orWhere('customers.first_name', 'like', "%{$this->searchQuery}%")
+                ->orWhere('customers.last_name', 'like', "%{$this->searchQuery}%");
             });
         }
         
         $this->assignedTickets = $query
-            ->groupBy('tickets.ticket_id', 'tickets.ticket_number', 'tickets.subject', 'tickets.priority', 
-                     'tickets.status', 'tickets.category', 'tickets.created_at', 'tickets.updated_at',
-                     'customers.first_name', 'customers.last_name', 'customers.email', 'customers.phone')
             ->orderByRaw("FIELD(tickets.priority, 'critical', 'high', 'medium', 'low')")
             ->orderBy('tickets.created_at', 'desc')
             ->get();
@@ -167,24 +165,31 @@ class extends Component
     {
         if (!$this->agentId) return;
         
+        // Get basic counts
         $stats = DB::table('tickets')
             ->select(
                 DB::raw('COUNT(*) as total'),
                 DB::raw('SUM(CASE WHEN status = "open" THEN 1 ELSE 0 END) as open'),
                 DB::raw('SUM(CASE WHEN status = "in_progress" THEN 1 ELSE 0 END) as in_progress'),
-                DB::raw('SUM(CASE WHEN status = "resolved" THEN 1 ELSE 0 END) as resolved'),
-                DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_resolution_hours')
+                DB::raw('SUM(CASE WHEN status = "resolved" THEN 1 ELSE 0 END) as resolved')
             )
             ->where('assigned_agent', $this->agentId)
-            ->whereNotNull('resolved_at')
             ->first();
         
+        // Get average resolution time for resolved tickets
+        $avgTime = DB::table('tickets')
+            ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_hours'))
+            ->where('assigned_agent', $this->agentId)
+            ->where('status', 'resolved')
+            ->whereNotNull('resolved_at')
+            ->value('avg_hours');
+        
         $this->stats = [
-            'open' => DB::table('tickets')->where('assigned_agent', $this->agentId)->where('status', 'open')->count(),
-            'in_progress' => DB::table('tickets')->where('assigned_agent', $this->agentId)->where('status', 'in_progress')->count(),
-            'resolved' => DB::table('tickets')->where('assigned_agent', $this->agentId)->where('status', 'resolved')->count(),
-            'total' => DB::table('tickets')->where('assigned_agent', $this->agentId)->count(),
-            'avg_response_time' => $stats && $stats->avg_resolution_hours ? round($stats->avg_resolution_hours) . ' hours' : 'N/A'
+            'open' => $stats->open ?? 0,
+            'in_progress' => $stats->in_progress ?? 0,
+            'resolved' => $stats->resolved ?? 0,
+            'total' => $stats->total ?? 0,
+            'avg_response_time' => $avgTime ? round($avgTime) . ' hours' : 'N/A'
         ];
     }
     
@@ -350,6 +355,8 @@ class extends Component
         try {
             DB::beginTransaction();
             
+            \Log::info('Resolving ticket ID: ' . $this->selectedTicket->ticket_id);
+            
             $userId = DB::table('employees')
                 ->where('employee_id', $this->agentId)
                 ->value('user_id');
@@ -364,16 +371,26 @@ class extends Component
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                
+                \Log::info('Added resolution note for ticket: ' . $this->selectedTicket->ticket_id);
             }
             
             // Update ticket status to resolved
-            DB::table('tickets')
+            $updateData = [
+                'status' => 'resolved',
+                'updated_at' => now(),
+                'resolved_at' => now()
+            ];
+            
+            $updated = DB::table('tickets')
                 ->where('ticket_id', $this->selectedTicket->ticket_id)
-                ->update([
-                    'status' => 'resolved',
-                    'updated_at' => now(),
-                    'resolved_at' => now()
-                ]);
+                ->update($updateData);
+            
+            if ($updated) {
+                \Log::info('Successfully updated ticket status to resolved');
+            } else {
+                \Log::warning('No rows were updated for ticket: ' . $this->selectedTicket->ticket_id);
+            }
             
             DB::commit();
             
@@ -389,6 +406,7 @@ class extends Component
             
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Error resolving ticket: ' . $e->getMessage());
             session()->flash('error', 'Error resolving ticket: ' . $e->getMessage());
         }
     }
@@ -499,6 +517,17 @@ class extends Component
         </div>
     </div>
 
+    <!-- Debug Info -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+        <div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
+            <p class="font-semibold">Debug Info:</p>
+            <p>Agent ID: {{ $agentId ?? 'Not found' }}</p>
+            <p>Employee: {{ $employee?->full_name ?? 'Not found' }}</p>
+            <p>Tickets Count: {{ count($assignedTickets) }}</p>
+            <p>Stats: Open={{ $stats['open'] }}, In Progress={{ $stats['in_progress'] }}, Resolved={{ $stats['resolved'] }}, Total={{ $stats['total'] }}</p>
+        </div>
+    </div>
+
     <!-- Stats -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -580,9 +609,9 @@ class extends Component
                                 <!-- Search -->
                                 <div class="relative">
                                     <input type="text" 
-                                           wire:model.live.debounce.300ms="searchQuery"
-                                           placeholder="Search tickets..."
-                                           class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        wire:model.live.debounce.300ms="searchQuery"
+                                        placeholder="Search tickets..."
+                                        class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                     <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                     </svg>
@@ -715,15 +744,15 @@ class extends Component
                             <span>Mark as In Progress</span>
                         </button>
                         
-                        <button wire:click="showResolveModal"
+                        <!-- <button wire:click="showResolveModal"
                                 class="w-full flex items-center p-3 text-gray-700 hover:bg-green-50 rounded-lg transition group">
                             <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3 group-hover:bg-green-200">
                                 <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                             </div>
-                            <span>Resolve Ticket</span>
-                        </button>
+                            <span> Ticket</span>
+                        </button> -->
                         
                         <button wire:click="$set('showCloseModal', true)"
                                 class="w-full flex items-center p-3 text-gray-700 hover:bg-red-50 rounded-lg transition group">
@@ -732,7 +761,7 @@ class extends Component
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </div>
-                            <span>Close Ticket</span>
+                            <span>Resolve Close Ticket</span>
                         </button>
                         @endif
                     </div>
@@ -755,7 +784,7 @@ class extends Component
                             </div>
                             <div class="w-full bg-gray-200 rounded-full h-2">
                                 <div class="bg-yellow-500 h-2 rounded-full" 
-                                     style="width: {{ $stats['total'] > 0 ? ($stats['open'] / $stats['total']) * 100 : 0 }}%"></div>
+                                    style="width: {{ $stats['total'] > 0 ? ($stats['open'] / $stats['total']) * 100 : 0 }}%"></div>
                             </div>
                         </div>
                         
@@ -772,7 +801,7 @@ class extends Component
                             </div>
                             <div class="w-full bg-gray-200 rounded-full h-2">
                                 <div class="bg-green-500 h-2 rounded-full" 
-                                     style="width: {{ $stats['total'] > 0 ? ($stats['resolved'] / $stats['total']) * 100 : 0 }}%"></div>
+                                    style="width: {{ $stats['total'] > 0 ? ($stats['resolved'] / $stats['total']) * 100 : 0 }}%"></div>
                             </div>
                         </div>
                         
@@ -912,9 +941,9 @@ class extends Component
                         <div class="space-y-4">
                             <div>
                                 <textarea wire:model="newNote" 
-                                          rows="4"
-                                          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                          placeholder="Type your response here..."></textarea>
+                                        rows="4"
+                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Type your response here..."></textarea>
                             </div>
                             
                             <div class="flex items-center justify-between">
@@ -948,14 +977,14 @@ class extends Component
                             </button>
                             @endif
                             
-                            <button wire:click="showResolveModal"
-                                    wire:loading.attr="disabled"
-                                    class="flex items-center justify-center p-4 bg-green-50 border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-100 transition">
-                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Resolve Ticket
-                            </button>
+                                <!-- <button wire:click="showResolveModal"
+                                        wire:loading.attr="disabled"
+                                        class="flex items-center justify-center p-4 bg-green-50 border-2 border-green-200 text-green-700 rounded-lg hover:bg-green-100 transition">
+                                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Resolve Ticket
+                                </button> -->
                             
                             <button wire:click="$set('showCloseModal', true)"
                                     wire:loading.attr="disabled"
@@ -963,7 +992,7 @@ class extends Component
                                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
-                                Close Ticket
+                                Resolve and Close Ticket
                             </button>
                         </div>
                     </div>
@@ -1009,9 +1038,9 @@ class extends Component
                 <p class="text-gray-600 mb-6">Please provide details about how you resolved this issue.</p>
                 
                 <textarea wire:model="resolutionNote" 
-                          rows="4"
-                          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-6"
-                          placeholder="Describe the solution you provided, steps taken, or any other relevant information..."></textarea>
+                        rows="4"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-6"
+                        placeholder="Describe the solution you provided, steps taken, or any other relevant information..."></textarea>
                 
                 <div class="flex justify-end space-x-3">
                     <button wire:click="$set('showResolveModal', false)" 
@@ -1048,9 +1077,9 @@ class extends Component
                 <p class="text-gray-600 mb-6">Please provide a reason for closing this ticket.</p>
                 
                 <textarea wire:model="closeReason" 
-                          rows="3"
-                          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-6"
-                          placeholder="e.g., Issue resolved, customer satisfied, duplicate ticket, customer unresponsive..."></textarea>
+                        rows="3"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-6"
+                        placeholder="e.g., Issue resolved, customer satisfied, duplicate ticket, customer unresponsive..."></textarea>
                 
                 <div class="flex justify-end space-x-3">
                     <button wire:click="$set('showCloseModal', false)" 
