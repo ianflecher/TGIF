@@ -88,174 +88,168 @@ new #[Layout('components.layouts.customerapp')] class extends Component
         }
     }
     
-    public function placeOrder()
-    {
-        // Simple validation
-        if (empty($this->name) || empty($this->phone) || empty($this->address)) {
-            $this->dispatch('show-toast', type: 'error', message: 'Please fill in all required fields.');
+public function placeOrder()
+{
+    // Simple validation
+    if (empty($this->name) || empty($this->phone) || empty($this->address)) {
+        $this->dispatch('show-toast', type: 'error', message: 'Please fill in all required fields.');
+        return;
+    }
+
+    // Validate phone format (at least 10 digits)
+    $phoneDigits = preg_replace('/\D/', '', $this->phone);
+    if (strlen($phoneDigits) < 10) {
+        $this->dispatch('show-toast', type: 'error', message: 'Please enter a valid phone number (at least 10 digits).');
+        return;
+    }
+
+    // Check stock
+    foreach ($this->cartItems as $item) {
+        $product = DB::table('products')
+            ->where('product_id', $item['product_id'])
+            ->first();
+
+        if (!$product) {
+            $this->dispatch('show-toast', type: 'error', message: $item['name'] . ' is no longer available.');
             return;
         }
-        
-        // Validate phone format (at least 10 digits)
-        $phoneDigits = preg_replace('/\D/', '', $this->phone);
-        if (strlen($phoneDigits) < 10) {
-            $this->dispatch('show-toast', type: 'error', message: 'Please enter a valid phone number (at least 10 digits).');
+
+        if ($product->stock_quantity < $item['quantity']) {
+            $this->dispatch('show-toast', type: 'error', message: $item['name'] . ' is out of stock. Only ' . $product->stock_quantity . ' left.');
             return;
         }
+    }
+
+    try {
+        DB::beginTransaction();
+
+        $userId = Auth::user()->user_id;
+        $this->orderNumber = 'ORD' . date('Ymd') . rand(1000, 9999);
+
+        // Handle customer record
+        $customerId = null;
         
-        // Check stock
-        foreach ($this->cartItems as $item) {
-            $product = DB::table('products')
-                ->where('product_id', $item['product_id'])
+        // Check if customer exists for this user
+        $customer = DB::table('customers')
+            ->where('user_id', $userId)
+            ->first();
+
+        if ($customer) {
+            $customerId = $customer->customer_id;
+            
+            // Split name into first and last name
+            $nameParts = explode(' ', $this->name, 2);
+            $firstName = $nameParts[0] ?? '';
+            $lastName = $nameParts[1] ?? '';
+            
+            // Update customer info
+            DB::table('customers')
+                ->where('customer_id', $customerId)
+                ->update([
+                    'first_name' => $firstName,
+                    'last_name' => $lastName,
+                    'phone' => $this->phone,
+                    'address' => $this->address,
+                    'updated_at' => now(),
+                ]);
+        } else {
+            // Create new customer record
+            // Split name into first and last name
+            $nameParts = explode(' ', $this->name, 2);
+            $firstName = $nameParts[0] ?? '';
+            $lastName = $nameParts[1] ?? '';
+            
+            // Get user email
+            $user = DB::table('users')
+                ->where('user_id', $userId)
                 ->first();
             
-            if (!$product) {
-                $this->dispatch('show-toast', type: 'error', message: $item['name'] . ' is no longer available.');
-                return;
-            }
-            
-            if ($product->stock_quantity < $item['quantity']) {
-                $this->dispatch('show-toast', type: 'error', message: $item['name'] . ' is out of stock. Only ' . $product->stock_quantity . ' left.');
-                return;
-            }
+            $customerId = DB::table('customers')->insertGetId([
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $user->email,
+                'phone' => $this->phone,
+                'address' => $this->address,
+                'date_registered' => now()->format('Y-m-d'),
+                'user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
+
+        // Insert into sales_orders
+        $orderId = DB::table('sales_orders')->insertGetId([
+            'customer_id' => $customerId,
+            'order_number' => $this->orderNumber,
+            'order_date' => now()->format('Y-m-d'),
+            'delivery_date' => null,
+            'total_amount' => $this->total,
+            'tax_amount' => 0.00,
+            'discount_amount' => 0.00,
+            'grand_total' => $this->total,
+            'payment_method' => 'cash',
+            'payment_status' => 'pending',
+            'status' => 'confirmed',
+            'shipping_address' => $this->address,
+            'billing_address' => $this->address,
+            'sales_rep_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Insert order items
+        $this->orderDetails = [];
         
-        try {
-            DB::beginTransaction();
-            
-            $userId = Auth::user()->user_id;
-            $this->orderNumber = 'ORD' . date('Ymd') . rand(1000, 9999);
-            
-            // First, check if we need to get or create a customer record
-            // Since sales_orders needs customer_id, let's use the user_id as customer_id
-            // Or check if there's a separate customers table
-            $customerId = $userId; // Using user_id as customer_id for now
-            
-            // Check if there's a customers table
-            if (DB::getSchemaBuilder()->hasTable('customers')) {
-                // Try to find existing customer by user_id
-                $customer = DB::table('customers')
-                    ->where('user_id', $userId)
-                    ->first();
-                
-                if ($customer) {
-                    $customerId = $customer->customer_id;
-                    // Update customer info if changed
-                    DB::table('customers')
-                        ->where('customer_id', $customerId)
-                        ->update([
-                            'name' => $this->name,
-                            'phone' => $this->phone,
-                            'address' => $this->address,
-                            'updated_at' => now(),
-                        ]);
-                } else {
-                    // Create a new customer record
-                    $customerId = DB::table('customers')->insertGetId([
-                        'user_id' => $userId,
-                        'name' => $this->name,
-                        'phone' => $this->phone,
-                        'address' => $this->address,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                }
-            }
-            
-            // Insert into sales_orders with correct column names
-            $orderId = DB::table('sales_orders')->insertGetId([
-                'customer_id' => $customerId,
-                'order_number' => $this->orderNumber,
-                'order_date' => now()->format('Y-m-d'), // Date format for order_date
-                'total_amount' => $this->total,
-                'grand_total' => $this->total,
-                'payment_method' => 'cash', // Default to cash for COD
-                'payment_status' => 'pending',
-                'status' => 'confirmed', // Using confirmed instead of draft
-                'shipping_address' => $this->address,
-                'billing_address' => $this->address,
-                'order_notes' => $this->notes,
+        foreach ($this->cartItems as $item) {
+            // Insert order item with product_name
+            DB::table('order_items')->insert([
+                'order_id' => $orderId,
+                'product_id' => $item['product_id'],
+                'product_name' => $item['name'], // Add product_name here
+                'quantity' => $item['quantity'],
+                'price_per_unit' => $item['price'],
+                'subtotal' => $item['total'],
+                'total' => $item['total'],
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
             
-            // Insert order items - with all option details
-            $this->orderDetails = [];
+            // Decrement stock
+            DB::table('products')
+                ->where('product_id', $item['product_id'])
+                ->decrement('stock_quantity', $item['quantity']);
             
-            // First, check if order_items has the option columns
-            $hasSizeColumn = DB::getSchemaBuilder()->hasColumn('order_items', 'size');
-            $hasProductNameColumn = DB::getSchemaBuilder()->hasColumn('order_items', 'product_name');
-            
-            foreach ($this->cartItems as $item) {
-                // Prepare the order item data
-                $orderItemData = [
-                    'order_id' => $orderId,
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price_per_unit' => $item['price'],
-                    'subtotal' => $item['total'],
-                    'discount' => 0.00,
-                    'tax' => 0.00,
-                    'total' => $item['total'],
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-                
-                // Add product name if column exists
-                if ($hasProductNameColumn) {
-                    $orderItemData['product_name'] = $item['name'];
-                }
-                
-                // Add option columns if they exist
-                if ($hasSizeColumn) {
-                    $orderItemData['size'] = $item['size'];
-                    $orderItemData['flavor'] = $item['flavor'];
-                    $orderItemData['variety'] = $item['variety'];
-                    $orderItemData['base_price'] = $item['base_price'] ?? $item['price'];
-                    $orderItemData['price_adjustment_percent'] = $item['price_adjustment_percent'] ?? 0;
-                    $orderItemData['final_price'] = $item['final_price'] ?? $item['price'];
-                    $orderItemData['unit_price'] = $item['price']; // Add unit_price column if it exists
-                }
-                
-                // Insert the order item
-                DB::table('order_items')->insert($orderItemData);
-                
-                // Also decrement product stock
-                DB::table('products')
-                    ->where('product_id', $item['product_id'])
-                    ->decrement('stock_quantity', $item['quantity']);
-                
-                $this->orderDetails[] = [
-                    'name' => $item['name'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'total' => $item['total'],
-                    'size' => $item['size'],
-                    'flavor' => $item['flavor'],
-                    'variety' => $item['variety'],
-                    'price_adjustment_percent' => $item['price_adjustment_percent'] ?? 0,
-                ];
-            }
-            
-            // Clear cart
-            DB::table('cart_items')
-                ->where('user_id', $userId)
-                ->delete();
-            
-            DB::commit();
-            
-            // Show confirmation
-            $this->showConfirmation = true;
-            
-            // Dispatch cart update
-            $this->dispatch('cart-updated');
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error('Order placement error: ' . $e->getMessage());
-            $this->dispatch('show-toast', type: 'error', message: 'Failed to place order. Please try again.');
+            $this->orderDetails[] = [
+                'name' => $item['name'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+                'total' => $item['total'],
+                'size' => $item['size'],
+                'flavor' => $item['flavor'],
+                'variety' => $item['variety'],
+                'price_adjustment_percent' => $item['price_adjustment_percent'] ?? 0,
+            ];
         }
+
+        // Clear cart
+        DB::table('cart_items')
+            ->where('user_id', $userId)
+            ->delete();
+        
+        DB::commit();
+        
+        // Show confirmation
+        $this->showConfirmation = true;
+        
+        // Dispatch cart update
+        $this->dispatch('cart-updated');
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        \Log::error('Order placement error: ' . $e->getMessage());
+        $this->dispatch('show-toast', type: 'error', message: 'Failed to place order. Please try again.');
     }
+}
     
     public function continueShopping()
     {
@@ -316,7 +310,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                     </span>
                                 @endif
                                 
-                                @if(($item['price_adjustment_percent'] ?? 0) > 0)
+                                @if(isset($item['price_adjustment_percent']) && $item['price_adjustment_percent'] > 0)
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
                                         +{{ $item['price_adjustment_percent'] }}%
                                     </span>
@@ -504,7 +498,7 @@ new #[Layout('components.layouts.customerapp')] class extends Component
                                             </span>
                                         @endif
                                         
-                                        @if($item['price_adjustment_percent'] > 0)
+                                        @if(isset($item['price_adjustment_percent']) && $item['price_adjustment_percent'] > 0)
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
                                                 +{{ $item['price_adjustment_percent'] }}%
                                             </span>
