@@ -390,7 +390,7 @@ new #[Layout('components.layouts.project')] class extends Component
             'editingResource.resource_name' => 'required|string|max:255',
             'editingResource.type' => 'required|string',
             'editingResource.unit_cost' => 'required|numeric|min:0',
-            'editingResource.available_quantity' => 'required|numeric|min:0',
+            'editingResource.availability_quantity' => 'required|numeric|min:0',
             'editingResource.status' => 'required|string',
         ]);
 
@@ -494,8 +494,8 @@ new #[Layout('components.layouts.project')] class extends Component
         $diffCost = $diffQty * $resource->unit_cost;
 
         // 5️⃣ Check stock availability
-        if ($diffQty > $resource->available_quantity) {
-            $this->addError('editingAllocation.quantity', "Insufficient stock. Available: {$resource->available_quantity}");
+        if ($diffQty > $resource->availability_quantity) {
+            $this->addError('editingAllocation.quantity', "Insufficient stock. Available: {$resource->availability_quantity}");
             return;
         }
 
@@ -531,7 +531,7 @@ new #[Layout('components.layouts.project')] class extends Component
         DB::table('resources')
             ->where('resource_id', $resource->resource_id)
             ->update([
-                'available_quantity' => $resource->available_quantity - $diffQty,
+                'availability_quantity' => $resource->availability_quantity - $diffQty,
             ]);
 
         // 9️⃣ Reset modal & refresh
@@ -555,7 +555,7 @@ new #[Layout('components.layouts.project')] class extends Component
         // 2️⃣ Restore resource availability
         DB::table('resources')
             ->where('resource_id', $allocation->resource_id)
-            ->increment('available_quantity', $allocation->quantity);
+            ->increment('availability_quantity', $allocation->quantity);
 
         // 3️⃣ Delete allocation
         DB::table('resource_allocations')
@@ -744,8 +744,8 @@ new #[Layout('components.layouts.project')] class extends Component
         $totalCost = $this->allocatedQuantity * $resource->unit_cost;
 
         // 5️⃣ Check stock
-        if ($this->allocatedQuantity > $resource->available_quantity) {
-            $this->addError('allocatedQuantity', "Insufficient stock. Available: {$resource->available_quantity}");
+        if ($this->allocatedQuantity > $resource->availability_quantity) {
+            $this->addError('allocatedQuantity', "Insufficient stock. Available: {$resource->availability_quantity}");
             return;
         }
 
@@ -796,7 +796,7 @@ new #[Layout('components.layouts.project')] class extends Component
         // 8️⃣ Update resource availability
         DB::table('resources')
             ->where('resource_id', $resource->resource_id)
-            ->decrement('available_quantity', $this->allocatedQuantity);
+            ->decrement('availability_quantity', $this->allocatedQuantity);
 
         // 9️⃣ Update task budget actual cost & variance
         $taskActualCost = DB::table('resource_allocations')
@@ -1178,7 +1178,7 @@ new #[Layout('components.layouts.project')] class extends Component
                     <option value="">-- Select Resource --</option>
                     @foreach($resources as $r)
                         <option value="{{ $r->resource_id }}">
-                            {{ $r->resource_name }} (Available: {{ $r->available_quantity }})
+                            {{ $r->resource_name }} (Available: {{ $r->availability_quantity }})
                         </option>
                     @endforeach
                 </select>
