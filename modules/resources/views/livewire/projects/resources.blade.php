@@ -1051,7 +1051,7 @@ new #[Layout('components.layouts.project')] class extends Component
                                     ->select(
                                         'resource_allocations.allocation_id',
                                         'resources.resource_name',
-                                        'resources.resource_type',
+                                        'resources.type',
                                         'resource_allocations.quantity'
                                     )
                                     ->get();
