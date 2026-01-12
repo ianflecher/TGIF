@@ -20,7 +20,7 @@ new #[Layout('components.layouts.project')] class extends Component
             ->join('resources as r', 'r.resource_id', '=', 'ra.resource_id')
             ->where('ra.task_id', $this->taskId)
             ->select(
-                'r.resource_type',
+                'r.type',
                 'r.resource_name',
                 'ra.quantity',
                 DB::raw('ra.quantity * r.unit_cost as cost')
@@ -31,7 +31,7 @@ new #[Layout('components.layouts.project')] class extends Component
         // Group by type safely
         $this->costsByType = [];
         foreach(['Labor','Materials','Overhead','Tool','Facility'] as $type) {
-            $this->costsByType[$type] = $resources->where('resource_type', $type)->values();
+            $this->costsByType[$type] = $resources->where('type', $type)->values();
         }
     }
 
