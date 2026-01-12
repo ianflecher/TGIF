@@ -681,7 +681,7 @@ new #[Layout('components.layouts.project')] class extends Component
                                        style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
                             </label>
 
-                            <label style="display: block;">
+                            <!-- <label style="display: block;">
                                 <span style="font-weight: 500; color: #374151; display: block; margin-bottom: 0.25rem;">Status</span>
                                 <select wire:model="status" 
                                         style="width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 0.5rem;">
@@ -689,7 +689,7 @@ new #[Layout('components.layouts.project')] class extends Component
                                     <option value="in_progress">In Progress</option>
                                     <option value="on_hold" selected>On Hold</option>
                                 </select>
-                            </label>
+                            </label> -->
                         </div>
 
                         <label style="display: block;">

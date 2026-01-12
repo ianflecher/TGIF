@@ -24,20 +24,19 @@ new #[Layout('components.layouts.project')] class extends Component
     }
 
     public function loadResources()
-{
-    $this->resources = DB::table('resources')
-        ->orderByDesc('resource_id')
-        ->get()
-        ->toArray();
+    {
+        $this->resources = DB::table('resources')
+            ->orderByDesc('resource_id')
+            ->get()
+            ->toArray();
 
-    // Group resources by resource_type
-    $this->resourcesByType = [
-        'Labor' => array_filter($this->resources, fn($r) => $r->resource_type === 'employee'),
-        'Materials' => array_filter($this->resources, fn($r) => $r->resource_type === 'equipment'),
-        'Overhead' => array_filter($this->resources, fn($r) => $r->resource_type === 'material'),
-    ];
-}
-
+        // Group resources by type
+        $this->resourcesByType = [
+            'Labor' => array_filter($this->resources, fn($r) => $r->type === 'employee'),
+            'Materials' => array_filter($this->resources, fn($r) => $r->type === 'equipment'),
+            'Overhead' => array_filter($this->resources, fn($r) => $r->type === 'material'),
+        ];
+    }
 
     public function openAddModal()
     {
@@ -55,6 +54,7 @@ new #[Layout('components.layouts.project')] class extends Component
             $this->type = $res->type;
             $this->unit_cost = $res->unit_cost;
             $this->status = $res->status;
+            $this->quantity = $res->availability_quantity ?? 1;
 
             $this->showResourceModal = true;
         }
@@ -71,14 +71,13 @@ new #[Layout('components.layouts.project')] class extends Component
         if (!$this->resource_name || !$this->type || !$this->status) return;
 
         $data = [
-    'resource_name' => $this->resource_name,
-    'resource_type' => $this->type,
-    'resource_code' => 'COO1',
-    'unit_cost' => $this->unit_cost,
-    'available_quantity' => $this->quantity,
-    'status' => $this->status,
-    'updated_at' => now(),
-];
+            'resource_name' => $this->resource_name,
+            'type' => $this->type, // Changed from resource_type to type
+            'unit_cost' => $this->unit_cost,
+            'availability_quantity' => $this->quantity,
+            'status' => $this->status,
+            'updated_at' => now(),
+        ];
 
         if ($this->editing_id) {
             DB::table('resources')->where('resource_id', $this->editing_id)->update($data);
@@ -128,6 +127,7 @@ new #[Layout('components.layouts.project')] class extends Component
                             <thead>
                                 <tr>
                                     <th>Resource Name</th>
+                                    <th>Type</th>
                                     <th>Unit Cost</th>
                                     <th>Status</th>
                                     <th>Quantity</th>
@@ -138,13 +138,24 @@ new #[Layout('components.layouts.project')] class extends Component
                                 @foreach($resourcesByType[$type] as $r)
                                     <tr>
                                         <td>{{ $r->resource_name }}</td>
+                                        <td>
+                                            @php
+                                                $typeText = match($r->type) {
+                                                    'employee' => 'Labor',
+                                                    'equipment' => 'Materials',
+                                                    'material' => 'Overhead',
+                                                    default => $r->type
+                                                };
+                                            @endphp
+                                            {{ $typeText }}
+                                        </td>
                                         <td>₱{{ number_format($r->unit_cost, 2) }}</td>
                                         <td>
                                             <span class="resources-status {{ strtolower($r->status) }}">
                                                 {{ $r->status }}
                                             </span>
                                         </td>
-                                        <td>{{ $r->available_quantity }}</td>
+                                        <td>{{ $r->availability_quantity }}</td>
                                         <td class="resources-actions">
                                             <button wire:click="openEditModal({{ $r->resource_id }})" class="resources-btn resources-btn-yellow">Edit</button>
                                             <button wire:click="deleteResource({{ $r->resource_id }})" class="resources-btn resources-btn-red">Delete</button>
@@ -188,9 +199,9 @@ new #[Layout('components.layouts.project')] class extends Component
                     </label>
 
                     <label>
-    <span>Quantity</span>
-    <input type="number" min="1" wire:model="quantity" required>
-</label>
+                        <span>Quantity</span>
+                        <input type="number" min="1" wire:model="quantity" required>
+                    </label>
 
                     <label style="grid-column:1 / span 2;">
                         <span>Resource Name</span>
