@@ -935,9 +935,9 @@
             <a href="{{ route('inventory.stock') }}" class="nav-link">
                 <i class="fas fa-boxes"></i>Stock Management
             </a>
-            <!-- <a href="{{ route('inventory.tracking') }}" class="nav-link">
+            <a href="{{ route('procurement.create') }}" class="nav-link">
                 <i class="fas fa-tags"></i>Inventory Tracking
-            </a> -->
+            </a>
         </nav>
 
         <!-- User Actions -->
@@ -965,9 +965,9 @@
         <a href="{{ route('inventory.stock') }}" class="nav-link">
             <i class="fas fa-boxes"></i>Stock Management
         </a>
-        <!-- <a href="{{ route('inventory.tracking') }}" class="nav-link">
+        <a href="{{ route('procurement.create') }}" class="nav-link">
             <i class="fas fa-tags"></i>Inventory Tracking
-        </a> -->
+        </a>
         <!-- LOGOUT FOR MOBILE ADDED HERE -->
         @auth
         <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1);">
