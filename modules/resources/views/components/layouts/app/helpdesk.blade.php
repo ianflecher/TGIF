@@ -99,7 +99,6 @@
             box-shadow: 0 4px 20px rgba(20, 83, 45, 0.2);
             position: sticky;
             top: 0;
-            z-index: 100;
             border-bottom: 3px solid rgba(255, 255, 255, 0.1);
         }
         
