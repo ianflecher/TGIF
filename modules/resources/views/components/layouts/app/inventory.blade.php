@@ -942,7 +942,6 @@
 
         <!-- User Actions -->
         <div class="user-actions">
-            @auth
                     <div class="user-badge inventory">
                         <i class="fas fa-clipboard-list"></i>
                         <span>{{ Auth::user()->full_name ?? 'Inventory Manager' }}</span>
@@ -954,11 +953,7 @@
                             <i class="fas fa-sign-out-alt"></i>Logout
                         </button>
                     </form>
-            @else
-                <a href="{{ route('inventory.login') }}" class="nav-link">
-                    <i class="fas fa-sign-in-alt"></i>Login
-                </a>
-            @endauth
+
         </div>
     </div>
 
