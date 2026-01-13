@@ -6,6 +6,7 @@ use Livewire\WithPagination;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 new #[Layout('components.layouts.inventory')] class extends Component
 {
@@ -43,78 +44,89 @@ new #[Layout('components.layouts.inventory')] class extends Component
     
     public function mount()
     {
+        Log::info('Requisition Processing Component Mounted');
         $this->loadData();
     }
     
     public function loadData()
-{
-    // Load inventories with filtering and supplier info
-    $query = DB::table('inventories')
-        ->select(
-            'inventories.*', 
-            'suppliers.name as supplier_name', 
-            'suppliers.supplier_id as supplier_id'
-        )
-        ->leftJoin('suppliers', 'inventories.supplier_id', '=', 'suppliers.supplier_id')
-        ->where('inventories.status', '!=', 'deleted');
+    {
+        Log::info('Loading data...', ['search' => $this->search, 'statusFilter' => $this->statusFilter]);
         
-    if ($this->search) {
-        $query->where(function($q) {
-            $q->where('inventories.product_name', 'like', '%' . $this->search . '%')
-              ->orWhere('inventories.sku', 'like', '%' . $this->search . '%')
-              ->orWhere('suppliers.name', 'like', '%' . $this->search . '%');
-        });
+        // Load inventories with filtering and supplier info
+        $query = DB::table('inventories')
+            ->select(
+                'inventories.*', 
+                'suppliers.name as supplier_name', 
+                'suppliers.supplier_id as supplier_id'
+            )
+            ->leftJoin('suppliers', 'inventories.supplier_id', '=', 'suppliers.supplier_id')
+            ->where('inventories.status', '!=', 'deleted');
+            
+        if ($this->search) {
+            $query->where(function($q) {
+                $q->where('inventories.product_name', 'like', '%' . $this->search . '%')
+                  ->orWhere('inventories.sku', 'like', '%' . $this->search . '%')
+                  ->orWhere('suppliers.name', 'like', '%' . $this->search . '%');
+            });
+        }
+        
+        if ($this->statusFilter) {
+            $query->where('inventories.status', $this->statusFilter);
+        }
+        
+        if ($this->lowStockOnly) {
+            $query->whereRaw('inventories.quantity <= inventories.min_quantity')
+                  ->where('inventories.quantity', '>', 0);
+        }
+        
+        $this->inventories = $query->orderBy('inventories.product_name')->get();
+        
+        // Load expired items (within 30 days or already expired)
+        $today = Carbon::now()->toDateString();
+        $thirtyDaysFromNow = Carbon::now()->addDays(30)->toDateString();
+        
+        $this->expiredItems = DB::table('inventories')
+            ->where('inventories.status', 'active')
+            ->whereNotNull('expiration_date')
+            ->where(function($query) use ($today, $thirtyDaysFromNow) {
+                $query->where('expiration_date', '<', $today) // Already expired
+                      ->orWhereBetween('expiration_date', [$today, $thirtyDaysFromNow]); // Expiring soon
+            })
+            ->orderBy('expiration_date')
+            ->get();
+        
+        // Load out of stock items
+        $this->outOfStockItems = DB::table('inventories')
+            ->where('inventories.status', 'active')
+            ->where('inventories.quantity', '<=', 0)
+            ->orderBy('product_name')
+            ->get();
+        
+        // Load approved requisitions
+        $this->requisitions = DB::table('purchase_requisitions')
+            ->select('purchase_requisitions.*', 'users.full_name as requested_by_name')
+            ->leftJoin('users', 'purchase_requisitions.requested_by', '=', 'users.user_id')
+            ->where('purchase_requisitions.status', 'draft')
+            ->orderBy('purchase_requisitions.date_requested', 'desc')
+            ->get();
+        
+        // Load active suppliers
+        $this->suppliers = DB::table('suppliers')
+            ->where('suppliers.status', 'active')
+            ->orderBy('name')
+            ->get();
+            
+        Log::info('Data loaded', [
+            'inventories' => count($this->inventories),
+            'requisitions' => count($this->requisitions),
+            'suppliers' => count($this->suppliers)
+        ]);
     }
-    
-    if ($this->statusFilter) {
-        $query->where('inventories.status', $this->statusFilter);
-    }
-    
-    if ($this->lowStockOnly) {
-        $query->whereRaw('inventories.quantity <= inventories.min_quantity')
-              ->where('inventories.quantity', '>', 0);
-    }
-    
-    $this->inventories = $query->orderBy('inventories.product_name')->get();
-    
-    // Load expired items (within 30 days or already expired)
-    $today = Carbon::now()->toDateString();
-    $thirtyDaysFromNow = Carbon::now()->addDays(30)->toDateString();
-    
-    $this->expiredItems = DB::table('inventories')
-        ->where('inventories.status', 'active')
-        ->whereNotNull('expiration_date')
-        ->where(function($query) use ($today, $thirtyDaysFromNow) {
-            $query->where('expiration_date', '<', $today) // Already expired
-                  ->orWhereBetween('expiration_date', [$today, $thirtyDaysFromNow]); // Expiring soon
-        })
-        ->orderBy('expiration_date')
-        ->get();
-    
-    // Load out of stock items
-    $this->outOfStockItems = DB::table('inventories')
-        ->where('inventories.status', 'active')
-        ->where('inventories.quantity', '<=', 0)
-        ->orderBy('product_name')
-        ->get();
-    
-    // Load approved requisitions
-    $this->requisitions = DB::table('purchase_requisitions')
-        ->select('purchase_requisitions.*', 'users.full_name as requested_by_name')
-        ->leftJoin('users', 'purchase_requisitions.requested_by', '=', 'users.user_id')
-        ->where('purchase_requisitions.status', 'draft')
-        ->orderBy('purchase_requisitions.date_requested', 'desc')
-        ->get();
-    
-    // Load active suppliers
-    $this->suppliers = DB::table('suppliers')
-        ->where('suppliers.status', 'active')
-        ->orderBy('name')
-        ->get();
-}
     
     public function updated($property)
     {
+        Log::info('Property updated', ['property' => $property, 'value' => $this->{$property}]);
+        
         if (in_array($property, ['search', 'statusFilter', 'lowStockOnly', 'showExpired', 'showOutOfStock'])) {
             $this->loadData();
         }
@@ -191,16 +203,120 @@ new #[Layout('components.layouts.inventory')] class extends Component
     
     public function openProcessModal($requisitionId)
     {
-        // ... existing code ...
+        Log::info('openProcessModal called', [
+            'requisitionId' => $requisitionId,
+            'timestamp' => now(),
+            'user' => Auth::id()
+        ]);
+        
+        $this->currentRequisitionId = $requisitionId;
+        
+        // Load requisition details
+        $requisition = DB::table('purchase_requisitions')
+            ->select('purchase_requisitions.*', 'users.full_name as requested_by_name')
+            ->leftJoin('users', 'purchase_requisitions.requested_by', '=', 'users.user_id')
+            ->where('requisition_id', $requisitionId)
+            ->first();
+            
+        if ($requisition) {
+            $this->modalData = [
+                'requested_by' => $requisition->requested_by_name ?? 'User #' . $requisition->requested_by,
+                'date_requested' => Carbon::parse($requisition->date_requested)->format('M d, Y'),
+                'estimated_cost' => $requisition->estimated_cost ?? 0,
+            ];
+            
+            Log::info('Requisition loaded', [
+                'requisition_id' => $requisition->requisition_id,
+                'requested_by' => $this->modalData['requested_by']
+            ]);
+        } else {
+            Log::error('Requisition not found', ['requisitionId' => $requisitionId]);
+            $this->dispatch('show-notification', [
+                'type' => 'error',
+                'message' => 'Requisition not found!'
+            ]);
+            return;
+        }
+        
+        // NEW CODE:
+$this->requisitionItems = DB::table('requisition_items')
+    ->select(
+        'requisition_items.*',
+        'requisition_items.remarks as description', // Map remarks to description
+        'inventories.product_name',
+        'inventories.sku',
+        'inventories.inventory_id',
+        'inventories.quantity as current_stock',
+        'inventories.min_quantity',
+        'inventories.unit_price',
+        'inventories.supplier_id'
+    )
+    ->leftJoin('inventories', 'requisition_items.inventory_id', '=', 'inventories.inventory_id')
+    ->where('requisition_id', $requisitionId)
+    ->get()
+    ->map(function($item) {
+        $item = (array) $item;
+        
+        // Ensure description exists (map from remarks)
+        $item['description'] = $item['remarks'] ?? $item['purpose'] ?? null;
+        
+        // If no inventory_id, try to find by product_id
+        if (!$item['inventory_id'] && !empty($item['product_id'])) {
+            $inventory = DB::table('inventories')
+                ->where('inventory_id', $item['product_id']) // Adjust this based on your schema
+                ->orWhere('product_id', $item['product_id']) // If you have product_id field
+                ->where('status', 'active')
+                ->first();
+                
+            if ($inventory) {
+                $item['inventory_id'] = $inventory->inventory_id;
+                $item['current_stock'] = $inventory->quantity;
+                $item['unit_price'] = $inventory->unit_price;
+            }
+        }
+        return $item;
+    })
+    ->toArray();
+        
+        Log::info('Loaded requisition items', [
+            'count' => count($this->requisitionItems),
+            'items' => $this->requisitionItems
+        ]);
+        
+        $this->showModal = true;
+        
+        // Dispatch event for testing
+        $this->dispatch('debug-event', [
+            'message' => 'Modal opened successfully',
+            'requisitionId' => $requisitionId
+        ]);
+    }
+    
+    public function debugButtonClick($requisitionId)
+    {
+        Log::info('DEBUG: Button clicked directly', [
+            'requisitionId' => $requisitionId,
+            'method' => 'debugButtonClick'
+        ]);
+        
+        $this->dispatch('show-notification', [
+            'type' => 'info',
+            'message' => 'DEBUG: Button clicked! Check console logs.'
+        ]);
+        
+        // Try to open modal
+        $this->openProcessModal($requisitionId);
     }
     
     public function openExpiredItemsModal()
     {
+        Log::info('Opening expired items modal');
         $this->showExpiredModal = true;
     }
     
     public function openOutOfStockModal()
     {
+        Log::info('Opening out of stock modal');
         $this->selectedOutOfStockItems = [];
         $this->outOfStockSupplierId = null;
         $this->showOutOfStockModal = true;
@@ -208,6 +324,7 @@ new #[Layout('components.layouts.inventory')] class extends Component
     
     public function closeModal()
     {
+        Log::info('Closing modal');
         $this->showModal = false;
         $this->showExpiredModal = false;
         $this->showOutOfStockModal = false;
@@ -365,87 +482,106 @@ new #[Layout('components.layouts.inventory')] class extends Component
         }
     }
     
-    public function processRequisition()
-    {
-        if (!$this->currentRequisitionId) {
-            $this->dispatch('show-notification', [
-                'type' => 'error',
-                'message' => 'No requisition selected'
-            ]);
-            return;
+   public function processRequisition()
+{
+    Log::info('=== PROCESS REQUISITION START ===', ['requisitionId' => $this->currentRequisitionId]);
+    
+    $userId = Auth::id();
+    
+    if (!$userId) {
+        $this->dispatch('show-notification', [
+            'type' => 'error',
+            'message' => 'User not authenticated! Please login again.'
+        ]);
+        return;
+    }
+    
+    if (!$this->currentRequisitionId) {
+        $this->dispatch('show-notification', [
+            'type' => 'error',
+            'message' => 'No requisition selected'
+        ]);
+        return;
+    }
+    
+    DB::beginTransaction();
+    
+    try {
+        // 1. Check if requisition exists
+        $requisition = DB::table('purchase_requisitions')
+            ->where('requisition_id', $this->currentRequisitionId)
+            ->first();
+            
+        if (!$requisition) {
+            throw new \Exception('Requisition not found!');
         }
         
-        // Check if PO already exists for this requisition
+        // 2. Check if already processed
+        if ($requisition->status !== 'draft') {
+            throw new \Exception('Requisition has already been processed! Current status: ' . $requisition->status);
+        }
+        
+        // 3. Check if PO already exists for this requisition
         $existingPO = DB::table('purchase_orders')
             ->where('requisition_id', $this->currentRequisitionId)
             ->first();
             
         if ($existingPO) {
-            $this->dispatch('show-notification', [
-                'type' => 'warning',
-                'message' => 'Purchase Order already exists for this requisition! PO#' . $existingPO->po_number
-            ]);
-            return;
+            throw new \Exception('Purchase Order already exists for this requisition! PO#' . $existingPO->po_number);
         }
         
-        // Check if supplier is needed and selected
-        $needsSupplier = false;
+        Log::info('DEBUG: All requisition items:', ['items' => $this->requisitionItems]);
+        
+        $allocatedFromStock = false;
+        $needPO = false;
+        
+        // 4. Check each item - can we allocate from stock or need PO?
         foreach ($this->requisitionItems as $item) {
-            if ($item->current_stock < $item->quantity) {
-                $needsSupplier = true;
-                break;
-            }
-        }
-        
-        if ($needsSupplier && !$this->selectedSupplierId) {
-            $this->dispatch('show-notification', [
-                'type' => 'error',
-                'message' => 'Please select a supplier for items that need a purchase order!'
+            $item = (array) $item;
+            
+            Log::info('Checking item:', [
+                'product' => $item['product_name'],
+                'quantity_needed' => $item['quantity'],
+                'current_stock' => $item['current_stock'],
+                'inventory_id' => $item['inventory_id']
             ]);
-            return;
-        }
-        
-        DB::beginTransaction();
-        
-        try {
-            // Load requisition details
-            $requisitionDetails = DB::table('purchase_requisitions')
-                ->where('requisition_id', $this->currentRequisitionId)
-                ->first();
-                
-            if (!$requisitionDetails) {
-                $this->dispatch('show-notification', [
-                    'type' => 'error',
-                    'message' => 'Requisition not found!'
-                ]);
-                return;
+            
+            if (empty($item['inventory_id'])) {
+                $needPO = true;
+                Log::info("Needs PO: No inventory ID for '{$item['product_name']}'");
+                continue;
             }
             
-            $allocatedItems = [];
-            $poItems = [];
-            $totalAmount = 0;
+            if ($item['current_stock'] >= $item['quantity']) {
+                $allocatedFromStock = true;
+                Log::info("Can allocate from stock: '{$item['product_name']}'");
+            } else {
+                $needPO = true;
+                Log::info("Needs PO: Insufficient stock for '{$item['product_name']}'. Need: {$item['quantity']}, Have: {$item['current_stock']}");
+            }
+        }
+        
+        // 5. DECISION: Allocate from stock OR Create PO?
+        if (!$needPO && $allocatedFromStock) {
+            // ALL ITEMS HAVE ENOUGH STOCK - Allocate from inventory
+            Log::info('All items can be allocated from stock. Allocating...');
             
-            // Process each item
             foreach ($this->requisitionItems as $item) {
-                // Cast to array if it's an object
                 $item = (array) $item;
                 
-                if ($item['current_stock'] >= $item['quantity'] && !empty($item['inventory_id'])) {
-                    // Allocate from existing stock
-                    $allocatedItems[] = [
-                        'product_name' => $item['product_name'],
-                        'sku' => $item['sku'],
-                        'quantity' => $item['quantity'],
-                        'current_stock' => $item['current_stock'],
-                        'new_stock' => $item['current_stock'] - $item['quantity']
-                    ];
+                // Decrement inventory
+                DB::table('inventories')
+                    ->where('inventory_id', $item['inventory_id'])
+                    ->decrement('quantity', $item['quantity']);
                     
-                    // Update inventory
-                    DB::table('inventories')
-                        ->where('inventory_id', $item['inventory_id'])
-                        ->decrement('quantity', $item['quantity']);
-                    
-                    // Create stock transaction for allocation
+                Log::info('Inventory decremented:', [
+                    'inventory_id' => $item['inventory_id'],
+                    'product' => $item['product_name'],
+                    'decrement_by' => $item['quantity']
+                ]);
+                
+                // Try to create stock transaction (optional)
+                try {
                     DB::table('stock_transactions')->insert([
                         'inventory_id' => $item['inventory_id'],
                         'type' => 'out',
@@ -454,126 +590,116 @@ new #[Layout('components.layouts.inventory')] class extends Component
                         'reference_type' => 'requisition',
                         'reference_id' => $this->currentRequisitionId,
                         'remarks' => 'Allocated for requisition #' . $this->currentRequisitionId,
-                        'created_by' => Auth::id(),
+                        'created_by' => $userId,
                         'transaction_date' => Carbon::now(),
                         'created_at' => Carbon::now(),
                         'updated_at' => Carbon::now()
                     ]);
-                    
-                } else {
-                    // Create PO for this item
-                    $poItems[] = $item;
-                    $itemTotal = $item['quantity'] * ($item['unit_price'] ?? 0);
-                    $totalAmount += $itemTotal;
+                } catch (\Exception $e) {
+                    Log::warning('Could not create stock transaction: ' . $e->getMessage());
                 }
             }
             
-            // Create PO if there are PO items
-            $poId = null;
-            $poNumber = null;
-            
-            if (!empty($poItems)) {
-                // Generate PO number
-                $poNumber = 'PO-' . date('Ymd') . '-' . str_pad($this->currentRequisitionId, 4, '0', STR_PAD_LEFT);
-                
-                // Create purchase order
-                $poId = DB::table('purchase_orders')->insertGetId([
-                    'po_number' => $poNumber,
-                    'requisition_id' => $this->currentRequisitionId,
-                    'supplier_id' => $this->selectedSupplierId,
-                    'order_date' => Carbon::now()->toDateString(),
-                    'expected_delivery_date' => Carbon::parse($requisitionDetails->required_date ?? Carbon::now()->addDays(7))->toDateString(),
-                    'total_amount' => $totalAmount,
-                    'status' => 'draft',
-                    'created_by' => Auth::id(),
-                    'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
-                ]);
-                
-                // Create purchase order items
-                foreach ($poItems as $item) {
-                    // Check if inventory_id exists, if not, create inventory entry
-                    if (empty($item['inventory_id'])) {
-                        // Generate SKU
-                        $sku = 'SKU-' . strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $item['product_name']), 0, 6)) . '-' . date('ymd');
-                        
-                        // Create new inventory entry
-                        $inventoryId = DB::table('inventories')->insertGetId([
-                            'product_name' => $item['product_name'],
-                            'sku' => $sku,
-                            'description' => $item['description'] ?? null,
-                            'quantity' => 0, // Will be updated when PO is received
-                            'min_quantity' => $item['min_quantity'] ?? 10,
-                            'unit_price' => $item['unit_price'] ?? 0,
-                            'cost_price' => $item['unit_price'] ?? 0,
-                            'status' => 'active',
-                            'created_at' => Carbon::now(),
-                            'updated_at' => Carbon::now()
-                        ]);
-                        
-                        $item['inventory_id'] = $inventoryId;
-                    }
-                    
-                    // Calculate total price for this item
-                    $totalPrice = $item['quantity'] * ($item['unit_price'] ?? 0);
-                    
-                    // Insert into purchase_order_items table
-                    DB::table('purchase_order_items')->insert([
-                        'po_id' => $poId,
-                        'inventory_id' => $item['inventory_id'],
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'] ?? 0,
-                        'total_price' => $totalPrice,
-                        'description' => $item['description'] ?? null,
-                        'created_at' => Carbon::now(),
-                        'updated_at' => Carbon::now()
-                    ]);
-                }
-            }
-            
-            // Update requisition status based on actions
-            $requisitionStatus = !empty($poItems) ? 'converted_to_po' : 'fulfilled';
-            
+            // Update requisition status to 'approved'
             DB::table('purchase_requisitions')
                 ->where('requisition_id', $this->currentRequisitionId)
                 ->update([
-                    'status' => $requisitionStatus,
+                    'status' => 'approved',
                     'updated_at' => Carbon::now()
                 ]);
             
-            DB::commit();
+            $message = "✓ All items allocated from inventory. Requisition status: Approved";
             
-            // Prepare success message
-            $message = '';
-            if (!empty($allocatedItems)) {
-                $message .= "✓ " . count($allocatedItems) . " items allocated from inventory. ";
+        } else {
+            // NEED PURCHASE ORDER (some or all items)
+            Log::info('Creating Purchase Order...');
+            
+            if (!$this->selectedSupplierId) {
+                throw new \Exception('Please select a supplier to create Purchase Order!');
             }
-            if (!empty($poItems)) {
-                $message .= "✓ " . count($poItems) . " items added to Purchase Order #{$poNumber}. ";
+            
+            // Generate unique PO number
+            $timestamp = time();
+            $poNumber = 'PO-' . date('Ymd') . '-' . $timestamp;
+            
+            // Calculate total amount
+            $totalAmount = 0;
+            foreach ($this->requisitionItems as $item) {
+                $item = (array) $item;
+                $totalAmount += ($item['quantity'] * ($item['unit_price'] ?? 0));
             }
             
-            $this->dispatch('show-notification', [
-                'type' => 'success',
-                'message' => $message
+            // Create purchase order
+            $poId = DB::table('purchase_orders')->insertGetId([
+                'po_number' => $poNumber,
+                'requisition_id' => $this->currentRequisitionId,
+                'supplier_id' => $this->selectedSupplierId,
+                'order_date' => Carbon::now()->toDateString(),
+                'expected_delivery_date' => Carbon::now()->addDays(14)->toDateString(),
+                'total_amount' => $totalAmount,
+                'status' => 'draft',
+                'created_by' => $userId,
+                'created_at' => Carbon::now(),
+                'updated_at' => Carbon::now()
             ]);
             
-            $this->closeModal();
-            $this->loadData(); // Refresh data
+            Log::info('Purchase order created:', ['po_id' => $poId, 'po_number' => $poNumber]);
             
-        } catch (\Exception $e) {
-            DB::rollBack();
+            // Create purchase order items (without product_name since column doesn't exist)
+            foreach ($this->requisitionItems as $item) {
+                $item = (array) $item;
+                $totalPrice = $item['quantity'] * ($item['unit_price'] ?? 0);
+                
+                DB::table('purchase_order_items')->insert([
+                    'po_id' => $poId,
+                    'inventory_id' => $item['inventory_id'] ?? null,
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'] ?? 0,
+                    'total_price' => $totalPrice,
+                    'description' => $item['description'] ?? 'Requisition item',
+                    'created_at' => Carbon::now(),
+                    'updated_at' => Carbon::now()
+                ]);
+            }
             
-            \Log::error('Failed to process requisition', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            // Update requisition status to 'converted_to_po'
+            DB::table('purchase_requisitions')
+                ->where('requisition_id', $this->currentRequisitionId)
+                ->update([
+                    'status' => 'converted_to_po',
+                    'updated_at' => Carbon::now()
+                ]);
             
-            $this->dispatch('show-notification', [
-                'type' => 'error',
-                'message' => 'Failed to process requisition: ' . $e->getMessage()
-            ]);
+            $message = "✓ Purchase Order #{$poNumber} created. Requisition status: Converted to PO";
         }
+        
+        DB::commit();
+        
+        Log::info('=== PROCESS COMPLETED SUCCESSFULLY ===');
+        
+        // Show success message
+        $this->dispatch('show-notification', [
+            'type' => 'success',
+            'message' => $message
+        ]);
+        
+        // Close modal and refresh data
+        $this->closeModal();
+        $this->loadData();
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        Log::error('Failed to process requisition: ' . $e->getMessage(), [
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        $this->dispatch('show-notification', [
+            'type' => 'error',
+            'message' => 'Error: ' . $e->getMessage()
+        ]);
     }
+}
     
     public function getTransactionHistory($inventoryId)
     {
@@ -589,7 +715,34 @@ new #[Layout('components.layouts.inventory')] class extends Component
     // Calculate allocation statistics
     public function getItemsStatistics()
     {
-        // ... existing code ...
+        $stats = [
+            'total_items' => count($this->inventories),
+            'low_stock' => 0,
+            'out_of_stock' => 0,
+            'near_expiry' => 0,
+            'expired' => 0
+        ];
+        
+        foreach ($this->inventories as $item) {
+            if ($item->quantity <= 0) {
+                $stats['out_of_stock']++;
+            } elseif ($item->quantity <= $item->min_quantity) {
+                $stats['low_stock']++;
+            }
+            
+            if ($item->expiration_date) {
+                $expDate = Carbon::parse($item->expiration_date);
+                $today = Carbon::now();
+                
+                if ($expDate->lt($today)) {
+                    $stats['expired']++;
+                } elseif ($today->diffInDays($expDate) <= 30) {
+                    $stats['near_expiry']++;
+                }
+            }
+        }
+        
+        return $stats;
     }
     
     public function toggleSelectOutOfStockItem($itemId)
@@ -600,10 +753,41 @@ new #[Layout('components.layouts.inventory')] class extends Component
             $this->selectedOutOfStockItems[] = $itemId;
         }
     }
+    
+    // Test method for debugging
+    public function testMethod()
+    {
+        Log::info('Test method called successfully');
+        $this->dispatch('show-notification', [
+            'type' => 'success',
+            'message' => 'Livewire is working! Test method executed.'
+        ]);
+    }
 };
 ?>
+
 <div>
 <div class="p-6 min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
+    
+    <!-- Debug Test Button -->
+    <!-- <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div class="flex justify-between items-center">
+            <div>
+                <h3 class="font-bold text-yellow-800">Debug Panel</h3>
+                <p class="text-sm text-yellow-700">Test if Livewire is working</p>
+            </div>
+            <div class="flex gap-2">
+                <button wire:click="testMethod"
+                        class="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white font-medium rounded-lg">
+                    Test Livewire
+                </button>
+                <button wire:click="$refresh"
+                        class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg">
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+    </div> -->
     
     <!-- Header -->
     <div class="mb-8">
@@ -800,6 +984,14 @@ new #[Layout('components.layouts.inventory')] class extends Component
                                     <div class="font-bold text-emerald-700">₱{{ number_format($req->estimated_cost ?? 0, 2) }}</div>
                                 </td>
                                 <td class="p-3">
+                                    <!-- Debug button first -->
+                                    <!-- <button wire:click="debugButtonClick({{ $req->requisition_id }})"
+                                            class="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center mb-2">
+                                        <i class="fas fa-bug mr-2"></i>
+                                        Debug Test
+                                    </button> -->
+                                    
+                                    <!-- Then the actual process button -->
                                     <button wire:click="openProcessModal({{ $req->requisition_id }})"
                                             class="px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
                                         <i class="fas fa-cogs mr-2"></i>
@@ -888,9 +1080,166 @@ new #[Layout('components.layouts.inventory')] class extends Component
     </div>
 </div>
 
-<!-- Main Modal (Existing) -->
+<!-- Main Modal -->
 @if($showModal)
-<!-- ... existing modal code ... -->
+<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+        <div class="bg-gradient-to-r from-emerald-600 to-emerald-800 px-6 py-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h3 class="text-xl font-bold text-white">
+                        <i class="fas fa-cogs mr-2"></i>
+                        Process Requisition #{{ $currentRequisitionId }}
+                    </h3>
+                    <p class="text-emerald-200 text-sm mt-1">
+                        Allocate from inventory or create purchase order
+                    </p>
+                </div>
+                <button wire:click="closeModal" 
+                        class="text-white hover:text-emerald-200 transition-colors">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-6 overflow-y-auto max-h-[60vh]">
+            <!-- Requisition Info -->
+            <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Requested By</label>
+                        <p class="font-bold text-gray-900">{{ $modalData['requested_by'] }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Date Requested</label>
+                        <p class="font-bold text-gray-900">{{ $modalData['date_requested'] }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-gray-600">Estimated Cost</label>
+                        <p class="font-bold text-emerald-700">₱{{ number_format($modalData['estimated_cost'], 2) }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Supplier Selection -->
+            <div class="mb-6">
+                <h4 class="font-semibold text-gray-800 mb-2">Select Supplier (for items that need PO)</h4>
+                <select wire:model="selectedSupplierId"
+                        class="w-full px-4 py-3 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+                    <option value="">Select a supplier...</option>
+                    @foreach($suppliers as $sup)
+                        <option value="{{ $sup->supplier_id }}">
+                            {{ $sup->name }}
+                            @if($sup->contact_person)
+                                • {{ $sup->contact_person }}
+                            @endif
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            
+            <!-- Items List -->
+            <div class="mb-4">
+                <h4 class="font-semibold text-gray-800 mb-3">Requisition Items</h4>
+                
+                @if(count($requisitionItems) > 0)
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-3 text-left text-gray-700 font-semibold">Product</th>
+                                <th class="p-3 text-left text-gray-700 font-semibold">Requested Qty</th>
+                                <th class="p-3 text-left text-gray-700 font-semibold">Current Stock</th>
+                                <th class="p-3 text-left text-gray-700 font-semibold">Status</th>
+                                <th class="p-3 text-left text-gray-700 font-semibold">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            @foreach($requisitionItems as $index => $item)
+                            @php
+                                $canAllocate = $item['current_stock'] >= $item['quantity'] && !empty($item['inventory_id']);
+                                $statusColor = $canAllocate ? 'text-green-600' : 'text-orange-600';
+                                $statusText = $canAllocate ? 'Can Allocate' : 'Needs PO';
+                            @endphp
+                            <tr class="hover:bg-gray-50">
+                                <td class="p-3">
+                                    <div class="font-medium text-gray-900">{{ $item['product_name'] }}</div>
+                                    <div class="text-xs text-gray-600">
+                                        SKU: {{ $item['sku'] ?? 'N/A' }}
+                                        @if($item['description'])
+                                        • {{ Str::limit($item['description'], 30) }}
+                                        @endif
+                                    </div>
+                                </td>
+                                <td class="p-3 font-bold text-gray-900">{{ $item['quantity'] }}</td>
+                                <td class="p-3">
+                                    <div class="font-bold {{ $item['current_stock'] >= $item['quantity'] ? 'text-green-600' : 'text-red-600' }}">
+                                        {{ $item['current_stock'] ?? 0 }}
+                                    </div>
+                                </td>
+                                <td class="p-3">
+                                    <span class="px-3 py-1 rounded-full text-xs font-medium {{ $canAllocate ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800' }}">
+                                        {{ $statusText }}
+                                    </span>
+                                </td>
+                                <td class="p-3">
+                                    @if($canAllocate)
+                                    <span class="text-green-600 font-medium">
+                                        <i class="fas fa-check-circle mr-1"></i>
+                                        Will allocate from stock
+                                    </span>
+                                    @else
+                                    <span class="text-orange-600 font-medium">
+                                        <i class="fas fa-shopping-cart mr-1"></i>
+                                        Will create PO
+                                    </span>
+                                    @endif
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                @else
+                <div class="text-center py-8 bg-gray-50 rounded-lg">
+                    <i class="fas fa-exclamation-circle text-3xl text-gray-400 mb-3"></i>
+                    <p class="text-gray-600">No items found in this requisition</p>
+                </div>
+                @endif
+            </div>
+        </div>
+        
+        <div class="border-t px-6 py-4 bg-gray-50">
+            <div class="flex justify-between items-center">
+                <div>
+                    @if($selectedSupplierId)
+                    <div class="text-sm text-green-700 flex items-center">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        Supplier selected: {{ collect($suppliers)->firstWhere('supplier_id', $selectedSupplierId)->name ?? 'Unknown' }}
+                    </div>
+                    @else
+                    <div class="text-sm text-orange-700 flex items-center">
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                        Select a supplier for items that need PO
+                    </div>
+                    @endif
+                </div>
+                <div class="flex gap-3">
+                    <button wire:click="closeModal"
+                            class="px-6 py-3 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                        Cancel
+                    </button>
+                    
+                   <button wire:click="processRequisition"
+        class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
+    <i class="fas fa-play-circle mr-2"></i>
+    Process Requisition
+</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 @endif
 
 <!-- Expired Items Modal -->
@@ -1157,12 +1506,53 @@ new #[Layout('components.layouts.inventory')] class extends Component
 </div>
 @endif
 
-<!-- Notification Script -->
+<!-- Debug JavaScript -->
 <script>
     document.addEventListener('livewire:initialized', () => {
-        Livewire.on('show-notification', (event) => {
-            showNotification(event.type, event.message);
+        console.log('Livewire initialized for requisition processing');
+        
+        // Debug: Log when buttons are clicked
+        document.addEventListener('click', function(e) {
+            if (e.target.hasAttribute('wire:click')) {
+                const method = e.target.getAttribute('wire:click');
+                console.log('Livewire button clicked:', {
+                    method: method,
+                    element: e.target,
+                    timestamp: new Date().toISOString()
+                });
+            }
         });
+        
+        // Listen to all Livewire events
+        document.addEventListener('livewire:request', (event) => {
+            console.log('Livewire Request:', {
+                method: event.detail.method,
+                params: event.detail.params,
+                url: event.detail.url
+            });
+        });
+        
+        document.addEventListener('livewire:response', (event) => {
+            console.log('Livewire Response:', {
+                requestId: event.detail.requestId,
+                effects: event.detail.effects
+            });
+        });
+        
+        document.addEventListener('livewire:message-failed', (event) => {
+            console.error('Livewire Message Failed:', event.detail);
+            alert('Livewire error: ' + JSON.stringify(event.detail));
+        });
+        
+        // Listen for debug events
+        Livewire.on('debug-event', (data) => {
+            console.log('Debug Event:', data);
+        });
+    });
+
+    // Notification function
+    Livewire.on('show-notification', (event) => {
+        showNotification(event.type, event.message);
     });
 
     function showNotification(type, message) {
@@ -1192,6 +1582,12 @@ new #[Layout('components.layouts.inventory')] class extends Component
             notification.style.transform = 'translateX(100%)';
             setTimeout(() => notification.remove(), 500);
         }, 5000);
+    }
+    
+    // Test function
+    function testButtonClick() {
+        console.log('Test button clicked from JavaScript');
+        alert('JavaScript is working!');
     }
 </script>
 </div>
