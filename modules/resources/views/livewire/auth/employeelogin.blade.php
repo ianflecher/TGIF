@@ -23,6 +23,7 @@ new #[Layout('components.layouts.landing')] class extends Component
 
     public function login()
 {
+        \App\Support\PortalLoginLimiter::check($this->username, 'username');
     $this->validate();
 
     // Clean inputs

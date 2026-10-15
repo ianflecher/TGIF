@@ -36,6 +36,7 @@ new #[Layout('components.layouts.employee')] class extends Component
     
     public function login()
 {
+        \App\Support\PortalLoginLimiter::check($this->email, 'email');
     $this->validate([
         'email' => ['required', 'string', 'email'],
         'password' => ['required', 'string'],

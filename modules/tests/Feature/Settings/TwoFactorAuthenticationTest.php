@@ -78,7 +78,7 @@ class TwoFactorAuthenticationTest extends TestCase
         $component->assertSet('twoFactorEnabled', false);
 
         $this->assertDatabaseHas('users', [
-            'id' => $user->id,
+            'user_id' => $user->getKey(),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
         ]);

@@ -14,18 +14,13 @@ new #[Layout('components.layouts.supplier')] class extends Component
     public $email = '';
     
     #[Validate('required|string')]
-    public $password = 'supplier123'; // Default password
+    public $password = '';
     
     public $remember = false;
     
-    public function mount()
-    {
-        // Set default password on mount
-        $this->password = 'supplier123';
-    }
-    
     public function login()
     {
+        \App\Support\PortalLoginLimiter::check($this->email, 'email');
         $this->validate();
         
         // Check if supplier exists with this email
@@ -40,12 +35,14 @@ new #[Layout('components.layouts.supplier')] class extends Component
         }
         
         // Since password is always 'supplier123', we can just check it directly
-        if ($this->password !== 'supplier123') {
-            $this->addError('password', 'Invalid password. Default password is supplier123');
+        if (!$supplier->password || !Hash::check($this->password, $supplier->password)) {
+            $this->addError('password', 'Invalid credentials.');
             return;
         }
         
         // Store supplier in session
+        session()->regenerate();
+        unset($supplier->password);
         session(['supplier' => $supplier]);
         
         return redirect()->route('supplier.dashboard')
@@ -138,7 +135,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                         </div>
                         <div class="mt-1 text-xs text-gray-500">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Default password for all supplier accounts
+                            Enter your supplier account password
                         </div>
                         @error('password')
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
@@ -189,7 +186,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                         <div>
                             <p class="text-xs font-medium text-green-800 mb-1">📋 Supplier Portal Access</p>
                             <p class="text-xs text-green-700">
-                                Use the email registered in our system. Default password is <span class="font-bold">supplier123</span>.
+                                Use the email registered in our system. Use your assigned account password.
                             </p>
                         </div>
                     </div>
@@ -220,7 +217,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                     </p>
                     <ul class="text-xs text-gray-600 space-y-1">
                         <li><i class="fas fa-envelope mr-2"></i> Use your registered email</li>
-                        <li><i class="fas fa-key mr-2"></i> Default password: <code class="bg-gray-200 px-1 rounded">supplier123</code></li>
+                        <li><i class="fas fa-key mr-2"></i> Contact your administrator for account access.</li>
                         <li><i class="fas fa-exclamation-triangle mr-2 text-amber-600"></i> Contact support if login fails</li>
                     </ul>
                 </div>

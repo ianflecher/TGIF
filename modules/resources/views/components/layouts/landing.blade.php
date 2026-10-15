@@ -1,5 +1,3 @@
-<x-layouts.app.landingpage :title="$title ?? null">
-    <flux:main>
-        {{ $slot }}
-    </flux:main>
-</x-layouts.app.landingpage>
+<x-layouts.storefront :title="$title ?? null">
+    {{ $slot }}
+</x-layouts.storefront>

@@ -23,45 +23,13 @@ new #[Layout('components.layouts.landing')] class extends Component
         return [
             'full_name' => ['required', 'string', 'max:150'],
             'username' => ['required', 'string', 'max:100', 'unique:users,username'],
-            'email' => ['required', 'string', 'email', 'max:150', 'unique:users,email'],
-            'phone' => [
-                'nullable', 
-                'string', 
-                'max:50',
-                function ($attribute, $value, $fail) {
-                    // If phone is provided, validate it
-                    if ($value && $value !== '') {
-                        // Remove spaces, dashes, and other non-numeric characters
-                        $cleaned = preg_replace('/[^0-9]/', '', $value);
-                        
-                        // Check if it's exactly 11 digits
-                        if (strlen($cleaned) !== 11) {
-                            $fail('Phone number must be 11 digits.');
-                            return;
-                        }
-                        
-                        // Check if it starts with 639 or 09
-                        if (!preg_match('/^(639|09)/', $cleaned)) {
-                            $fail('Phone number must start with 639 or 09.');
-                            return;
-                        }
-                        
-                        // If starts with 09, ensure the next check passes
-                        if (str_starts_with($cleaned, '09')) {
-                            // Validate the rest of the number
-                            if (!preg_match('/^09[0-9]{9}$/', $cleaned)) {
-                                $fail('Invalid phone number format.');
-                            }
-                        }
-                        // If starts with 639, ensure it's followed by 9 digits
-                        elseif (str_starts_with($cleaned, '639')) {
-                            if (!preg_match('/^639[0-9]{9}$/', $cleaned)) {
-                                $fail('Invalid phone number format.');
-                            }
-                        }
-                    }
+            'email' => ['required', 'string', 'email', 'max:100', 'unique:users,email'],
+            'phone' => ['nullable', 'string', 'max:50', function ($attribute, $value, $fail) {
+                $cleaned = preg_replace('/[^0-9]/', '', $value ?? '');
+                if ($cleaned !== '' && !preg_match('/^(09[0-9]{9}|639[0-9]{9})$/', $cleaned)) {
+                    $fail('Enter a valid mobile number beginning with 09 or +639.');
                 }
-            ],
+            }],
             'address' => ['nullable', 'string'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'password_confirmation' => ['required', 'string'],
@@ -93,7 +61,7 @@ new #[Layout('components.layouts.landing')] class extends Component
             // Create customer in customers table
             $customerId = DB::table('customers')->insertGetId([
                 'first_name' => explode(' ', $this->full_name)[0] ?? '',
-                'last_name' => explode(' ', $this->full_name)[1] ?? '',
+                'last_name' => explode(' ', $this->full_name, 2)[1] ?? '',
                 'email' => $this->email,
                 'phone' => $cleanedPhone,
                 'address' => $this->address,
@@ -113,7 +81,7 @@ new #[Layout('components.layouts.landing')] class extends Component
 
             if (Auth::attempt($credentials)) {
                 session()->regenerate();
-                return redirect()->route('customer.dashboard');
+                return redirect()->intended(route('customer.dashboard'));
             }
 
         } catch (\Exception $e) {
@@ -128,7 +96,7 @@ new #[Layout('components.layouts.landing')] class extends Component
     {
         // If user is already logged in, redirect to dashboard
         if (Auth::check() && Auth::user()->role === 'customer') {
-            return redirect()->route('customer.dashboard');
+            return redirect()->intended(route('customer.dashboard'));
         }
     }
 }

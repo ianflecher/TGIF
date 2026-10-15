@@ -1,5 +1,5 @@
-<x-layouts.app.customersidebar :title="$title ?? null">
-    <flux:main>
+<x-layouts.storefront :title="$title ?? null">
+    <div class="sf-account-page">
         {{ $slot }}
-    </flux:main>
-</x-layouts.app.customersidebar>
+    </div>
+</x-layouts.storefront>

@@ -1,7 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
 use Livewire\Volt\Volt;
+use App\Livewire\Storefront;
+use App\Livewire\StorefrontCartPage;
 
 
 
@@ -10,7 +13,8 @@ use Livewire\Volt\Volt;
 // ====================
 
 // Landing Page
-Volt::route('/', 'landingpage')->name('landing');
+Route::get('/welcome', fn () => redirect()->route('landing'))->name('home');
+Route::get('/', Storefront::class)->name('landing');
 
 // Authentication Routes
 Volt::route('/login', 'auth.login')->name('login');
@@ -20,143 +24,158 @@ Volt::route('/applicant/login', 'auth.applicantlogin')->name('applicant.login');
 Volt::route('/supplier/login', 'auth.supplier')->name('supplier.login');
 Volt::route('/register', 'auth.register')->name('register');
 
+Route::get('/home', fn () => redirect()->route(match (auth()->user()->role) {
+    'admin' => 'admin.dashboard', 'employee', 'manager' => 'employee.dashboard',
+    default => 'customer.dashboard',
+}))->middleware('auth')->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    Volt::route('/settings/profile', 'settings.profile')->name('profile.edit');
+    Volt::route('/settings/password', 'settings.password')->name('user-password.edit');
+    Volt::route('/settings/appearance', 'settings.appearance')->name('appearance.edit');
+    Volt::route('/settings/two-factor', 'settings.two-factor')->middleware('password.confirm')->name('two-factor.show');
+});
+
 // Public Product Pages
-Volt::route('/products', 'products.index')->name('products.index');
-Volt::route('/products/{product}', 'products.show')->name('products.show');
+Route::get('/products', Storefront::class)->defaults('showHero', false)->name('products.index');
+Route::get('/products/{product}', function (int $product) {
+    abort_unless(DB::table('products')->where('product_id', $product)->where('status', 'published')->exists(), 404);
+    return redirect()->route('products.index', ['product' => $product]);
+})->name('products.show');
 
 // ====================
 // CUSTOMER ROUTES
 // ====================
 
 // Customer Dashboard
-Volt::route('/dashboard', 'customer.dashboard')->name('customer.dashboard');
+Volt::route('/dashboard', 'customer.dashboard')->middleware('portal:customer')->name('customer.dashboard');
 
 // Customer Profile
-Volt::route('/profile', 'customer.account.profile')->name('customer.account.profile');
-Volt::route('/profile/edit', 'customer.profile-edit')->name('customer.profile.edit');
+Volt::route('/profile', 'customer.account.profile')->middleware('portal:customer')->name('customer.account.profile');
+Route::get('/profile/edit', fn () => redirect()->route('customer.account.profile'))->middleware('portal:customer')->name('customer.profile.edit');
 
 // Customer Orders
-Volt::route('/orders', 'customer.orders.index')->name('customer.orders.index');
-Volt::route('/orders/{order}', 'customer.orders.show')->name('customer.orders.show');
+Volt::route('/orders', 'customer.orders.index')->middleware('portal:customer')->name('customer.orders.index');
+Route::get('/orders/{order}', fn () => redirect()->route('customer.orders.index'))->middleware('portal:customer')->name('customer.orders.show');
 
 // Customer Cart & Checkout
-Volt::route('/cart', 'customer.cart.index')->name('customer.cart.index');
-Volt::route('/checkout', 'customer.checkout')->name('customer.checkout');
+Route::get('/cart', StorefrontCartPage::class)->middleware('portal:customer')->name('customer.cart.index');
+Volt::route('/checkout', 'customer.checkout')->middleware('portal:customer')->name('customer.checkout');
 
 // Customer Support
-Volt::route('/support', 'customer.support.index')->name('customer.support.index');
-Volt::route('/support/tickets', 'customer.support.tickets')->name('customer.support.tickets');
-Volt::route('/support/tickets/create', 'customer.support.ticket-create')->name('customer.support.ticket-create');
+Volt::route('/support', 'customer.support.index')->middleware('portal:customer')->name('customer.support.index');
+Route::get('/support/tickets', fn () => redirect()->route('customer.support.index'))->middleware('portal:customer')->name('customer.support.tickets');
+Route::get('/support/tickets/create', fn () => redirect()->route('customer.support.index'))->middleware('portal:customer')->name('customer.support.ticket-create');
 
 // Note: Removed the duplicate products route
-Volt::route('customer/products', 'customer.products.index')->name('customer.products.index');
+Route::get('customer/products', Storefront::class)->defaults('showHero', false)->middleware('portal:customer')->name('customer.products.index');
 
 // ====================
 // ADMIN ROUTES
 // ====================
 
 // Admin Dashboard
-Volt::route('/admin', 'dashboard')->name('admin.dashboard');
+Volt::route('/admin', 'dashboard')->middleware('portal:admin')->name('admin.dashboard');
 
 // Admin Products
-Volt::route('/admin/products', 'admin.products.index')->name('admin.products.index');
-Volt::route('/admin/products/create', 'admin.products.create')->name('admin.products.create');
-Volt::route('/admin/products/{product}/edit', 'admin.products.edit')->name('admin.products.edit');
+Route::get('/admin/products', fn () => redirect()->route('ecommerce.products'))->middleware('portal:admin')->name('admin.products.index');
+Route::get('/admin/products/create', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.products.create');
+Route::get('/admin/products/{product}/edit', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.products.edit');
 
 // Admin Orders
-Volt::route('/admin/orders', 'admin.orders.index')->name('admin.orders.index');
-Volt::route('/admin/orders/{order}', 'admin.orders.show')->name('admin.orders.show');
+Route::get('/admin/orders', fn () => redirect()->route('ecommerce.orders'))->middleware('portal:admin')->name('admin.orders.index');
+Route::get('/admin/orders/{order}', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.orders.show');
 
 // Admin Customers
-Volt::route('/admin/customers', 'admin.customers.index')->name('admin.customers.index');
-Volt::route('/admin/customers/{customer}', 'admin.customers.show')->name('admin.customers.show');
+Route::get('/admin/customers', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.customers.index');
+Route::get('/admin/customers/{customer}', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.customers.show');
 
 // Admin Reports
-Volt::route('/admin/reports', 'admin.reports.index')->name('admin.reports.index');
+Route::get('/admin/reports', fn () => redirect()->route('reports.home'))->middleware('portal:admin')->name('admin.reports.index');
 
 // Admin Settings
-Volt::route('/admin/settings', 'admin.settings.index')->name('admin.settings.index');
+Route::get('/admin/settings', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.settings.index');
 
-Volt::route('/admin/projects', 'projects.home')->name('projects.home');
+Volt::route('/admin/projects', 'projects.home')->middleware('portal:admin')->name('projects.home');
 
-Volt::route('/admin/sales', 'sales.home')->name('sales.home');
-Volt::route('/sales/ticket', 'sales.ticket')->name('sales.ticket');
+Volt::route('/admin/sales', 'sales.home')->middleware('portal:admin')->name('sales.home');
+Volt::route('/sales/ticket', 'sales.ticket')->middleware('portal:admin')->name('sales.ticket');
 
-Volt::route('/admin/inventory', 'inventory.home')->name('inventory.home');
-Volt::route('/inventory/tracking', 'inventory.tracking')->name('inventory.tracking');
-Volt::route('/inventory/stock', 'inventory.stock')->name('inventory.stock');
+Volt::route('/admin/inventory', 'inventory.home')->middleware('portal:admin')->name('inventory.home');
+Volt::route('/inventory/tracking', 'inventory.tracking')->middleware('portal:admin')->name('inventory.tracking');
+Volt::route('/inventory/stock', 'inventory.stock')->middleware('portal:admin')->name('inventory.stock');
 
-Volt::route('/admin/customerservice', 'customerservice.home')->name('customerservice.home');
+Volt::route('/admin/customerservice', 'customerservice.home')->middleware('portal:admin')->name('customerservice.home');
 
-Volt::route('/admin/hr', 'hr.home')->name('hr.home');
-Volt::route('/hr/applications', 'hr.applications')->name('hr.applications');
-Volt::route('/hr/attendance', 'hr.attendance')->name('hr.attendance');
-Volt::route('/hr/leave', 'hr.leave')->name('hr.leave');
-Volt::route('/hr/payroll', 'hr.payroll')->name('hr.payroll');
-
-
-Volt::route('/admin/procurement', 'procurement.home')->name('procurement.home');
+Volt::route('/admin/hr', 'hr.home')->middleware('portal:admin')->name('hr.home');
+Volt::route('/hr/applications', 'hr.applications')->middleware('portal:admin')->name('hr.applications');
+Volt::route('/hr/attendance', 'hr.attendance')->middleware('portal:admin')->name('hr.attendance');
+Volt::route('/hr/leave', 'hr.leave')->middleware('portal:admin')->name('hr.leave');
+Volt::route('/hr/payroll', 'hr.payroll')->middleware('portal:admin')->name('hr.payroll');
 
 
-Volt::route('/admin/supplychain', 'supplychain.home')->name('supplychain.home');
-Volt::route('/supplychain/logistic', 'supplychain.logistic')->name('supplychain.logistic');
-Volt::route('/supplychain/tracking', 'supplychain.tracking')->name('supplychain.tracking');
-
-Volt::route('/admin/finance', 'finance.home')->name('finance.home');
-Volt::route('/finance/accounts', 'finance.accounts')->name('finance.accounts');
-Volt::route('/finance/invoice', 'finance.invoice')->name('finance.invoice');
-Volt::route('/finance/approval', 'finance.approval')->name('finance.approval');
-
-Volt::route('/admin/ecommerce', 'ecommerce.home')->name('ecommerce.home');
-
-Volt::route('/admin/reports', 'reports.home')->name('reports.home');
-Volt::route('/reports/summary', 'reports.summary')->name('reports.summary');
-
-Volt::route('/employee/dashboard', 'employee.index')->name('employee.dashboard');
+Volt::route('/admin/procurement', 'procurement.home')->middleware('portal:admin')->name('procurement.home');
 
 
-Volt::route('/employee/tasks', 'employee.tasks')->name('employee.tasks');
-Volt::route('/employee/attendance', 'employee.attendance')->name('employee.attendance');
-Volt::route('/employee/schedule', 'employee.schedule')->name('employee.schedule');
-Volt::route('/employee/payroll', 'employee.payroll')->name('employee.payroll');
-Volt::route('/employee/leave', 'employee.leave')->name('employee.leave');
-Volt::route('/employee/support', 'employee.support')->name('employee.support');
-Volt::route('/employee/warehouse', 'employee.warehouse')->name('employee.warehouse');
+Volt::route('/admin/supplychain', 'supplychain.home')->middleware('portal:admin')->name('supplychain.home');
+Volt::route('/supplychain/logistic', 'supplychain.logistic')->middleware('portal:admin')->name('supplychain.logistic');
+Volt::route('/supplychain/tracking', 'supplychain.tracking')->middleware('portal:admin')->name('supplychain.tracking');
 
-Volt::route('/applicant', 'applicant.index')->name('applicant.index');
+Volt::route('/admin/finance', 'finance.home')->middleware('portal:admin')->name('finance.home');
+Volt::route('/finance/accounts', 'finance.accounts')->middleware('portal:admin')->name('finance.accounts');
+Volt::route('/finance/invoice', 'finance.invoice')->middleware('portal:admin')->name('finance.invoice');
+Volt::route('/finance/approval', 'finance.approval')->middleware('portal:admin')->name('finance.approval');
 
-Volt::route('/projects/budget', 'projects.budget')->name('projects.budget');
+Volt::route('/admin/ecommerce', 'ecommerce.home')->middleware('portal:admin')->name('ecommerce.home');
 
-Volt::route('/projects/projects', 'projects.projects')->name('projects.projects');
+Volt::route('/admin/reporting', 'reports.home')->middleware('portal:admin')->name('reports.home');
+Volt::route('/reports/summary', 'reports.summary')->middleware('portal:admin')->name('reports.summary');
 
-Volt::route('/projects/resources', 'projects.resources')->name('projects.resources');
-
-Volt::route('/projects/members/{project_id}', 'projects.members')->name('projects.members');
-
-Volt::route('/projects/phase/{project_id}', 'projects.phase')->name('projects.phase');
-
-Volt::route('/projects/task/{phase_id}', 'projects.tasks')->name('projects.task');
-
-Volt::route('/projects/addbudget/{phase_id}', 'projects.addbudget')->name('projects.addbudget');
-
-Volt::route('/projects/viewresources', 'projects.viewresources')->name('projects.viewresources');
-
-Volt::route('/projects/cost/{task}', 'projects.cost')->name('projects.cost');
+Volt::route('/employee/dashboard', 'employee.index')->middleware('portal:employee')->name('employee.dashboard');
 
 
-Volt::route('/ecommerce/orders', 'ecommerce.orders')->name('ecommerce.orders');
+Volt::route('/employee/tasks', 'employee.tasks')->middleware('portal:employee')->name('employee.tasks');
+Volt::route('/employee/attendance', 'employee.attendance')->middleware('portal:employee')->name('employee.attendance');
+Route::get('/employee/schedule', fn () => redirect()->route('employee.tasks'))->middleware('portal:employee')->name('employee.schedule');
+Volt::route('/employee/payroll', 'employee.payroll')->middleware('portal:employee')->name('employee.payroll');
+Volt::route('/employee/leave', 'employee.leave')->middleware('portal:employee')->name('employee.leave');
+Volt::route('/employee/support', 'employee.support')->middleware('portal:employee')->name('employee.support');
+Volt::route('/employee/warehouse', 'employee.warehouse')->middleware('portal:employee')->name('employee.warehouse');
 
-Volt::route('/ecommerce/products', 'ecommerce.products')->name('ecommerce.products');
+Volt::route('/applicant', 'applicant.index')->middleware('portal:applicant')->name('applicant.index');
 
-Volt::route('/supplier', 'supplier.dashboard')->name('supplier.dashboard');
+Volt::route('/projects/budget', 'projects.budget')->middleware('portal:admin')->name('projects.budget');
 
-Volt::route('/supplier/list', 'supplier.list')->name('supplier.list');
+Volt::route('/projects/projects', 'projects.projects')->middleware('portal:admin')->name('projects.projects');
 
-Volt::route('/procurement/create', 'procurement.create')->name('procurement.create');
+Volt::route('/projects/resources', 'projects.resources')->middleware('portal:admin')->name('projects.resources');
 
-Volt::route('/procurement/status', 'procurement.status')->name('procurement.status');
+Volt::route('/projects/members/{project_id}', 'projects.members')->middleware('portal:admin')->name('projects.members');
 
-Volt::route('/procurement/createpo', 'procurement.createpo')->name('procurement.createpo');
+Volt::route('/projects/phase/{project_id}', 'projects.phase')->middleware('portal:admin')->name('projects.phase');
+
+Volt::route('/projects/task/{phase_id}', 'projects.tasks')->middleware('portal:admin')->name('projects.task');
+
+Volt::route('/projects/addbudget/{phase_id}', 'projects.addbudget')->middleware('portal:admin')->name('projects.addbudget');
+
+Volt::route('/projects/viewresources', 'projects.viewresources')->middleware('portal:admin')->name('projects.viewresources');
+
+Volt::route('/projects/cost/{task}', 'projects.cost')->middleware('portal:admin')->name('projects.cost');
+
+
+Volt::route('/ecommerce/orders', 'ecommerce.orders')->middleware('portal:admin')->name('ecommerce.orders');
+
+Volt::route('/ecommerce/products', 'ecommerce.products')->middleware('portal:admin')->name('ecommerce.products');
+
+Volt::route('/supplier', 'supplier.dashboard')->middleware('portal:supplier')->name('supplier.dashboard');
+
+Volt::route('/supplier/list', 'supplier.list')->middleware('portal:supplier')->name('supplier.list');
+
+Volt::route('/procurement/create', 'procurement.create')->middleware('portal:admin')->name('procurement.create');
+
+Volt::route('/procurement/status', 'procurement.status')->middleware('portal:admin')->name('procurement.status');
+
+Volt::route('/procurement/createpo', 'procurement.createpo')->middleware('portal:admin')->name('procurement.createpo');
 
 
 
@@ -167,6 +186,7 @@ use Carbon\Carbon;
 
 Route::get('/gantt-tasks/{projectId}', function ($projectId) {
     $project = DB::table('projects')->where('project_id', $projectId)->first();
+    abort_if(!$project, 404);
 
     $phases = DB::table('project_phases')
         ->where('project_id', $projectId)
@@ -189,11 +209,11 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
             // Use phase DB dates if available, otherwise compute from tasks
             $phaseStart = $phase->start_date 
                 ? Carbon::parse($phase->start_date)->format('d-m-Y') 
-                : ($tasks->min(fn($t) => Carbon::createFromFormat('d-m-Y', $t['start_date']))->format('d-m-Y') ?? null);
+                : ($tasks->min(fn($t) => Carbon::createFromFormat('d-m-Y', $t['start_date']))?->format('d-m-Y') ?? null);
 
             $phaseEnd = $phase->end_date 
                 ? Carbon::parse($phase->end_date)->format('d-m-Y') 
-                : ($tasks->max(fn($t) => Carbon::createFromFormat('d-m-Y', $t['end_date']))->format('d-m-Y') ?? null);
+                : ($tasks->max(fn($t) => Carbon::createFromFormat('d-m-Y', $t['end_date']))?->format('d-m-Y') ?? null);
 
             return [
                 'id' => 'phase_'.$phase->phase_id,
@@ -209,11 +229,11 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
     // Use project DB dates if available, otherwise compute from phases
     $projectStart = $project->start_date 
         ? Carbon::parse($project->start_date)->format('d-m-Y') 
-        : ($phases->min(fn($p) => Carbon::createFromFormat('d-m-Y', $p['start_date']))->format('d-m-Y') ?? null);
+        : ($phases->min(fn($p) => $p['start_date'] ? Carbon::createFromFormat('d-m-Y', $p['start_date']) : null)?->format('d-m-Y') ?? null);
 
     $projectEnd = $project->end_date 
         ? Carbon::parse($project->end_date)->format('d-m-Y') 
-        : ($phases->max(fn($p) => Carbon::createFromFormat('d-m-Y', $p['end_date']))->format('d-m-Y') ?? null);
+        : ($phases->max(fn($p) => $p['end_date'] ? Carbon::createFromFormat('d-m-Y', $p['end_date']) : null)?->format('d-m-Y') ?? null);
 
     $ganttData = [
         [
@@ -241,9 +261,8 @@ Route::get('/gantt-tasks/{projectId}', function ($projectId) {
         }
     }
 
-    \Log::info('Gantt data: ' . json_encode($ganttData));
     return response()->json($ganttData);
-});
+})->middleware('portal:admin')->name('projects.gantt');
 
 // In routes/web.php
 use App\Livewire\Actions\LogoutApplicant;

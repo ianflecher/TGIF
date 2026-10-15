@@ -23,6 +23,7 @@ new #[Layout('components.layouts.landing')] class extends Component
 
     public function login()
     {
+        \App\Support\PortalLoginLimiter::check($this->username, 'username');
         $this->validate();
 
         // Debug: Log input
@@ -96,41 +97,11 @@ new #[Layout('components.layouts.landing')] class extends Component
             ]);
         }
 
-        // Debug: Check the actual user record
-        $userRecord = DB::table('users')
-            ->where(function($query) use ($credentials) {
-                if (isset($credentials['email'])) {
-                    $query->where('email', $credentials['email']);
-                } else {
-                    $query->where('username', $credentials['username']);
-                }
-            })
-            ->where('role', 'customer')
-            ->whereNull('deleted_at')
-            ->first(['user_id', 'email', 'username', 'password']);
-
-        logger()->info('User record found', [
-            'user_id' => $userRecord?->user_id,
-            'email' => $userRecord?->email,
-            'username' => $userRecord?->username,
-            'has_password' => !empty($userRecord?->password)
-        ]);
-
-        // Now attempt authentication
+        // Authenticate without logging credentials.
         logger()->info('Attempting Auth::attempt', ['credentials_keys' => array_keys($credentials)]);
         
         if (!Auth::attempt($credentials, $this->remember)) {
             logger()->warning('Auth::attempt failed', ['username' => $this->username]);
-            
-            // Additional debug: Check password manually
-            if ($userRecord) {
-                $isPasswordValid = password_verify($this->password, $userRecord->password);
-                logger()->info('Manual password check', [
-                    'password_match' => $isPasswordValid,
-                    'password_provided_length' => strlen($this->password),
-                    'hashed_password_exists' => !empty($userRecord->password)
-                ]);
-            }
             
             throw ValidationException::withMessages([
                 'username' => __('These credentials do not match our records.'),
@@ -141,7 +112,6 @@ new #[Layout('components.layouts.landing')] class extends Component
 
         session()->regenerate();
         
-        logger()->info('Session regenerated', ['session_id' => session()->getId()]);
 
         // Get authenticated user
         $user = Auth::user();
@@ -158,7 +128,7 @@ new #[Layout('components.layouts.landing')] class extends Component
         logger()->info('Attempting redirect to /dashboard');
         
         try {
-            $this->redirect('/dashboard', navigate: true);
+            $this->redirectIntended(default: route('customer.dashboard', absolute: false), navigate: true);
             logger()->info('Redirect method called successfully');
         } catch (\Exception $e) {
             logger()->error('Redirect failed', [
@@ -301,14 +271,14 @@ new #[Layout('components.layouts.landing')] class extends Component
             <!-- Help Links -->
             <div class="mt-6 pt-6 border-t border-gray-200">
                 <div class="text-sm text-center">
-                    <a href="#" class="font-medium text-green-600 hover:text-green-500">
+                    <a href="{{ route('password.request') }}" class="font-medium text-green-600 hover:text-green-500">
                         Forgot your password?
                     </a>
                 </div>
                 <div class="text-sm text-center mt-2">
                     <span class="text-gray-600">Don't have an account?</span>
-                    <a href="#" class="font-medium text-green-600 hover:text-green-500 ml-1">
-                        Contact support
+                    <a href="{{ route('register') }}" class="font-medium text-green-600 hover:text-green-500 ml-1">
+                        Create an account
                     </a>
                 </div>
             </div>

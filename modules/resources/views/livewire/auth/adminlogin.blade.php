@@ -23,10 +23,11 @@ new #[Layout('components.layouts.employee')] class extends Component
 
     public function login()
 {
+        \App\Support\PortalLoginLimiter::check($this->username, 'username');
     $this->validate();
 
     // Prepare credentials for authentication
-    $credentials = ['password' => $this->password];
+    $credentials = ['password' => $this->password, 'role' => 'admin'];
     
     // Determine if input is email or username
     if (filter_var($this->username, FILTER_VALIDATE_EMAIL)) {
@@ -36,7 +37,7 @@ new #[Layout('components.layouts.employee')] class extends Component
     }
 
     // DEBUG: Log what we're looking for
-    \Log::info('Login attempt:', $credentials);
+
     
     // Check if user exists
     $user = DB::table('users')
@@ -50,7 +51,6 @@ new #[Layout('components.layouts.employee')] class extends Component
         ->whereNull('deleted_at')
         ->first(); // Use first() instead of exists() to see the actual user
 
-    \Log::info('Found user:', $user ? (array)$user : ['not found']);
     
     if (!$user) {
         throw ValidationException::withMessages([

@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'aliases' => Illuminate\Support\Facades\Facade::defaultAliases()->toArray(),
 
     /*
     |--------------------------------------------------------------------------

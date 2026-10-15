@@ -10,11 +10,11 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        // Clear existing admin users and their employee records
-        DB::table('users')->whereIn('role', ['admin'])->delete();
-        DB::table('employees')->delete();
+        if (!app()->environment(['local', 'testing'])) {
+            throw new \RuntimeException('Demo admin accounts may only be seeded locally or in tests.');
+        }
 
-        // Insert admin users
+        // Insert missing demo admin users
         $adminUsers = [
             [
                 'full_name' => 'System Administrator',
@@ -151,6 +151,9 @@ class AdminSeeder extends Seeder
         ];
 
         foreach ($adminUsers as $admin) {
+            if (DB::table('users')->where('username', $admin['username'])->exists()) {
+                continue;
+            }
             // Insert into users table
             $userId = DB::table('users')->insertGetId([
                 'full_name' => $admin['full_name'],
