@@ -379,12 +379,15 @@ class extends Component
         $this->statusDistribution = DB::table('job_applications')
             ->select(
                 'status',
-                DB::raw('COUNT(*) as count'),
-                DB::raw('ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM job_applications WHERE application_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)), 1) as percentage')
+                DB::raw('COUNT(*) as count')
             )
             ->where('application_date', '>=', Carbon::now()->subDays(30))
             ->groupBy('status')
             ->get();
+        $total = $this->statusDistribution->sum('count');
+        $this->statusDistribution->each(function ($row) use ($total) {
+            $row->percentage = $total ? round($row->count * 100 / $total, 1) : 0;
+        });
     }
     
     private function getDateRangeStart()

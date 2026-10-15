@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="light">
 <head>
+    @include('partials.favicon')
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -585,9 +586,10 @@
 
         <!-- User Actions -->
         <div class="user-actions">
+            @if(session()->has('supplier'))
                     <div class="user-badge supplier">
                         <i class="fas fa-truck"></i>
-                        <span>{{ Auth::user()->full_name ?? 'Supplier' }}</span>
+                        <span>{{ data_get(session('supplier'), 'name', 'Supplier') }}</span>
                     </div>
                     <form method="POST" action="{{ route('supplier.logout') }}">
                         @csrf
@@ -595,6 +597,7 @@
                             <i class="fas fa-sign-out-alt"></i>Logout
                         </button>
                     </form>
+            @endif
         </div>
     </div>
 
@@ -603,31 +606,7 @@
         <a href="{{ route('supplier.dashboard') }}" class="nav-link">
             <i class="fas fa-tachometer-alt"></i>Dashboard
         </a>
-        @auth
-            @if(Auth::user()->role === 'supplier')
-                <a href="{{ route('supplier.profile') }}" class="nav-link">
-                    <i class="fas fa-user-circle"></i>Profile
-                </a>
-                <a href="{{ route('supplier.products') }}" class="nav-link">
-                    <i class="fas fa-boxes"></i>Products
-                </a>
-                <a href="{{ route('supplier.orders') }}" class="nav-link">
-                    <i class="fas fa-shopping-cart"></i>Orders
-                </a>
-                <a href="{{ route('supplier.invoices') }}" class="nav-link">
-                    <i class="fas fa-file-invoice-dollar"></i>Invoices
-                </a>
-                <a href="{{ route('supplier.documents') }}" class="nav-link">
-                    <i class="fas fa-folder"></i>Documents
-                </a>
-                <a href="{{ route('supplier.performance') }}" class="nav-link">
-                    <i class="fas fa-chart-line"></i>Performance
-                </a>
-                <a href="{{ route('supplier.support') }}" class="nav-link">
-                    <i class="fas fa-headset"></i>Support
-                </a>
-            @endif
-        @endauth
+
     </nav>
 </header>
 

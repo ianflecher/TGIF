@@ -8,11 +8,11 @@ use Carbon\Carbon;
 
 new #[Layout('components.layouts.employeeland')] class extends Component
 {
-    public $employee;
+    #[\Livewire\Attributes\Locked] public $employee;
     public $payrollRecords = [];
-    public $currentPayroll = null;
+    #[\Livewire\Attributes\Locked] public $currentPayroll = null;
     public $selectedPeriod = null;
-    public $payrollBreakdown = [];
+    #[\Livewire\Attributes\Locked] public $payrollBreakdown = [];
     public $year = null;
     public $years = [];
     
@@ -41,10 +41,10 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     {
         $this->years = DB::table('hr_payroll')
             ->where('employee_id', $this->employee->employee_id)
-            ->selectRaw('YEAR(period_end) as year')
-            ->distinct()
-            ->orderBy('year', 'desc')
-            ->pluck('year')
+            ->whereNotNull('period_end')
+            ->pluck('period_end')
+            ->map(fn ($date) => Carbon::parse($date)->year)
+            ->unique()->sortDesc()->values()
             ->toArray();
             
         // Add current year if not in list

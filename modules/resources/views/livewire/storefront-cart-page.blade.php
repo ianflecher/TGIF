@@ -8,5 +8,5 @@
         @empty
             <div class="sf-bag-empty"><span aria-hidden="true">♡</span><h3>Your favorites belong here.</h3><p>Find something delicious and make it yours.</p><a href="{{ route('products.index') }}" class="sf-button">Explore the menu ↗</a></div>
         @endforelse
-    </div><aside class="sf-cart-summary"><h3>Your order</h3><div><span>{{ $bag['count'] }} {{ $bag['count'] === 1 ? 'item' : 'items' }}</span><strong>₱{{ number_format($bag['total']/100, 2) }}</strong></div><p>No extra fees are added to this bag total. Review your final order at checkout.</p><button wire:click="checkout" class="sf-button sf-full" wire:loading.attr="disabled" @disabled(!$bag['canCheckout'])>Continue to checkout ↗</button></aside></div>
+    </div><aside class="sf-cart-summary"><h3>Your order</h3><div><span>{{ $bag['count'] }} {{ $bag['count'] === 1 ? 'item' : 'items' }}</span><strong>₱{{ number_format($bag['total']/100, 2) }}</strong></div><p>This is your food subtotal. Delivery fees, if applicable, are calculated at checkout.</p><button wire:click="checkout" class="sf-button sf-full" wire:loading.attr="disabled" @disabled(!$bag['canCheckout'])>Continue to checkout ↗</button></aside></div>
 </section>

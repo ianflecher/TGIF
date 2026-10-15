@@ -1,0 +1,10 @@
+<div>
+    <header class="erp-page-heading"><div><p class="erp-eyebrow">ADMINISTRATION</p><h1>Module permissions</h1><p>Existing full administrators retain their access. Restrict staff by module and ability. Employee grants enable warehouse access only; they never change the account role or grant administrator access. Restricted accounts cannot manage permissions.</p></div></header>
+    @if(session('message'))<p role="status" class="erp-notice">{{ session('message') }}</p>@endif
+    @if($errors->any())<p role="alert">{{ $errors->first() }}</p>@endif
+    <div class="erp-card" style="padding:24px"><form wire:submit="loadUser" class="erp-toolbar"><label>Staff account<select class="erp-select" wire:model="userId" required><option value="0">Select an administrator</option>@foreach($users as $user)<option value="{{ $user->user_id }}">{{ $user->full_name }}</option>@endforeach</select></label><button class="erp-button secondary">Load access</button></form>
+        <form wire:submit="save"><label><input type="checkbox" wire:model.live="fullAccess" @disabled($selectedRole !== 'admin')> Full administrator access</label><p>Read grants page access. Write grants interactive changes. Approve grants financial posting and order adjustments. Read is included when another ability is granted.</p>
+            <div class="erp-table-wrap"><table class="erp-table"><thead><tr><th>Module</th><th>Read</th><th>Write</th><th>Approve</th></tr></thead><tbody>@foreach($modules as $module)<tr><td>{{ ucfirst($module) }}</td>@foreach(['read','write','approve'] as $ability)<td><input aria-label="{{ $module }} {{ $ability }}" type="checkbox" wire:model="matrix.{{ $module }}.{{ $ability }}" @disabled($fullAccess)></td>@endforeach</tr>@endforeach</tbody></table></div><button class="erp-button" wire:confirm="Apply these permissions to the selected administrator?">Save access</button>
+        </form>
+    </div>
+</div>

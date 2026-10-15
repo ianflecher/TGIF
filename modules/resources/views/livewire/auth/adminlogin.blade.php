@@ -67,6 +67,7 @@ new #[Layout('components.layouts.employee')] class extends Component
     }
 
     // Attempt authentication
+    if (\App\Support\PortalTwoFactor::challenge($credentials, $this->remember)) return redirect()->route('two-factor.login');
     if (!Auth::attempt($credentials, $this->remember)) {
         throw ValidationException::withMessages([
             'username' => __('Invalid credentials.'),
@@ -91,22 +92,7 @@ new #[Layout('components.layouts.employee')] class extends Component
 
     private function redirectBasedOnUsername(string $username)
     {
-        $redirects = [
-            'admin' => route('admin.dashboard'), // Super admin
-            'inventory' => route('inventory.home'),
-            'customerservice' => route('customerservice.home'),
-            'procurement' => route('procurement.home'),
-            'supplychain' => route('supplychain.home'),
-            'finance' => route('finance.home'),
-            'ecommerce' => route('ecommerce.home'),
-            'businessintelligence' => route('reports.home'), // BI goes to reports
-            'sales' => route('sales.home'),
-            'project' => route('projects.home'),
-            'hr' => route('hr.home'),
-        ];
-
-        // Default to admin dashboard if username not found
-        return redirect()->to($redirects[$username] ?? route('admin.dashboard'));
+        return redirect()->route(app(\App\Services\AccessControl::class)->home(Auth::user()));
     }
 }
 ?>
@@ -217,6 +203,7 @@ new #[Layout('components.layouts.employee')] class extends Component
         </div>
 
         <!-- Default Credentials -->
+        @if(app()->environment('local', 'testing'))
         <div class="mt-8 text-center">
             <details class="inline-block">
                 <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
@@ -241,5 +228,6 @@ new #[Layout('components.layouts.employee')] class extends Component
                 </div>
             </details>
         </div>
+        @endif
     </div>
 </div>

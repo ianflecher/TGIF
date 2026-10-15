@@ -47,3 +47,15 @@ This migration was applied only to the isolated preview and in-memory tests duri
 **59 PHPUnit tests passed, 168 assertions.** Added coverage for draft search leakage, validated options, guest bags, stock behavior, combined variant quantity limits, cart ownership, guest-to-customer merge, current catalog prices, archived items, sign-in redirect, international mobile registration and complete/repeated checkout with persisted notes.
 
 Vite build, Blade compilation, PHP syntax checks and `git diff --check` pass. Browser checks covered desktop/mobile layout, product dialog, guest bag, sign-in and restored checkout. The preview uses synthetic customer data. Production delivery integrations, approved menu prices, shipping/tax rules, online payment integration and complete MySQL/concurrent-load qualification remain separate deployment work.
+
+## Commerce operations (items 2–6)
+
+Added configurable fulfillment rules at `/admin/storefront-settings`: delivery postal-code zones, fees, minimum orders, weekly/overnight hours, pickup address, scheduling and preparation lead time. The real operating values remain unconfigured and rules remain disabled at the owner's request. Existing delivery checkout therefore retains its zero-fee behavior until approved rules are configured. Online payment checkout remains disabled; `HostedPaymentGateway` is an adapter contract only, not a working provider integration.
+
+Customers can view their own paginated order history and tracking timeline at `/orders`, print private receipts, and repeat an order using current menu prices and availability. Historical product names and options remain snapshots. Pickup uses contextual ready/collected labels for the existing fulfillment statuses. Legacy orders show their known state without inventing earlier events.
+
+Checkout saves form drafts, shows field/offline/loading feedback, rejects changed quotes until reviewed, and protects duplicate submissions with a server-owned token. Staff can record cash already received or refunded at `/finance/payments`; this records evidence and does not move money. Refunds must reference an eligible receipt and cannot exceed its remaining balance. Optional account mappings produce balanced draft journals requiring Finance review; unmapped receipts visibly await a ledger link. These controls do not consolidate every legacy Finance screen or implement stock/accounting compensation for cancellation/returns.
+
+Existing configured databases must run `php artisan migrate` from `modules` before using these pages. Development migrated only the isolated temporary preview database. No real payment credentials, service areas, fees, hours or pickup location were supplied or invented.
+
+Verification: **73 PHPUnit tests passed, 223 assertions**, including fulfillment validation, checkout price changes/retries, customer ownership, reorder rollback, payment replay/overpayment, refund bounds and draft journal balancing. Customer order tracking was visually checked using a synthetic local-preview order.

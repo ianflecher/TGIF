@@ -194,40 +194,26 @@ new #[Layout('components.layouts.reports')] class extends Component
                 'avg_response_time' => DB::table('tickets')
                     ->whereNotNull('first_response_at')
                     ->whereBetween('created_at', [$start, $end])
-                    ->select(DB::raw('AVG(TIMESTAMPDIFF(MINUTE, created_at, first_response_at)) as avg_time'))
+                    ->select(DB::raw('AVG('.\App\Support\ReportSql::elapsed('created_at', 'first_response_at', 'MINUTE').') as avg_time'))
                     ->first()->avg_time ?? 0,
                 'resolution_rate' => DB::table('tickets')
                     ->whereBetween('created_at', [$start, $end])
-                    ->select(DB::raw('(SUM(CASE WHEN status = "resolved" THEN 1 ELSE 0 END) / COUNT(*) * 100) as rate'))
+                    ->select(DB::raw('(SUM(CASE WHEN status = "resolved" THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as rate'))
                     ->first()->rate ?? 0,
             ];
         }
         
         if ($this->module === 'overview' || $this->module === 'finance') {
-            // Finance Summary
+            // Financial totals come from the posted ledger, never order/payment status labels.
+            $ledger = app(\App\Services\LedgerReports::class);
+            $totals = $ledger->totals($start, $end);
+            $settings = app(\App\Services\CommerceSettings::class)->get();
+            $ar = $settings['receivable_account_id'] ?: DB::table('chart_of_accounts')->where('account_code', '1100')->value('account_id');
             $data['finance'] = [
-                'total_revenue' => DB::table('sales_orders')
-                    ->where('payment_status', 'paid')
-                    ->whereBetween('order_date', [$start, $end])
-                    ->sum('grand_total'),
-                'total_expenses' => DB::table('purchase_orders')
-                    ->where('status', 'completed')
-                    ->whereBetween('order_date', [$start, $end])
-                    ->sum('total_amount') + DB::table('hr_payroll')
-                    ->where('status', 'paid')
-                    ->whereBetween('period_end', [$start, $end])
-                    ->sum('net_pay'),
-                'profit_loss' => 0,
-                'accounts_receivable' => DB::table('sales_orders')
-                    ->where('payment_status', '!=', 'paid')
-                    ->whereBetween('order_date', [$start, $end])
-                    ->sum('grand_total'),
-                'cash_balance' => DB::table('payments')
-                    ->where('status', 'completed')
-                    ->whereBetween('payment_date', [$start, $end])
-                    ->sum('amount'),
+                'total_revenue' => $totals['revenue'] / 100, 'total_expenses' => $totals['expense'] / 100,
+                'profit_loss' => $totals['income'] / 100, 'accounts_receivable' => $ledger->accountBalance($ar, $end) / 100,
+                'cash_balance' => $ledger->accountBalance($settings['cash_account_id'], $end) / 100,
             ];
-            $data['finance']['profit_loss'] = $data['finance']['total_revenue'] - $data['finance']['total_expenses'];
         }
         
         if ($this->module === 'overview' || $this->module === 'projects') {

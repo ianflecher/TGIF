@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#234d32">
     <meta name="description" content="Discover TGIF's menu. Choose your favorites, customize your order and enjoy something delicious.">
     <title>{{ $title ?? 'TGIF · Good food. Great days.' }}</title>
-    <link rel="icon" href="{{ asset('favicon.ico') }}">
+    @include('partials.favicon')
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=dm-sans:400,500,600,700|outfit:400,500,600,700,800" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

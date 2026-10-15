@@ -108,6 +108,8 @@ class extends Component
     
     public function saveProfile()
     {
+        abort_unless(Auth::user()?->role === 'customer' && !Auth::user()->trashed(), 403);
+        $this->customer = DB::table('customers')->where('user_id', Auth::id())->first();
         if ($this->customer) {
             $validator = Validator::make($this->form, [
                 'first_name' => 'required|string|max:100',
@@ -128,7 +130,8 @@ class extends Component
             
             DB::table('customers')
                 ->where('customer_id', $this->customer->customer_id)
-                ->update($this->form);
+                ->where('user_id', Auth::id())
+                ->update($validator->validated());
             
             // Refresh customer data
             $this->customer = DB::table('customers')

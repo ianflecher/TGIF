@@ -8,7 +8,7 @@ use Carbon\Carbon;
 
 new #[Layout('components.layouts.employeeland')] class extends Component
 {
-    public $employee;
+    #[\Livewire\Attributes\Locked] public $employee;
     public $attendanceStats = [];
     public $recentTasks = [];
     public $upcomingDeadlines = [];
@@ -149,73 +149,30 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     
     public function clockIn()
     {
-        $today = Carbon::today();
-        
-        // Check if already clocked in
-        $existing = DB::table('hr_attendance')
-            ->where('employee_id', $this->employee->employee_id)
-            ->whereDate('date', $today)
-            ->first();
-        
-        if ($existing && $existing->time_in) {
-            session()->flash('error', 'You have already clocked in today!');
-            return;
-        }
-        
-        DB::table('hr_attendance')->updateOrInsert(
-            [
-                'employee_id' => $this->employee->employee_id,
-                'date' => $today
-            ],
-            [
-                'time_in' => now(),
-                'status' => now()->hour > 9 ? 'late' : 'present',
-                'updated_at' => now()
-            ]
-        );
-        
-        session()->flash('success', 'Clocked in successfully!');
+        app(\App\Services\StaffAttendance::class)->record(true);
         $this->loadAttendanceStats();
+        session()->flash('success', 'Attendance recorded.');
     }
-    
+
     public function clockOut()
     {
-        $today = Carbon::today();
-        
-        $attendance = DB::table('hr_attendance')
-            ->where('employee_id', $this->employee->employee_id)
-            ->whereDate('date', $today)
-            ->first();
-        
-        if (!$attendance || !$attendance->time_in) {
-            session()->flash('error', 'You need to clock in first!');
-            return;
-        }
-        
-        if ($attendance->time_out) {
-            session()->flash('error', 'You have already clocked out today!');
-            return;
-        }
-        
-        DB::table('hr_attendance')
-            ->where('employee_id', $this->employee->employee_id)
-            ->whereDate('date', $today)
-            ->update([
-                'time_out' => now(),
-                'updated_at' => now()
-            ]);
-        
-        session()->flash('success', 'Clocked out successfully!');
+        app(\App\Services\StaffAttendance::class)->record(false);
         $this->loadAttendanceStats();
+        session()->flash('success', 'Attendance recorded.');
     }
-    
+
     public function updateTaskProgress($taskId, $progress)
     {
+        \Illuminate\Support\Facades\Validator::make(['progress' => $progress], ['progress' => 'required|integer|min:0|max:100'])->validate();
+        $task = DB::table('tasks')->where('task_id', $taskId)->first();
+        $employeeId = DB::table('employees')->where('user_id', Auth::id())->where('status', 'active')->value('employee_id');
+        abort_unless($task && in_array((string) $employeeId, array_map('trim', explode(',', (string) $task->assigned_to)), true), 404);
+        abort_unless(in_array($task->status, ['not_started', 'in_progress'], true), 422);
         DB::table('tasks')
             ->where('task_id', $taskId)
             ->update([
                 'progress_percentage' => $progress,
-                'status' => $progress == 100 ? 'completed' : 'in_progress',
+                'status' => $progress == 100 ? 'submitted' : 'in_progress',
                 'updated_at' => now()
             ]);
         

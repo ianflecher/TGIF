@@ -12,8 +12,8 @@ new #[Layout('components.layouts.applicant')] class extends Component
 {
     use WithFileUploads;
 
-    public $application;
-    public $documents = [];
+    #[\Livewire\Attributes\Locked] public $application;
+    #[\Livewire\Attributes\Locked] public $documents = [];
     public $interviewDetails = null;
     
     #[Validate([
@@ -35,7 +35,7 @@ new #[Layout('components.layouts.applicant')] class extends Component
         // Get uploaded documents if any
         if ($this->application) {
             $this->documents = DB::table('application_documents')
-                ->where('application_id', $this->application->application_id)
+                ->where('application_id', $this->application->application_id)->whereNull('deleted_at')
                 ->where('user_id', $user->user_id) // Security: ensure user owns the documents
                 ->orderBy('created_at', 'desc')
                 ->get()
@@ -60,104 +60,35 @@ new #[Layout('components.layouts.applicant')] class extends Component
     
     public function uploadDocuments()
     {
-        try {
-            // Validate the uploaded files
-            $this->validate([
-                'newDocuments' => 'max:5',
-                'newDocuments.*' => 'file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png'
-            ]);
-            
-            if (!$this->application) {
-                throw new \Exception('No application found. Please apply for a position first.');
+        $this->validate(['newDocuments' => 'required|array|min:1|max:5', 'newDocuments.*' => 'required|file|max:5120|mimes:pdf,doc,docx,jpg,jpeg,png']);
+        abort_unless(auth()->user() && !auth()->user()->trashed(), 403);
+        $application = DB::table('job_applications')->where('user_id', Auth::id())->orderByDesc('created_at')->first();
+        abort_unless($application, 404);
+        foreach ($this->newDocuments as $document) {
+            $path = $document->store('application_documents/'.$application->application_id, 'applicant_private');
+            try {
+                DB::table('application_documents')->insert([
+                    'application_id' => $application->application_id, 'user_id' => Auth::id(),
+                    'filename' => basename($document->getClientOriginalName()), 'filepath' => $path,
+                    'disk' => 'applicant_private', 'filetype' => $document->getMimeType(), 'filesize' => $document->getSize(),
+                    'uploaded_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            } catch (\Throwable $error) {
+                Storage::disk('applicant_private')->delete($path);
+                throw $error;
             }
-            
-            if (empty($this->newDocuments)) {
-                throw new \Exception('Please select at least one file to upload.');
-            }
-            
-            DB::beginTransaction();
-            
-            $uploadedCount = 0;
-            $failedUploads = [];
-            
-            foreach ($this->newDocuments as $document) {
-                try {
-                    // Store the file in public disk under application_documents/{application_id}/
-                    $path = $document->store('application_documents/' . $this->application->application_id, 'public');
-                    
-                    // Insert document record into application_documents table
-                    DB::table('application_documents')->insert([
-                        'application_id' => $this->application->application_id,
-                        'user_id' => Auth::id(),
-                        'filename' => $document->getClientOriginalName(),
-                        'filepath' => $path,
-                        'filetype' => $document->getMimeType(),
-                        'filesize' => $document->getSize(),
-                        'uploaded_at' => now(),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                    
-                    $uploadedCount++;
-                    
-                } catch (\Exception $e) {
-                    // Log the error for this specific file
-                    $failedUploads[] = [
-                        'filename' => $document->getClientOriginalName(),
-                        'error' => $e->getMessage()
-                    ];
-                }
-            }
-            
-            DB::commit();
-            
-            // Prepare success message
-            $message = "{$uploadedCount} document(s) uploaded successfully!";
-            
-            if (!empty($failedUploads)) {
-                $failedNames = array_column($failedUploads, 'filename');
-                $message .= " Failed to upload: " . implode(', ', $failedNames);
-            }
-            
-            session()->flash('success', $message);
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            session()->flash('error', 'Upload failed: ' . $e->getMessage());
         }
-        
         $this->newDocuments = [];
-        $this->mount(); // Refresh documents list
+        $this->mount();
+        session()->flash('success', 'Documents stored privately.');
     }
-    
+
     public function deleteDocument($documentId)
     {
-        try {
-            $document = DB::table('application_documents')
-                ->where('id', $documentId)
-                ->where('user_id', Auth::id()) // Security: user can only delete their own documents
-                ->first();
-            
-            if (!$document) {
-                throw new \Exception('Document not found or you do not have permission to delete it.');
-            }
-            
-            // Delete the physical file
-            if (Storage::disk('public')->exists($document->filepath)) {
-                Storage::disk('public')->delete($document->filepath);
-            }
-            
-            // Delete the database record
-            DB::table('application_documents')->where('id', $documentId)->delete();
-            
-            $this->mount(); // Refresh documents list
-            session()->flash('success', 'Document deleted successfully!');
-            
-        } catch (\Exception $e) {
-            session()->flash('error', 'Delete failed: ' . $e->getMessage());
-        }
+        app(\App\Services\ApplicantDocuments::class)->archive((int) $documentId);
+        $this->mount();
+        session()->flash('success', 'Document archived. Contact HR if it needs restoring.');
     }
-    
     /**
      * Format file size to human readable format
      */
@@ -544,9 +475,7 @@ new #[Layout('components.layouts.applicant')] class extends Component
                 <i class="fas fa-file-alt text-4xl text-gray-300 mb-4"></i>
                 <h3 class="text-xl font-medium text-gray-600 mb-2">No Application Found</h3>
                 <p class="text-gray-500 mb-4">You haven't submitted any job applications yet.</p>
-                <a href="{{ route('applicant.jobs') }}" class="inline-flex items-center px-4 py-2 bg-career-600 text-white rounded-lg hover:bg-career-700 transition-colors">
-                    <i class="fas fa-search mr-2"></i> Browse Available Positions
-                </a>
+                <p class="text-sm text-gray-500">Contact HR for available positions and application assistance.</p>
             </div>
         @endif
     </div>
@@ -655,13 +584,13 @@ new #[Layout('components.layouts.applicant')] class extends Component
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <a href="{{ Storage::url($document->filepath) }}" 
+                            <a href="{{ route('application.documents.download', $document->id) }}" 
                                target="_blank"
                                class="inline-flex items-center px-3 py-2 text-sm bg-career-50 text-career-700 rounded-lg hover:bg-career-100 transition-colors"
                                title="View document">
                                 <i class="fas fa-eye mr-1"></i> View
                             </a>
-                            <a href="{{ Storage::url($document->filepath) }}" 
+                            <a href="{{ route('application.documents.download', $document->id) }}" 
                                download="{{ $document->filename }}"
                                class="inline-flex items-center px-3 py-2 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
                                title="Download document">

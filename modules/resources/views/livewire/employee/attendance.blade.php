@@ -9,10 +9,10 @@ use Carbon\Carbon;
 
 new #[Layout('components.layouts.employeeland')] #[Title('My Attendance')] class extends Component
 {
-    public $attendance = null;
+    #[\Livewire\Attributes\Locked] public $attendance = null;
     public $attendanceHistory = [];
     public $monthlySummary = [];
-    public $employee;
+    #[\Livewire\Attributes\Locked] public $employee;
     public $currentMonth;
     public $clockStatus = [];
     public $isClockedIn = false;
@@ -84,7 +84,7 @@ new #[Layout('components.layouts.employeeland')] #[Title('My Attendance')] class
         $employeeId = $this->employee->employee_id;
         
         // Check if clock_logs table exists
-        $tableExists = DB::select("SHOW TABLES LIKE 'clock_logs'");
+        $tableExists = \Illuminate\Support\Facades\Schema::hasTable('clock_logs');
         
         if (!empty($tableExists)) {
             // Get latest clock log
@@ -119,94 +119,18 @@ new #[Layout('components.layouts.employeeland')] #[Title('My Attendance')] class
     // Manual Time In (for backup)
     public function manualTimeIn()
     {
-        $today = now()->format('Y-m-d');
-        $employeeId = $this->employee->employee_id;
-        
-        // Check if already timed in today
-        if ($this->attendance && $this->attendance->time_in) {
-            session()->flash('error', 'You have already timed in today!');
-            return;
-        }
-        
-        $currentTime = now();
-        $status = 'present';
-        
-        // Check if late (after 9:00 AM)
-        $lateThreshold = Carbon::createFromTime(9, 0, 0);
-        if ($currentTime->gt($lateThreshold)) {
-            $status = 'late';
-        }
-        
-        // Create attendance record
-        DB::table('hr_attendance')->insert([
-            'employee_id' => $employeeId,
-            'date' => $today,
-            'time_in' => $currentTime,
-            'status' => $status,
-            'notes' => 'Manual time in from attendance page',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        
-        // Also create clock log if table exists
-        $tableExists = DB::select("SHOW TABLES LIKE 'clock_logs'");
-        if (!empty($tableExists)) {
-            DB::table('clock_logs')->insert([
-                'employee_id' => $employeeId,
-                'date' => $today,
-                'clock_in' => $currentTime,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
-        
+        app(\App\Services\StaffAttendance::class)->record(true);
         $this->loadData();
-        session()->flash('success', 'Time In recorded successfully!');
+        session()->flash('success', 'Attendance recorded.');
     }
-    
-    // Manual Time Out (for backup)
+
     public function manualTimeOut()
     {
-        $today = now()->format('Y-m-d');
-        $employeeId = $this->employee->employee_id;
-        
-        if (!$this->attendance || !$this->attendance->time_in) {
-            session()->flash('error', 'Please time in first!');
-            return;
-        }
-        
-        if ($this->attendance->time_out) {
-            session()->flash('error', 'You have already timed out today!');
-            return;
-        }
-        
-        $currentTime = now();
-        
-        // Update attendance record
-        DB::table('hr_attendance')
-            ->where('attendance_id', $this->attendance->attendance_id)
-            ->update([
-                'time_out' => $currentTime,
-                'updated_at' => now(),
-            ]);
-        
-        // Update clock log if table exists
-        $tableExists = DB::select("SHOW TABLES LIKE 'clock_logs'");
-        if (!empty($tableExists)) {
-            DB::table('clock_logs')
-                ->where('employee_id', $employeeId)
-                ->whereDate('date', $today)
-                ->whereNull('clock_out')
-                ->update([
-                    'clock_out' => $currentTime,
-                    'updated_at' => now(),
-                ]);
-        }
-        
+        app(\App\Services\StaffAttendance::class)->record(false);
         $this->loadData();
-        session()->flash('success', 'Time Out recorded successfully!');
+        session()->flash('success', 'Attendance recorded.');
     }
-    
+
     // Sync clock with attendance
     public function syncClockWithAttendance()
     {
@@ -214,7 +138,7 @@ new #[Layout('components.layouts.employeeland')] #[Title('My Attendance')] class
         $employeeId = $this->employee->employee_id;
         
         // Check if clock_logs table exists
-        $tableExists = DB::select("SHOW TABLES LIKE 'clock_logs'");
+        $tableExists = \Illuminate\Support\Facades\Schema::hasTable('clock_logs');
         
         if (empty($tableExists)) {
             session()->flash('error', 'Clock system not available. Please use manual time in/out.');

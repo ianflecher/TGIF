@@ -12,12 +12,12 @@ new #[Layout('components.layouts.employeeland')]
 class extends Component
 {
     // Agent/Employee info
-    public $employee = null;
-    public $agentId = null;
+    #[\Livewire\Attributes\Locked] public $employee = null;
+    #[\Livewire\Attributes\Locked] public $agentId = null;
     
     // Ticket lists
     public $assignedTickets = [];
-    public $selectedTicket = null;
+    #[\Livewire\Attributes\Locked] public $selectedTicket = null;
     
     // Filters
     public $statusFilter = 'all';
@@ -156,7 +156,7 @@ class extends Component
         }
         
         $this->assignedTickets = $query
-            ->orderByRaw("FIELD(tickets.priority, 'critical', 'high', 'medium', 'low')")
+            ->orderByRaw("CASE tickets.priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END")
             ->orderBy('tickets.created_at', 'desc')
             ->get();
     }
@@ -178,7 +178,7 @@ class extends Component
         
         // Get average resolution time for resolved tickets
         $avgTime = DB::table('tickets')
-            ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_hours'))
+            ->select(DB::raw('AVG('.\App\Support\ReportSql::elapsed('created_at', 'resolved_at').') as avg_hours'))
             ->where('assigned_agent', $this->agentId)
             ->where('status', 'resolved')
             ->whereNotNull('resolved_at')
@@ -241,99 +241,16 @@ class extends Component
     
     public function addNote()
     {
-        if (!$this->selectedTicket || !$this->newNote || !$this->employee) {
-            return;
-        }
-        
-        try {
-            DB::beginTransaction();
-            
-            // Get user_id for the agent
-            $userId = DB::table('employees')
-                ->where('employee_id', $this->agentId)
-                ->value('user_id');
-            
-            if (!$userId) {
-                throw new \Exception('Could not find user account for agent.');
-            }
-            
-            DB::table('ticket_notes')->insert([
-                'ticket_id' => $this->selectedTicket->ticket_id,
-                'note_text' => $this->newNote,
-                'created_by' => $userId,
-                'internal' => $this->internalNote,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            
-            // Update ticket status to in_progress if it was open
-            if ($this->selectedTicket->status === 'open') {
-                DB::table('tickets')
-                    ->where('ticket_id', $this->selectedTicket->ticket_id)
-                    ->update([
-                        'status' => 'in_progress',
-                        'updated_at' => now(),
-                    ]);
-            } else {
-                // Just update the timestamp
-                DB::table('tickets')
-                    ->where('ticket_id', $this->selectedTicket->ticket_id)
-                    ->update(['updated_at' => now()]);
-            }
-            
-            DB::commit();
-            
-            session()->flash('message', 'Note added successfully!');
-            
-            // Refresh data
-            $this->loadAssignedTickets();
-            $this->loadStats();
-            $this->selectTicket($this->selectedTicket->ticket_id);
-            
-            $this->newNote = '';
-            $this->internalNote = false;
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            session()->flash('error', 'Error adding note: ' . $e->getMessage());
-        }
+        if (!$this->selectedTicket) return;
+        app(\App\Services\StaffTickets::class)->act($this->selectedTicket->ticket_id, 'note', $this->newNote, (bool) $this->internalNote);
+        $this->newNote = ''; $this->loadAssignedTickets(); $this->loadStats(); $this->selectTicket($this->selectedTicket->ticket_id);
     }
-    
     public function markAsInProgress()
     {
         if (!$this->selectedTicket) return;
-        
-        DB::table('tickets')
-            ->where('ticket_id', $this->selectedTicket->ticket_id)
-            ->update([
-                'status' => 'in_progress',
-                'updated_at' => now(),
-            ]);
-        
-        // Add system note
-        $userId = DB::table('employees')
-            ->where('employee_id', $this->agentId)
-            ->value('user_id');
-        
-        if ($userId) {
-            DB::table('ticket_notes')->insert([
-                'ticket_id' => $this->selectedTicket->ticket_id,
-                'note_text' => "Ticket marked as In Progress by support agent.",
-                'created_by' => $userId,
-                'internal' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
-        
-        session()->flash('message', 'Ticket marked as In Progress');
-        
-        // Refresh data
-        $this->loadAssignedTickets();
-        $this->loadStats();
-        $this->selectTicket($this->selectedTicket->ticket_id);
+        app(\App\Services\StaffTickets::class)->act($this->selectedTicket->ticket_id, 'start', 'Ticket marked in progress.', true);
+        $this->loadAssignedTickets(); $this->loadStats(); $this->selectTicket($this->selectedTicket->ticket_id);
     }
-    
     public function showResolveModal()
     {
         $this->resolutionNote = '';
@@ -342,133 +259,16 @@ class extends Component
     
     public function resolveTicket()
     {
-        if (!$this->selectedTicket) {
-            session()->flash('error', 'No ticket selected.');
-            return;
-        }
-        
-        if (empty(trim($this->resolutionNote))) {
-            session()->flash('error', 'Please provide a resolution note.');
-            return;
-        }
-        
-        try {
-            DB::beginTransaction();
-            
-            \Log::info('Resolving ticket ID: ' . $this->selectedTicket->ticket_id);
-            
-            $userId = DB::table('employees')
-                ->where('employee_id', $this->agentId)
-                ->value('user_id');
-            
-            if ($userId) {
-                // Add resolution note
-                DB::table('ticket_notes')->insert([
-                    'ticket_id' => $this->selectedTicket->ticket_id,
-                    'note_text' => "Issue resolved: " . trim($this->resolutionNote),
-                    'created_by' => $userId,
-                    'internal' => false,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-                
-                \Log::info('Added resolution note for ticket: ' . $this->selectedTicket->ticket_id);
-            }
-            
-            // Update ticket status to resolved
-            $updateData = [
-                'status' => 'resolved',
-                'updated_at' => now(),
-                'resolved_at' => now()
-            ];
-            
-            $updated = DB::table('tickets')
-                ->where('ticket_id', $this->selectedTicket->ticket_id)
-                ->update($updateData);
-            
-            if ($updated) {
-                \Log::info('Successfully updated ticket status to resolved');
-            } else {
-                \Log::warning('No rows were updated for ticket: ' . $this->selectedTicket->ticket_id);
-            }
-            
-            DB::commit();
-            
-            session()->flash('message', 'Ticket resolved successfully!');
-            
-            // Refresh data and close modal
-            $this->loadAssignedTickets();
-            $this->loadStats();
-            $this->resolutionNote = '';
-            $this->showResolveModal = false;
-            $this->updatingTicket = false;
-            $this->selectedTicket = null;
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error('Error resolving ticket: ' . $e->getMessage());
-            session()->flash('error', 'Error resolving ticket: ' . $e->getMessage());
-        }
+        if (!$this->selectedTicket) return;
+        app(\App\Services\StaffTickets::class)->act($this->selectedTicket->ticket_id, 'resolve', $this->resolutionNote);
+        $this->showResolveModal = false; $this->selectedTicket = null; $this->loadAssignedTickets(); $this->loadStats();
     }
-    
     public function closeTicket()
     {
-        if (!$this->selectedTicket) {
-            session()->flash('error', 'No ticket selected.');
-            return;
-        }
-        
-        if (empty(trim($this->closeReason))) {
-            session()->flash('error', 'Please provide a reason for closing.');
-            return;
-        }
-        
-        try {
-            DB::beginTransaction();
-            
-            $userId = DB::table('employees')
-                ->where('employee_id', $this->agentId)
-                ->value('user_id');
-            
-            if ($userId) {
-                // Add closing note
-                DB::table('ticket_notes')->insert([
-                    'ticket_id' => $this->selectedTicket->ticket_id,
-                    'note_text' => "Ticket closed. Reason: " . trim($this->closeReason),
-                    'created_by' => $userId,
-                    'internal' => false,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-            
-            // Update ticket status to closed
-            DB::table('tickets')
-                ->where('ticket_id', $this->selectedTicket->ticket_id)
-                ->update([
-                    'status' => 'closed',
-                    'updated_at' => now(),
-                    'resolved_at' => now()
-                ]);
-            
-            DB::commit();
-            
-            session()->flash('message', 'Ticket closed successfully.');
-            
-            // Refresh data and close modal
-            $this->loadAssignedTickets();
-            $this->loadStats();
-            $this->closeReason = '';
-            $this->showCloseModal = false;
-            $this->updatingTicket = false;
-            $this->selectedTicket = null;
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            session()->flash('error', 'Error closing ticket: ' . $e->getMessage());
-        }
+        if (!$this->selectedTicket) return;
+        app(\App\Services\StaffTickets::class)->act($this->selectedTicket->ticket_id, 'close', $this->closeReason);
+        $this->showCloseModal = false; $this->selectedTicket = null; $this->loadAssignedTickets(); $this->loadStats();
     }
-    
     public function closeTicketView()
     {
         $this->selectedTicket = null;

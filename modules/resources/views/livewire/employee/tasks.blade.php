@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\DB;
 new #[Layout('components.layouts.employeeland')] class extends Component
 {
     public $tasks = [];
-    public $employeeId;
-    public $user;
-    public $userRole;
+    #[\Livewire\Attributes\Locked] public $employeeId;
+    #[\Livewire\Attributes\Locked] public $user;
+    #[\Livewire\Attributes\Locked] public $userRole;
     public $debugInfo = '';
 
     public function mount()

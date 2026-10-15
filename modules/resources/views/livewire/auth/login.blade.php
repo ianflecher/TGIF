@@ -100,6 +100,7 @@ new #[Layout('components.layouts.landing')] class extends Component
         // Authenticate without logging credentials.
         logger()->info('Attempting Auth::attempt', ['credentials_keys' => array_keys($credentials)]);
         
+        if (\App\Support\PortalTwoFactor::challenge($credentials, $this->remember)) return redirect()->route('two-factor.login');
         if (!Auth::attempt($credentials, $this->remember)) {
             logger()->warning('Auth::attempt failed', ['username' => $this->username]);
             

@@ -7,16 +7,17 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
-new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Completion')] class extends Component
+new #[Layout('components.layouts.inventory')] #[Title('Warehouse - Order Completion')] class extends Component
 {
     public $pendingOrders = [];
-    public $selectedOrder = null;
-    public $orderItems = [];
+    #[\Livewire\Attributes\Locked] public $selectedOrder = null;
+    #[\Livewire\Attributes\Locked] public $orderItems = [];
     public $receiptHistory = [];
     public $message = '';
     
     // Receiving form for multiple items
     public $receipts = [];
+    #[\Livewire\Attributes\Locked] public string $receiptKey = '';
     
     public function mount()
     {
@@ -28,8 +29,8 @@ new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Comp
         // Load orders that are partially_received (delivery in progress)
         $this->pendingOrders = DB::table('purchase_orders as po')
             ->join('suppliers as s', 'po.supplier_id', '=', 's.supplier_id')
-            ->join('users as u', 'po.created_by', '=', 'u.user_id')
-            ->where('po.status', 'partially_received')
+            ->leftJoin('users as u', 'po.created_by', '=', 'u.user_id')
+            ->whereIn('po.status', ['confirmed', 'partially_received'])
             ->select(
                 'po.po_id',
                 'po.po_number',
@@ -49,9 +50,10 @@ new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Comp
     
     public function viewOrder($poId)
     {
+        $this->receiptKey = (string) \Illuminate\Support\Str::uuid();
         $this->selectedOrder = DB::table('purchase_orders as po')
             ->join('suppliers as s', 'po.supplier_id', '=', 's.supplier_id')
-            ->join('users as u', 'po.created_by', '=', 'u.user_id')
+            ->leftJoin('users as u', 'po.created_by', '=', 'u.user_id')
             ->where('po.po_id', $poId)
             ->select(
                 'po.*',
@@ -133,84 +135,13 @@ new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Comp
         $this->receipts = [];
     }
     
-   public function completeOrder()
-{
-    $this->validate([
-        'receipts.*.quantity_received' => 'required|numeric|min:0',
-        'receipts.*.quality_status' => 'required|in:passed,failed',
-        'receipts.*.supplier_rating' => 'required|numeric|min:1|max:5',
-        'receipts.*.expiry_date' => 'nullable|date',
-    ]);
-    
-    DB::beginTransaction();
-    
-    try {
-        $hasValidReceipts = false;
-        
-        foreach ($this->receipts as $receipt) {
-            if ($receipt['quantity_received'] > 0) {
-                $hasValidReceipts = true;
-                
-                // Convert empty expiry_date to NULL
-                $expiryDate = !empty($receipt['expiry_date']) ? $receipt['expiry_date'] : null;
-                
-                // Create goods receipt
-                DB::table('goods_receipts')->insert([
-                    'po_id' => $this->selectedOrder->po_id,
-                    'inventory_id' => $receipt['inventory_id'],
-                    'quantity_received' => $receipt['quantity_received'],
-                    'date_received' => Carbon::today(),
-                    'unit_price' => $this->getItemUnitPrice($receipt['inventory_id']),
-                    'batch_number' => $receipt['batch_number'] ?: null,
-                    'expiry_date' => $expiryDate,
-                    'notes' => $receipt['notes'] ?: null,
-                    'quality_status' => $receipt['quality_status'],
-                    'received_by' => Auth::id(),
-                    'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
-                ]);
-                
-                // Update inventory if quality passed
-                if ($receipt['quality_status'] === 'passed') {
-                    DB::table('inventories')
-                        ->where('inventory_id', $receipt['inventory_id'])
-                        ->increment('quantity', $receipt['quantity_received']);
-                }
-            }
-        }
-        
-        // Update supplier rating based on all receipts in this order
-        if ($hasValidReceipts) {
-            $this->updateSupplierRating();
-            
-            // Check if order is now complete
-            if ($this->isOrderComplete()) {
-                DB::table('purchase_orders')
-                    ->where('po_id', $this->selectedOrder->po_id)
-                    ->update([
-                        'status' => 'completed',
-                        'updated_at' => Carbon::now()
-                    ]);
-                
-                $this->message = 'Order completed successfully! All items received and inventory updated.';
-            } else {
-                $this->message = 'Partial delivery recorded successfully! Order still in progress.';
-            }
-            
-            $this->loadPendingOrders();
-            $this->closeOrderView();
-        } else {
-            $this->message = 'No quantities were entered. Please enter quantities to receive.';
-        }
-        
-        DB::commit();
-        
-    } catch (\Exception $e) {
-        DB::rollBack();
-        $this->message = 'Error: ' . $e->getMessage();
+    public function completeOrder()
+    {
+        if (!$this->selectedOrder) return;
+        app(\App\Services\WarehouseReceipts::class)->receive(auth()->user(), $this->selectedOrder->po_id, $this->receiptKey, $this->receipts);
+        $this->message = 'Receipt recorded. Only accepted quantities increased stock.';
+        $this->loadPendingOrders(); $this->closeOrderView();
     }
-}
-    
     private function getItemUnitPrice($inventoryId)
     {
         $item = DB::table('purchase_order_items')
@@ -334,6 +265,7 @@ new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Comp
 }
 ?>
 
+@if($errors->any())<p role="alert" class="p-4 text-red-800">{{ $errors->first() }}</p>@endif
 <div class="p-6 min-h-screen bg-gradient-to-br from-emerald-50 via-white to-green-50">
     <!-- Header -->
     <div class="mb-8">
@@ -383,7 +315,8 @@ new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Comp
     </div>
 </div>
         
-        <div class="p-6">
+        
+<div class="p-6">
             @if(count($pendingOrders) > 0)
                 <div class="overflow-x-auto rounded-xl border border-emerald-100">
                     <table class="w-full text-sm">
@@ -494,7 +427,8 @@ new #[Layout('components.layouts.employeeland')] #[Title('Warehouse - Order Comp
             </div>
             
             <!-- Modal Content -->
-            <div class="p-6 overflow-y-auto max-h-[55vh]">
+            
+<div class="p-6 overflow-y-auto max-h-[55vh]">
                 
                 <!-- Order Summary Cards -->
                 <div class="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">

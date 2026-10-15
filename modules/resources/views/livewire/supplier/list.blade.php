@@ -75,10 +75,16 @@ new #[Layout('components.layouts.procurement')] class extends Component
         $this->transfer_date = date('Y-m-d');
     }
 
+    public function boot(): void
+    {
+        abort_unless(auth()->user()?->role === 'admin' && !auth()->user()->trashed(), 403);
+    }
+
     // ---------------- LOAD FUNCTIONS ----------------
     public function loadSuppliers(): void
     {
         $this->suppliers = DB::table('suppliers')
+            ->select('supplier_id', 'name', 'contact_person', 'email', 'phone', 'address', 'status')
             ->orderBy('supplier_id')
             ->get()
             ->toArray();
@@ -135,6 +141,14 @@ new #[Layout('components.layouts.procurement')] class extends Component
     // ---------------- SUPPLIER CRUD ----------------
     public function saveSupplier(): void
     {
+        $this->validate([
+            'supplier_name' => 'required|string|max:150',
+            'contact_person' => 'nullable|string|max:100',
+            'email' => ['nullable', 'email', 'max:100', \Illuminate\Validation\Rule::unique('suppliers', 'email')->ignore($this->isEditingSupplier ? $this->supplier_id : null, 'supplier_id')],
+            'phone' => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:2000',
+            'supplier_status' => 'required|in:active,inactive,suspended',
+        ]);
         if (trim($this->supplier_name) === '') {
             $this->supplierMessage = 'Supplier name is required.';
             return;
@@ -166,7 +180,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     public function editSupplier(int $id): void
     {
-        $supplier = DB::table('suppliers')->where('supplier_id', $id)->first();
+        $supplier = DB::table('suppliers')->select('supplier_id', 'name', 'contact_person', 'email', 'phone', 'address', 'status')->where('supplier_id', $id)->first();
         if ($supplier) {
             $this->supplier_id = $supplier->supplier_id;
             $this->supplier_name = $supplier->name ?? '';
@@ -182,6 +196,10 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     public function deleteSupplier(int $id): void
     {
+        if (DB::table('purchase_orders')->where('supplier_id', $id)->exists()) {
+            $this->supplierMessage = 'This supplier has purchase order history. Set its status to inactive instead of deleting it.';
+            return;
+        }
         // Check if supplier has linked inventories
         $inventoryCount = DB::table('inventories')->where('supplier_id', $id)->count();
 

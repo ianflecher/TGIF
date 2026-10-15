@@ -143,7 +143,7 @@ new #[Layout('components.layouts.project')] class extends Component
             'journal_number' => $referenceNo,
             'description' => 'Budget allocated for Task ID ' . $task->task_id,
             'created_by' => Auth::id(),
-            'status' => 'posted',
+            'status' => 'draft',
             'total_debit' => $this->editingBudget['estimated_cost'] ?? 0,
             'total_credit' => 0,
             'created_at' => now(),
@@ -184,65 +184,23 @@ new #[Layout('components.layouts.project')] class extends Component
 
     public function saveBudget()
     {
-        $this->validate([
-            'editingBudget.estimated_cost' => 'required|numeric|min:0',
-        ]);
-
-        // 1️⃣ Correct variance formula: estimated - actual
-        $estimated = $this->editingBudget['estimated_cost'];
-        $actual = $this->editingBudget['actual_cost'] ?? 0;
-        $variance = $estimated - $actual;
-
-        // 2️⃣ Get project ID from the budget
-        $budget = DB::table('budgets')->where('budget_id', $this->editingBudget['budget_id'])->first();
-        
-        // 3️⃣ Update budgets table
-        DB::table('budgets')
-            ->where('budget_id', $this->editingBudget['budget_id'])
-            ->update([
-                'estimated_cost' => $estimated,
-                'variance' => $variance,
-                'updated_at' => now(),
-            ]);
-
-        // 4️⃣ Update journal entry
-        DB::table('journal_entries')
-            ->where('journal_number', 'BUDGET-' . $this->editingBudget['budget_id'])
-            ->update([
-                'description' => 'Updated budget for Task ID ' . $this->editingBudget['task_id'],
-                'total_debit' => $estimated,
-                'updated_at' => now(),
-            ]);
-
-        // 5️⃣ Create new budget approval request
-        DB::table('budget_approvals')->insert([
-            'budget_id' => $this->editingBudget['budget_id'],
-            'requested_by' => Auth::id(),
-            'status' => 'pending',
-            'remarks' => 'Budget modification requested',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        // 6️⃣ UPDATE PROJECT STATUS TO 'on_hold'
-        if ($budget && $budget->project_id) {
-            DB::table('projects')->where('project_id', $budget->project_id)->update([
-                'status' => 'on_hold',
-                'updated_at' => now(),
-            ]);
-        }
-
-        // 7️⃣ Reset modal and redirect to projects.projects
-        $this->showBudgetModal = false;
-        $this->editingBudget = [];
-        
-        // Flash success message
-        session()->flash('success', 'Budget update requested! Project is now on hold until finance approval.');
-        
-        // Redirect to projects.projects route
+        $this->validate(['editingBudget.budget_id' => 'required|integer|exists:budgets,budget_id', 'editingBudget.estimated_cost' => 'required|numeric|min:0|max:9999999999.99|decimal:0,2']);
+        DB::transaction(function () {
+            $budget = DB::table('budgets')->where('budget_id', $this->editingBudget['budget_id'])->lockForUpdate()->first();
+            abort_unless($budget, 404);
+            $journal = DB::table('journal_entries')->where('journal_number', 'BUDGET-'.$budget->budget_id)->lockForUpdate()->first();
+            if ($journal && ($journal->status === 'posted' || $journal->submitted_at)) throw \Illuminate\Validation\ValidationException::withMessages(['editingBudget' => 'Finance must reconcile the submitted or posted budget journal before this budget changes.']);
+            $estimate = (float) $this->editingBudget['estimated_cost'];
+            DB::table('budgets')->where('budget_id', $budget->budget_id)->update(['estimated_cost' => $estimate, 'variance' => $estimate - (float) $budget->actual_cost, 'updated_at' => now()]);
+            if ($journal && $journal->status === 'draft') DB::table('journal_entries')->where('journal_id', $journal->journal_id)->update(['status' => 'cancelled', 'updated_at' => now()]);
+            if (!DB::table('budget_approvals')->where('budget_id', $budget->budget_id)->where('status', 'pending')->exists()) DB::table('budget_approvals')->insert(['budget_id' => $budget->budget_id, 'requested_by' => Auth::id(), 'status' => 'pending', 'remarks' => 'Budget modification requested', 'created_at' => now(), 'updated_at' => now()]);
+            if ($budget->project_id) DB::table('projects')->where('project_id', $budget->project_id)->update(['status' => 'on_hold', 'updated_at' => now()]);
+            DB::table('audit_logs')->insert(['action' => 'budget_revision', 'table_name' => 'budgets', 'record_id' => $budget->budget_id, 'user_id' => Auth::id(), 'old_values' => json_encode(['estimated_cost' => $budget->estimated_cost]), 'new_values' => json_encode(['estimated_cost' => $estimate]), 'created_at' => now(), 'updated_at' => now()]);
+        });
+        $this->showBudgetModal = false; $this->editingBudget = [];
+        session()->flash('success', 'Budget revision requested. A planning change does not post to the ledger.');
         return redirect()->route('projects.projects');
     }
-
     private function getProjectIdByTask($taskId)
     {
         $task = DB::table('tasks')->where('task_id', $taskId)->first();

@@ -181,10 +181,10 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             SELECT COUNT(DISTINCT c.customer_id) as count
             FROM customers c
             INNER JOIN tickets t ON c.customer_id = t.customer_id
-            WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            WHERE t.created_at >= ?
             GROUP BY c.customer_id
             HAVING COUNT(t.ticket_id) >= 3
-        ");
+        ", [now()->subDays(7)->toDateTimeString()]);
         
         // SLA compliance stats
         $slaStats = DB::select("
@@ -193,8 +193,8 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                 SUM(CASE WHEN sc.first_response_met = 1 THEN 1 ELSE 0 END) as fr_met,
                 SUM(CASE WHEN sc.resolution_met = 1 THEN 1 ELSE 0 END) as resolution_met
             FROM sla_compliance sc
-            WHERE sc.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-        ")[0] ?? (object)['total_tickets' => 0, 'fr_met' => 0, 'resolution_met' => 0];
+            WHERE sc.created_at >= ?
+        ", [now()->subDays(30)->toDateTimeString()])[0] ?? (object)['total_tickets' => 0, 'fr_met' => 0, 'resolution_met' => 0];
         
         $frCompliance = $slaStats->total_tickets > 0 ? 
             round(($slaStats->fr_met / $slaStats->total_tickets) * 100, 1) : 0;
@@ -202,7 +202,7 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
             round(($slaStats->resolution_met / $slaStats->total_tickets) * 100, 1) : 0;
         
         $this->stats = [
-            'at_risk_customers' => $atRiskCustomers[0]->count ?? 0,
+            'at_risk_customers' => count($atRiskCustomers),
             'high_value_customers' => DB::table('customers')->count(),
             'total_tickets_week' => DB::table('tickets')->where('created_at', '>=', Carbon::now()->subDays(7))->count(),
             'recovery_tickets' => DB::table('tickets')->where('subject', 'LIKE', '%Service Recovery%')->count(),
@@ -239,10 +239,10 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                     AVG(CASE WHEN sc.resolution_met = 0 THEN sc.resolution_minutes_late ELSE NULL END) as avg_resolution_minutes_late
                 FROM tickets t
                 LEFT JOIN sla_compliance sc ON t.ticket_id = sc.ticket_id
-                WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                WHERE t.created_at >= ?
                 GROUP BY t.priority
             ) sc ON tp.priority_name = sc.priority
-        ");
+        ", [now()->subDays(30)->toDateTimeString()]);
     }
     
     public function loadSLAViolations()
@@ -278,17 +278,16 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                 c.last_name,
                 c.email,
                 c.phone,
-                COALESCE(SUM(so.grand_total), 0) as total_spent,
+                COALESCE((SELECT SUM(so.grand_total) FROM sales_orders so WHERE so.customer_id = c.customer_id AND so.status NOT IN ('cancelled', 'returned')), 0) as total_spent,
                 COUNT(t.ticket_id) as total_tickets,
-                SUM(CASE WHEN t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) as recent_tickets
+                SUM(CASE WHEN t.created_at >= ? THEN 1 ELSE 0 END) as recent_tickets
             FROM customers c
-            LEFT JOIN sales_orders so ON c.customer_id = so.customer_id
             LEFT JOIN tickets t ON c.customer_id = t.customer_id
             GROUP BY c.customer_id, c.first_name, c.last_name, c.email, c.phone
             HAVING recent_tickets >= 3
             ORDER BY recent_tickets DESC, total_tickets DESC
             LIMIT 50
-        ");
+        ", [now()->subDays(7)->toDateTimeString()]);
     }
     
     public function loadRecentRecoveryTickets()
@@ -853,10 +852,10 @@ new #[Layout('components.layouts.helpdesk')] class extends Component
                 SELECT c.customer_id, c.first_name, c.last_name, c.email, COUNT(t.ticket_id) as ticket_count
                 FROM customers c
                 INNER JOIN tickets t ON c.customer_id = t.customer_id
-                WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                WHERE t.created_at >= ?
                 GROUP BY c.customer_id, c.first_name, c.last_name, c.email
                 HAVING COUNT(t.ticket_id) >= 3
-            ");
+            ", [now()->subDays(7)->toDateTimeString()]);
             
             $currentUserId = auth()->id() ?? 1;
             $recoveryCount = 0;

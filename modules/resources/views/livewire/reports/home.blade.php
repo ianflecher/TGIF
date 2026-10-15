@@ -33,7 +33,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $totalStock = DB::table('inventories')->sum('quantity') ?? 0;
         
         // Combine with e-commerce sales
-        $ecommerceSales = DB::table('ecommerce_orders')->where('payment_status', 'paid')->sum('total_amount') ?? 0;
+        $ecommerceSales = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')->where('payment_status', 'paid')->sum('total_amount') ?? 0;
         
         $totalRevenue = $totalSales + $ecommerceSales;
         
@@ -44,7 +44,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->sum('total_amount') ?? 0;
         
-        $todayEcommerceSales = DB::table('ecommerce_orders')
+        $todayEcommerceSales = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->whereDate('order_date', $today)
             ->where('payment_status', 'paid')
             ->sum('total_amount') ?? 0;
@@ -56,7 +56,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->count();
         
-        $todayEcommerceTransactions = DB::table('ecommerce_orders')
+        $todayEcommerceTransactions = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->whereDate('order_date', $today)
             ->where('payment_status', 'paid')
             ->count();
@@ -76,7 +76,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->sum('total_amount') ?? 0;
         
-        $yesterdayEcommerceSales = DB::table('ecommerce_orders')
+        $yesterdayEcommerceSales = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->whereDate('order_date', $yesterday)
             ->where('payment_status', 'paid')
             ->sum('total_amount') ?? 0;
@@ -90,7 +90,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->sum('total_amount') ?? 0;
         
-        $monthEcommerceSales = DB::table('ecommerce_orders')
+        $monthEcommerceSales = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->where('order_date', '>=', $monthStart)
             ->where('payment_status', 'paid')
             ->sum('total_amount') ?? 0;
@@ -102,7 +102,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->count();
         
-        $monthEcommerceTransactions = DB::table('ecommerce_orders')
+        $monthEcommerceTransactions = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->where('order_date', '>=', $monthStart)
             ->where('payment_status', 'paid')
             ->count();
@@ -118,7 +118,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->sum('total_amount') ?? 0;
         
-        $lastMonthEcommerceSales = DB::table('ecommerce_orders')
+        $lastMonthEcommerceSales = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->whereBetween('order_date', [$lastMonthStart, $lastMonthEnd])
             ->where('payment_status', 'paid')
             ->sum('total_amount') ?? 0;
@@ -132,7 +132,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('status', '!=', 'cancelled')
             ->sum('total_amount') ?? 0;
         
-        $yearEcommerceSales = DB::table('ecommerce_orders')
+        $yearEcommerceSales = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->where('order_date', '>=', $yearStart)
             ->where('payment_status', 'paid')
             ->sum('total_amount') ?? 0;
@@ -142,8 +142,7 @@ new #[Layout('components.layouts.app')] class extends Component
         // Inventory Status from inventories table
         $lowStockThreshold = 10;
         $lowStockCount = DB::table('inventories')
-            ->where('quantity', '>', 0)
-            ->where('quantity', '<=', $lowStockThreshold)
+            ->whereRaw('quantity <= COALESCE(min_quantity, 10)')
             ->count();
         
         $outOfStockCount = DB::table('inventories')->where('quantity', 0)->count();
@@ -215,7 +214,7 @@ new #[Layout('components.layouts.app')] class extends Component
         $this->topCustomers = DB::table('sales_orders')
             ->select(
                 'customers.customer_id',
-                DB::raw('CONCAT(customers.first_name, " ", customers.last_name) as customer_name'),
+                DB::raw(\App\Support\ReportSql::customerName().' as customer_name'),
                 DB::raw('COUNT(sales_orders.order_id) as order_count'),
                 DB::raw('SUM(sales_orders.total_amount) as total_spent')
             )
@@ -234,7 +233,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'products.product_name',
                 'sales_orders.order_date',
                 'sales_orders.order_id',
-                DB::raw('CONCAT(customers.first_name, " ", customers.last_name) as customer_name')
+                DB::raw(\App\Support\ReportSql::customerName().' as customer_name')
             )
             ->leftJoin('products', 'order_items.product_id', '=', 'products.product_id')
             ->leftJoin('sales_orders', 'order_items.order_id', '=', 'sales_orders.order_id')
@@ -250,7 +249,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->toArray();
         
         // Recent E-commerce Orders
-        $this->recentEcommerceOrders = DB::table('ecommerce_orders')
+        $this->recentEcommerceOrders = DB::table('ecommerce_orders')->whereNull('linked_sales_order_id')
             ->select(
                 'ecommerce_orders.*',
                 'customers.first_name',
@@ -273,7 +272,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'unit_price',
                 'category'
             )
-            ->where('quantity', '<=', $lowStockThreshold)
+            ->whereRaw('quantity <= COALESCE(min_quantity, 10)')
             ->orderBy('quantity', 'asc')
             ->limit(10)
             ->get()
@@ -325,14 +324,14 @@ new #[Layout('components.layouts.app')] class extends Component
     <div class="mb-8">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-xl font-semibold text-gray-800">Overall Business Performance</h2>
-            <span class="text-sm text-gray-500">All Time Data</span>
+            <span class="text-sm text-gray-500">Original order values before credits; financial totals use the posted ledger</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Total Revenue -->
+            <!-- Order value -->
             <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-gray-500 text-sm font-medium">Total Revenue</p>
+                        <p class="text-gray-500 text-sm font-medium">Order value</p>
                         <h3 class="text-2xl font-bold text-gray-800">{{ $this->formatCurrency($stats['total_revenue'] ?? 0) }}</h3>
                     </div>
                     <div class="bg-green-100 p-3 rounded-full">
@@ -388,11 +387,11 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
             </div>
 
-            <!-- Average Sale -->
+            <!-- Average order value -->
             <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-gray-500 text-sm font-medium">Average Sale</p>
+                        <p class="text-gray-500 text-sm font-medium">Average order value</p>
                         <h3 class="text-2xl font-bold text-gray-800">{{ $this->formatCurrency($stats['avg_sale'] ?? 0) }}</h3>
                     </div>
                     <div class="bg-orange-100 p-3 rounded-full">
@@ -403,7 +402,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
                 <div class="mt-4">
                     <span class="text-sm text-gray-600">
-                        Per transaction
+                        Per order record
                     </span>
                 </div>
             </div>
@@ -497,7 +496,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             {{ $stats['low_stock_count'] ?? 0 }}
                         </span>
                     </div>
-                    <p class="text-sm text-gray-600">≤ {{ $stats['low_stock_threshold'] ?? 10 }} units</p>
+                    <p class="text-sm text-gray-600">At or below configured minimum</p>
                 </div>
 
                 <!-- Out of Stock -->
@@ -593,7 +592,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div class="text-right">
                                 <span class="font-bold text-green-600">{{ $this->formatCurrency($product->total_sales ?? 0) }}</span>
-                                <p class="text-xs text-gray-500">Total revenue</p>
+                                <p class="text-xs text-gray-500">Order value</p>
                             </div>
                         </div>
                     @empty
@@ -610,7 +609,7 @@ new #[Layout('components.layouts.app')] class extends Component
             <div class="px-6 py-4 border-b flex justify-between items-center">
                 <div>
                     <h2 class="text-xl font-semibold text-gray-800">Top 5 Customers</h2>
-                    <p class="text-sm text-gray-600">Highest spending customers</p>
+                    <p class="text-sm text-gray-600">Highest order values</p>
                 </div>
             </div>
             <div class="p-6">
@@ -628,7 +627,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             </div>
                             <div class="text-right">
                                 <span class="font-bold text-green-600">{{ $this->formatCurrency($customer->total_spent ?? 0) }}</span>
-                                <p class="text-xs text-gray-500">Total spent</p>
+                                <p class="text-xs text-gray-500">Order value</p>
                             </div>
                         </div>
                     @empty

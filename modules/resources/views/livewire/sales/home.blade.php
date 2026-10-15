@@ -57,7 +57,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 'agents.employee_id',
                 DB::raw('COUNT(tickets.ticket_id) as ticket_count'),
                 DB::raw('SUM(CASE WHEN tickets.status = "resolved" OR tickets.status = "closed" THEN 1 ELSE 0 END) as resolved_count'),
-                DB::raw('AVG(CASE WHEN tickets.resolved_at IS NOT NULL THEN TIMESTAMPDIFF(HOUR, tickets.created_at, tickets.resolved_at) ELSE NULL END) as avg_resolution_time')
+                DB::raw('AVG('.\App\Support\ReportSql::elapsed('tickets.created_at', 'tickets.resolved_at').') as avg_resolution_time')
             )
             ->leftJoin('employees as agents', 'tickets.assigned_agent', '=', 'agents.employee_id')
             ->leftJoin('users as agent_users', 'agents.user_id', '=', 'agent_users.user_id')
@@ -73,7 +73,7 @@ new #[Layout('components.layouts.app')] class extends Component
             ->select(
                 'priority',
                 DB::raw('COUNT(*) as count'),
-                DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, NOW()))) as avg_time')
+                DB::raw('AVG('.\App\Support\ReportSql::elapsed('created_at', 'COALESCE(resolved_at, CURRENT_TIMESTAMP)').') as avg_time')
             )
             ->groupBy('priority')
             ->get()
@@ -95,11 +95,13 @@ new #[Layout('components.layouts.app')] class extends Component
         // SLA Compliance
         $this->slaCompliance = [
             'within_sla' => DB::table('tickets')
-                ->where('first_response_at', '<=', DB::raw('DATE_ADD(created_at, INTERVAL 24 HOUR)'))
+                ->where('first_response_at', '<=', DB::raw(\App\Support\ReportSql::responseDeadline()))
                 ->count(),
             'breached_sla' => DB::table('tickets')
-                ->where('first_response_at', '>', DB::raw('DATE_ADD(created_at, INTERVAL 24 HOUR)'))
-                ->orWhereNull('first_response_at')
+                ->where(function ($query) {
+                    $query->where('first_response_at', '>', DB::raw(\App\Support\ReportSql::responseDeadline()))
+                        ->orWhere(fn ($pending) => $pending->whereNull('first_response_at')->where('created_at', '<', now()->subHours(24)));
+                })
                 ->count(),
             'total_with_sla' => DB::table('tickets')->whereNotNull('first_response_at')->count(),
         ];
@@ -108,7 +110,7 @@ new #[Layout('components.layouts.app')] class extends Component
     private function calculateAvgResponseTime()
     {
         $result = DB::table('tickets')
-            ->select(DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, COALESCE(first_response_at, NOW()))) as avg_response_hours'))
+            ->select(DB::raw('AVG('.\App\Support\ReportSql::elapsed('created_at', 'first_response_at').') as avg_response_hours'))
             ->whereNotNull('first_response_at')
             ->first();
         

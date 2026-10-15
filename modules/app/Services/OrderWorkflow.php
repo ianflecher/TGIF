@@ -12,7 +12,7 @@ class OrderWorkflow
 
     public function advance(User $actor, int $orderId, string $expectedStatus): void
     {
-        abort_unless($actor->role === 'admin' && !$actor->trashed(), 403);
+        app(AccessControl::class)->authorize($actor, 'ecommerce', 'write');
 
         DB::transaction(function () use ($actor, $orderId, $expectedStatus) {
             $order = DB::table('sales_orders')->where('order_id', $orderId)->lockForUpdate()->first();
@@ -37,6 +37,11 @@ class OrderWorkflow
                 'user_id' => $actor->getKey(), 'ip_address' => request()->ip(),
                 'user_agent' => substr((string) request()->userAgent(), 0, 255),
                 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $label = CustomerOrderAccess::label($next, $order->fulfillment_mode);
+            DB::table('order_events')->insert([
+                'order_id' => $orderId, 'status' => $next, 'message' => 'Order update: '.$label.'.',
+                'actor_id' => $actor->getKey(), 'created_at' => now(), 'updated_at' => now(),
             ]);
         });
     }

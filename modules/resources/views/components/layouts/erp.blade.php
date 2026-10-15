@@ -9,6 +9,11 @@
     $current = $navigation->first(fn ($item) => request()->routeIs($item['pattern']));
     $section = explode('.', request()->route()?->getName() ?? '')[0];
     $sectionLinks = config('erp.sections.'.$section, []);
+    if (auth()->user()?->role === 'admin') {
+        $access = app(\App\Services\AccessControl::class);
+        $navigation = $navigation->filter(fn ($item) => !$access->module($item['route']) || $access->allows(auth()->user(), $access->module($item['route'])));
+        $sectionLinks = array_filter($sectionLinks, fn ($route) => !$access->module($route) || $access->allows(auth()->user(), $access->module($route)));
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">

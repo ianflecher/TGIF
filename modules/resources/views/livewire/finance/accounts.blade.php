@@ -50,12 +50,12 @@ new #[Layout('components.layouts.finance')] class extends Component
     // Trial Balance Properties
     public $startDate;
     public $endDate;
-    public $trialBalanceData = [];
+    #[\Livewire\Attributes\Locked] public $trialBalanceData = [];
     
     // Financial Statements Properties
     public $statementType = 'balance_sheet';
     public $statementPeriod = 'current_month';
-    public $financialStatementData = [];
+    #[\Livewire\Attributes\Locked] public $financialStatementData = [];
     
     public function mount()
     {
@@ -344,90 +344,37 @@ new #[Layout('components.layouts.finance')] class extends Component
     
     public function saveJournalEntry()
     {
+        abort_unless(Auth::user()?->role === 'admin' && !Auth::user()->trashed(), 403);
         $this->validate([
             'entryDate' => 'required|date',
             'journalDescription' => 'required|min:10|max:500',
-            'journalItems' => 'required|array|min:1',
+            'journalItems' => 'required|array|min:2',
+            'journalItems.*.account_id' => ['required', \Illuminate\Validation\Rule::exists('chart_of_accounts', 'account_id')->where('is_active', true)],
+            'journalItems.*.debit' => 'required|numeric|min:0|max:9999999999.99|decimal:0,2',
+            'journalItems.*.credit' => 'required|numeric|min:0|max:9999999999.99|decimal:0,2',
+            'journalItems.*.description' => 'nullable|string|max:500',
         ]);
+        foreach ($this->journalItems as $index => $item) {
+            if (((float) $item['debit'] > 0) === ((float) $item['credit'] > 0)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['journalItems.'.$index.'.debit' => 'Each line needs a positive debit or credit, on one side only.']);
+            }
+        }
         
         // Validate debit and credit totals
         $totalDebit = array_sum(array_column($this->journalItems, 'debit'));
         $totalCredit = array_sum(array_column($this->journalItems, 'credit'));
         
-        if (abs($totalDebit - $totalCredit) > 0.01) {
+        if ((int) round($totalDebit * 100) !== (int) round($totalCredit * 100)) {
             session()->flash('error', 'Journal entry must balance. Total debit (' . $this->formatCurrency($totalDebit) . ') must equal total credit (' . $this->formatCurrency($totalCredit) . ')');
             return;
         }
         
-        try {
-            DB::beginTransaction();
-            
-            $currentUser = Auth::user();
-            $now = now();
-            
-            // Generate journal number
-            $journalNumber = 'JN-' . date('Ymd') . '-' . strtoupper(Str::random(6));
-            
-            // Create journal entry
-            $journalId = DB::table('journal_entries')->insertGetId([
-                'entry_date' => $this->entryDate,
-                'journal_number' => $journalNumber,
-                'description' => $this->journalDescription,
-                'created_by' => $currentUser->user_id,
-                'reference_type' => $this->referenceType ?: null,
-                'reference_id' => $this->referenceId ?: null,
-                'status' => 'posted',
-                'total_debit' => $totalDebit,
-                'total_credit' => $totalCredit,
-                'created_at' => $now,
-                'updated_at' => $now
-            ]);
-            
-            // Create journal details
-            foreach ($this->journalItems as $item) {
-                DB::table('journal_details')->insert([
-                    'journal_id' => $journalId,
-                    'account_id' => $item['account_id'],
-                    'debit' => $item['debit'],
-                    'credit' => $item['credit'],
-                    'description' => $item['description'],
-                    'created_at' => $now,
-                    'updated_at' => $now
-                ]);
-            }
-            
-            // Create audit log
-            DB::table('audit_logs')->insert([
-                'action' => 'CREATE',
-                'table_name' => 'journal_entries',
-                'record_id' => $journalId,
-                'old_values' => null,
-                'new_values' => json_encode([
-                    'journal_number' => $journalNumber,
-                    'description' => $this->journalDescription,
-                    'total_debit' => $totalDebit,
-                    'total_credit' => $totalCredit
-                ]),
-                'user_id' => $currentUser->user_id,
-                'ip_address' => request()->ip(),
-                'user_agent' => request()->userAgent(),
-                'created_at' => $now,
-                'updated_at' => $now
-            ]);
-            
-            DB::commit();
-            
-            $this->showJournalEntryModal = false;
-            $this->resetJournalEntryForm();
-            
-            session()->flash('success', 'Journal entry saved successfully with number: ' . $journalNumber);
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            session()->flash('error', 'Failed to save journal entry: ' . $e->getMessage());
-        }
+        app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'finance', 'write');
+        $journalId = app(\App\Services\AccountingLedger::class)->draft(auth()->id(), $this->entryDate, $this->journalDescription, $this->journalItems, 'manual', null);
+        $this->showJournalEntryModal = false;
+        $this->resetJournalEntryForm();
+        session()->flash('success', 'Journal draft saved. Submit it in Finance controls for independent approval and posting.');
     }
-    
     // Chart of Accounts Methods
     public function loadChartOfAccounts()
     {
@@ -524,6 +471,9 @@ new #[Layout('components.layouts.finance')] class extends Component
                 $oldAccount = DB::table('chart_of_accounts')
                     ->where('account_id', $this->selectedAccount)
                     ->first();
+                if (!$oldAccount) throw new \RuntimeException('Account not found.');
+                $used = DB::table('journal_details as d')->join('journal_entries as j', 'd.journal_id', '=', 'j.journal_id')->where('d.account_id', $this->selectedAccount)->where('j.status', 'posted')->exists();
+                if ($used && ($oldAccount->account_code !== $this->accountCode || $oldAccount->account_type !== $this->accountType || $oldAccount->normal_balance !== $this->normalBalance)) throw new \RuntimeException('Posted account classifications cannot change. Use a new account and a correcting journal.');
                 
                 // Update account
                 DB::table('chart_of_accounts')
@@ -587,12 +537,11 @@ new #[Layout('components.layouts.finance')] class extends Component
                 DB::raw('COALESCE(SUM(jd.credit), 0) as total_credit')
             )
             ->leftJoin('journal_details as jd', function($join) {
-                $join->on('ca.account_id', '=', 'jd.account_id')
-                     ->whereBetween('jd.created_at', [$this->startDate . ' 00:00:00', $this->endDate . ' 23:59:59']);
+                $join->on('ca.account_id', '=', 'jd.account_id');
             })
             ->leftJoin('journal_entries as je', 'jd.journal_id', '=', 'je.journal_id')
             ->where('je.status', 'posted')
-            ->where('ca.is_active', 1)
+            ->whereBetween('je.entry_date', [$this->startDate, $this->endDate])
             ->groupBy('ca.account_id', 'ca.account_code', 'ca.account_name', 'ca.account_type', 'ca.normal_balance')
             ->havingRaw('COALESCE(SUM(jd.debit), 0) != 0 OR COALESCE(SUM(jd.credit), 0) != 0')
             ->orderBy('ca.account_code')
@@ -658,15 +607,15 @@ new #[Layout('components.layouts.finance')] class extends Component
                 'ca.account_name',
                 'ca.account_type',
                 'ca.normal_balance',
-                DB::raw('COALESCE(SUM(CASE WHEN ca.normal_balance = "debit" THEN jd.debit - jd.credit ELSE jd.credit - jd.debit END), 0) as balance')
+                DB::raw('COALESCE(SUM(CASE WHEN je.journal_id IS NULL THEN 0 WHEN ca.account_type = "asset" THEN jd.debit - jd.credit ELSE jd.credit - jd.debit END), 0) as balance')
             )
             ->leftJoin('journal_details as jd', 'ca.account_id', '=', 'jd.account_id')
             ->leftJoin('journal_entries as je', function($join) use ($startDate, $endDate) {
                 $join->on('jd.journal_id', '=', 'je.journal_id')
-                     ->whereBetween('je.entry_date', [$startDate, $endDate])
+                     ->where('je.entry_date', '<=', $endDate)
                      ->where('je.status', 'posted');
             })
-            ->where('ca.is_active', 1)
+            
             ->whereIn('ca.account_type', ['asset', 'liability', 'equity'])
             ->groupBy('ca.account_id', 'ca.account_code', 'ca.account_name', 'ca.account_type', 'ca.normal_balance')
             ->orderBy('ca.account_code')
@@ -688,6 +637,9 @@ new #[Layout('components.layouts.finance')] class extends Component
                     break;
             }
         }
+        $income = app(\App\Services\LedgerReports::class)->totals(null, $endDate)['income'] / 100;
+        $this->financialStatementData['equity'][] = (object) ['account_name' => 'Unclosed profit / loss through report date', 'balance' => $income];
+        $this->financialStatementData['total_equity'] += $income;
     }
     
     private function generateIncomeStatement($startDate, $endDate)
@@ -708,7 +660,7 @@ new #[Layout('components.layouts.finance')] class extends Component
                 'ca.account_id',
                 'ca.account_code',
                 'ca.account_name',
-                DB::raw('COALESCE(SUM(jd.credit - jd.debit), 0) as amount')
+                DB::raw('COALESCE(SUM(CASE WHEN je.journal_id IS NOT NULL THEN jd.credit - jd.debit ELSE 0 END), 0) as amount')
             )
             ->leftJoin('journal_details as jd', 'ca.account_id', '=', 'jd.account_id')
             ->leftJoin('journal_entries as je', function($join) use ($startDate, $endDate) {
@@ -716,7 +668,7 @@ new #[Layout('components.layouts.finance')] class extends Component
                      ->whereBetween('je.entry_date', [$startDate, $endDate])
                      ->where('je.status', 'posted');
             })
-            ->where('ca.is_active', 1)
+            
             ->where('ca.account_type', 'revenue')
             ->groupBy('ca.account_id', 'ca.account_code', 'ca.account_name')
             ->orderBy('ca.account_code')
@@ -728,7 +680,7 @@ new #[Layout('components.layouts.finance')] class extends Component
                 'ca.account_id',
                 'ca.account_code',
                 'ca.account_name',
-                DB::raw('COALESCE(SUM(jd.debit - jd.credit), 0) as amount')
+                DB::raw('COALESCE(SUM(CASE WHEN je.journal_id IS NOT NULL THEN jd.debit - jd.credit ELSE 0 END), 0) as amount')
             )
             ->leftJoin('journal_details as jd', 'ca.account_id', '=', 'jd.account_id')
             ->leftJoin('journal_entries as je', function($join) use ($startDate, $endDate) {
@@ -736,7 +688,7 @@ new #[Layout('components.layouts.finance')] class extends Component
                      ->whereBetween('je.entry_date', [$startDate, $endDate])
                      ->where('je.status', 'posted');
             })
-            ->where('ca.is_active', 1)
+            
             ->where('ca.account_type', 'expense')
             ->groupBy('ca.account_id', 'ca.account_code', 'ca.account_name')
             ->orderBy('ca.account_code')

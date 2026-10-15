@@ -95,3 +95,13 @@ Browser verification used a separate temporary SQLite preview database with `PRE
 ## Storefront follow-up
 
 The subsequent ecommerce pass adds the supplied photography, a responsive TGIF storefront, a shared guest/customer cart, matching checkout, persisted customer notes and sign-in continuity. It fixes the legacy add-to-cart stock deduction and the inconsistent cart fees. Current validation is **59 tests / 168 assertions**, with passing frontend build and Blade compilation. See [STOREFRONT.md](STOREFRONT.md) for preview instructions, sample catalog behavior, the required customer-notes migration and remaining production integrations. The Windows launcher now uses port **8075**.
+
+## Commerce operations follow-up
+
+Configurable fulfillment settings, customer tracking/reorder, checkout draft/review protection, manual cash receipt/refund records and private printable receipts are now available. Current automated validation: **73 tests / 223 assertions**. Real operating rules and online payment activation remain deferred at the owner's request. Optional payment accounting mappings create draft journals for Finance review; cancellation/return compensation and consolidation of legacy finance mutations remain outstanding. See STOREFRONT.md for migration and operating details.
+
+## Start-to-finish audit, 15 October 2026
+
+The latest audit repairs department page crashes, support-note privacy, validated customer-profile writes, journal line validation, custom-login two-factor enforcement and persistent Livewire portal checks. Final verification: **80 tests / 257 assertions**, plus passing build and Blade compilation. Read [END_TO_END_AUDIT.md](END_TO_END_AUDIT.md) for exact evidence, limits and remaining production blockers; passing page tests does not certify the complete ERP.
+
+Supplier follow-up: purchase-order ownership, issued-only acceptance, independent dispatch reporting, account disabling and admin-only supplier management are covered by new tests. Latest full suite: **89 tests / 332 assertions**. Run migrations for the new supplier dispatch/audit fields before using an existing configured database. See END_TO_END_AUDIT.md for scope and remaining procure-to-pay work.

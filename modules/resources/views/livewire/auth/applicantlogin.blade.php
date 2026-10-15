@@ -42,6 +42,7 @@ new #[Layout('components.layouts.employee')] class extends Component
         'password' => ['required', 'string'],
     ]);
     
+    if (\App\Support\PortalTwoFactor::challenge(['email' => $this->email, 'password' => $this->password], (bool) $this->remember)) return redirect()->route('two-factor.login');
     if (Auth::attempt(['email' => $this->email, 'password' => $this->password], $this->remember)) {
         $user = Auth::user();
         

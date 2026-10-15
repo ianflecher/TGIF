@@ -11,6 +11,7 @@ use App\Livewire\StorefrontCartPage;
 // ====================
 // PUBLIC ROUTES
 // ====================
+Route::get('/application-documents/{document}', \App\Http\Controllers\ApplicantDocumentController::class)->whereNumber('document')->middleware('auth')->name('application.documents.download');
 
 // Landing Page
 Route::get('/welcome', fn () => redirect()->route('landing'))->name('home');
@@ -24,10 +25,7 @@ Volt::route('/applicant/login', 'auth.applicantlogin')->name('applicant.login');
 Volt::route('/supplier/login', 'auth.supplier')->name('supplier.login');
 Volt::route('/register', 'auth.register')->name('register');
 
-Route::get('/home', fn () => redirect()->route(match (auth()->user()->role) {
-    'admin' => 'admin.dashboard', 'employee', 'manager' => 'employee.dashboard',
-    default => 'customer.dashboard',
-}))->middleware('auth')->name('dashboard');
+Route::get('/home', fn () => redirect()->route(app(\App\Services\AccessControl::class)->home(auth()->user())))->middleware('auth')->name('dashboard');
 
 Route::middleware('auth')->group(function () {
     Volt::route('/settings/profile', 'settings.profile')->name('profile.edit');
@@ -55,8 +53,15 @@ Volt::route('/profile', 'customer.account.profile')->middleware('portal:customer
 Route::get('/profile/edit', fn () => redirect()->route('customer.account.profile'))->middleware('portal:customer')->name('customer.profile.edit');
 
 // Customer Orders
-Volt::route('/orders', 'customer.orders.index')->middleware('portal:customer')->name('customer.orders.index');
-Route::get('/orders/{order}', fn () => redirect()->route('customer.orders.index'))->middleware('portal:customer')->name('customer.orders.show');
+Route::get('/orders', \App\Livewire\CustomerOrders::class)->middleware('portal:customer')->name('customer.orders.index');
+Route::get('/orders/{order}', \App\Livewire\CustomerOrder::class)->middleware('portal:customer')->name('customer.orders.show');
+Route::get('/orders/{order}/receipts/{payment}', \App\Http\Controllers\OrderReceiptController::class)->middleware('portal:customer')->name('customer.orders.receipt');
+Route::get('/admin/orders/{order}/receipts/{payment}', \App\Http\Controllers\OrderReceiptController::class)->middleware('portal:admin')->name('admin.orders.receipt');
+Route::get('/finance/payments', \App\Livewire\OrderPaymentDesk::class)->middleware('portal:admin')->name('finance.payments');
+Route::get('/finance/controls', \App\Livewire\AccountingControls::class)->middleware('portal:admin')->name('finance.controls');
+Route::get('/admin/access', \App\Livewire\AccessManagement::class)->middleware('portal:admin')->name('access.management');
+Route::get('/ecommerce/adjustments', \App\Livewire\OrderAdjustmentDesk::class)->middleware('portal:admin')->name('ecommerce.adjustments');
+Route::get('/admin/storefront-settings', \App\Livewire\CommerceSettings::class)->middleware('portal:admin')->name('commerce.settings');
 
 // Customer Cart & Checkout
 Route::get('/cart', StorefrontCartPage::class)->middleware('portal:customer')->name('customer.cart.index');
@@ -94,7 +99,7 @@ Route::get('/admin/customers/{customer}', fn () => redirect()->route('admin.dash
 Route::get('/admin/reports', fn () => redirect()->route('reports.home'))->middleware('portal:admin')->name('admin.reports.index');
 
 // Admin Settings
-Route::get('/admin/settings', fn () => redirect()->route('admin.dashboard'))->middleware('portal:admin')->name('admin.settings.index');
+Route::get('/admin/settings', fn () => redirect()->route('commerce.settings'))->middleware('portal:admin')->name('admin.settings.index');
 
 Volt::route('/admin/projects', 'projects.home')->middleware('portal:admin')->name('projects.home');
 
@@ -104,6 +109,7 @@ Volt::route('/sales/ticket', 'sales.ticket')->middleware('portal:admin')->name('
 Volt::route('/admin/inventory', 'inventory.home')->middleware('portal:admin')->name('inventory.home');
 Volt::route('/inventory/tracking', 'inventory.tracking')->middleware('portal:admin')->name('inventory.tracking');
 Volt::route('/inventory/stock', 'inventory.stock')->middleware('portal:admin')->name('inventory.stock');
+Volt::route('/inventory/receiving', 'employee.warehouse')->middleware('portal:admin')->name('inventory.receiving');
 
 Volt::route('/admin/customerservice', 'customerservice.home')->middleware('portal:admin')->name('customerservice.home');
 
@@ -169,7 +175,7 @@ Volt::route('/ecommerce/products', 'ecommerce.products')->middleware('portal:adm
 
 Volt::route('/supplier', 'supplier.dashboard')->middleware('portal:supplier')->name('supplier.dashboard');
 
-Volt::route('/supplier/list', 'supplier.list')->middleware('portal:supplier')->name('supplier.list');
+Volt::route('/supplier/list', 'supplier.list')->middleware('portal:admin')->name('supplier.list');
 
 Volt::route('/procurement/create', 'procurement.create')->middleware('portal:admin')->name('procurement.create');
 

@@ -2,180 +2,92 @@
 
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Illuminate\Support\Facades\DB;
+use App\Services\SupplierOrders;
 use Carbon\Carbon;
 
 new #[Layout('components.layouts.supplier')] class extends Component
 {
-    public $purchaseOrders = [];
-    public $selectedOrder = null;
-    public $orderItems = [];
+    #[Locked] public $purchaseOrders = [];
+    #[Locked] public $selectedOrder = null;
+    #[Locked] public $orderItems = [];
     public $message = '';
-    
-    public function mount()
-    {
-        // Get the logged-in supplier from session
-        $supplier = session('supplier');
-        
-        if (!$supplier) {
-            abort(403, 'Supplier not authenticated');
-        }
-        
-        $this->loadOrders($supplier->supplier_id);
-    }
-    
-    public function loadOrders($supplierId)
-    {
 
-        
-        try {
-            // First, check if there are any orders for this supplier
-            $ordersCount = DB::table('purchase_orders')
-                ->where('supplier_id', $supplierId)
-                ->count();
+    public function boot(): void { app(SupplierOrders::class)->supplierId(); }
+    public function mount(): void { $this->loadOrders(); }
 
-            
-            // Try query without join first
-            $testQuery = DB::table('purchase_orders as po')
-                ->where('po.supplier_id', $supplierId)
-                ->whereIn('po.status', ['sent', 'confirmed', 'partially_received', 'draft'])
-                ->select(
-                    'po.po_id',
-                    'po.po_number',
-                    'po.order_date',
-                    'po.expected_delivery_date',
-                    'po.total_amount',
-                    'po.status',
-                    'po.terms',
-                    'po.created_by'
-                )
-                ->orderBy('po.order_date', 'desc')
-                ->get();
-            
-            // If there are results, check if join is causing issues
-            if (count($testQuery) > 0) {
-                $this->purchaseOrders = DB::table('purchase_orders as po')
-                    ->leftJoin('users as u', 'po.created_by', '=', 'u.user_id')
-                    ->where('po.supplier_id', $supplierId)
-                    ->whereIn('po.status', ['sent', 'confirmed', 'partially_received', 'draft'])
-                    ->select(
-                        'po.po_id',
-                        'po.po_number',
-                        'po.order_date',
-                        'po.expected_delivery_date',
-                        'po.total_amount',
-                        'po.status',
-                        'po.terms',
-                        'u.full_name as created_by_name'
-                    )
-                    ->orderBy('po.order_date', 'desc')
-                    ->get()
-                    ->toArray();
-                    
-            }
-            
-        } catch (\Exception $e) {
-            Log::error('Error loading orders: ' . $e->getMessage());
-        }
-    }
-    
-    public function viewOrder($poId)
+    public function loadOrders(): void
     {
-        $this->selectedOrder = DB::table('purchase_orders')
-            ->where('po_id', $poId)
-            ->first();
-            
-        if ($this->selectedOrder) {
-            $this->orderItems = DB::table('purchase_order_items as poi')
-                ->leftJoin('inventories as i', 'poi.inventory_id', '=', 'i.inventory_id')
-                ->leftJoin('products as p', 'i.inventory_id', '=', 'p.inventory_id')
-                ->where('poi.po_id', $poId)
-                ->select(
-                    'poi.*',
-                    'i.product_name',
-                    'i.sku',
-                    'p.category',
-                    DB::raw('IFNULL(p.product_name, i.product_name) as display_name')
-                )
-                ->get()
-                ->toArray();
-        }
+        $this->purchaseOrders = app(SupplierOrders::class)->query()
+            ->leftJoin('users as u', 'purchase_orders.created_by', '=', 'u.user_id')
+            ->select('purchase_orders.*', 'u.full_name as created_by_name')
+            ->orderByDesc('order_date')->orderByDesc('po_id')->get()->toArray();
     }
-    
-    public function closeOrderView()
+
+    public function viewOrder(int $poId): void
+    {
+        $this->selectedOrder = app(SupplierOrders::class)->query()->where('po_id', $poId)->first();
+        abort_unless($this->selectedOrder, 404);
+        $this->orderItems = DB::table('purchase_order_items as poi')
+            ->leftJoin('inventories as i', 'poi.inventory_id', '=', 'i.inventory_id')
+            ->where('poi.po_id', $poId)
+            ->select('poi.*', 'i.product_name', 'i.sku', 'i.category', 'i.product_name as display_name')
+            ->get()->toArray();
+    }
+
+    public function closeOrderView(): void
     {
         $this->selectedOrder = null;
         $this->orderItems = [];
     }
-    
-    public function acceptOrder($poId)
+
+    public function acceptOrder(int $poId): void
     {
-        DB::table('purchase_orders')
-            ->where('po_id', $poId)
-            ->update([
-                'status' => 'confirmed',
-                'updated_at' => Carbon::now()
-            ]);
-            
+        app(SupplierOrders::class)->accept($poId);
         $this->message = 'Purchase order accepted successfully!';
-        $this->loadOrders(session('supplier')->supplier_id);
+        $this->loadOrders();
         $this->closeOrderView();
     }
-    
-    public function markAsDelivered($poId)
+
+    public function markAsDelivered(int $poId): void
     {
-        DB::beginTransaction();
-        
-        try {
-            // Update PO status to partially_received (first delivery)
-            DB::table('purchase_orders')
-                ->where('po_id', $poId)
-                ->update([
-                    'status' => 'partially_received',
-                    'updated_at' => Carbon::now()
-                ]);
-            
-            DB::commit();
-            
-            $this->message = 'Order marked as partially delivered!';
-            $this->loadOrders(session('supplier')->supplier_id);
-            $this->closeOrderView();
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            $this->message = 'Error: ' . $e->getMessage();
-        }
+        // Compatibility action name: reports dispatch, never warehouse receipt.
+        app(SupplierOrders::class)->dispatch($poId);
+        $this->message = 'Dispatch reported. Warehouse staff must confirm received quantities.';
+        $this->loadOrders();
+        $this->closeOrderView();
     }
-    
-    public function getStatusColor($status)
+
+    public function getStatusColor($status): string
     {
-        switch ($status) {
-            case 'sent': return 'bg-amber-100 text-amber-800';
-            case 'confirmed': return 'bg-emerald-100 text-emerald-800';
-            case 'partially_received': return 'bg-teal-100 text-teal-800';
-            case 'completed': return 'bg-green-100 text-green-800';
-            default: return 'bg-gray-100 text-gray-800';
-        }
+        return match ($status) {
+            'sent' => 'bg-amber-100 text-amber-800',
+            'confirmed' => 'bg-emerald-100 text-emerald-800',
+            'partially_received' => 'bg-teal-100 text-teal-800',
+            'completed' => 'bg-green-100 text-green-800',
+            default => 'bg-gray-100 text-gray-800',
+        };
     }
-    
-    public function getStatusText($status)
+
+    public function getStatusText($status): string
     {
-        switch ($status) {
-            case 'sent': return 'Sent (Awaiting Confirmation)';
-            case 'confirmed': return 'Confirmed (Ready for Delivery)';
-            case 'partially_received': return 'Delivery in Progress';
-            case 'completed': return 'Completed';
-            default: return ucfirst($status);
-        }
+        return match ($status) {
+            'sent' => 'Awaiting confirmation', 'confirmed' => 'Confirmed',
+            'partially_received' => 'Partially received by warehouse',
+            'completed' => 'Completed', default => ucfirst($status),
+        };
     }
 }
 ?>
 
 <div class="p-6 min-h-screen bg-gradient-to-br from-green-50 to-emerald-50">
+    @error('order')<div role="alert" class="mb-4 rounded-lg bg-red-50 p-4 text-red-800">{{ $message }}</div>@enderror
+    <p class="mb-4 text-sm text-emerald-800">Acceptance confirms your agreement to an issued order. Reporting dispatch does not confirm warehouse receipt or change stock.</p>
     @php
         $supplier = session('supplier');
     @endphp
-    
+
     <!-- Header -->
     <div class="mb-8">
         <div class="flex justify-between items-center">
@@ -195,12 +107,12 @@ new #[Layout('components.layouts.supplier')] class extends Component
             <div class="bg-white rounded-xl shadow-lg p-4 border border-emerald-100">
                 <div class="text-center">
                     <div class="text-2xl font-bold text-emerald-700">{{ count($purchaseOrders) }}</div>
-                    <div class="text-sm text-emerald-600">Active Orders</div>
+                    <div class="text-sm text-emerald-600">Orders</div>
                 </div>
             </div>
         </div>
     </div>
-    
+
     @if($message)
         <div class="mb-6 p-4 rounded-lg {{ str_contains($message, 'Error') ? 'bg-red-100 text-red-800 border-l-4 border-red-600' : 'bg-emerald-100 text-emerald-800 border-l-4 border-emerald-600' }}">
             <div class="flex items-center">
@@ -213,7 +125,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
             </div>
         </div>
     @endif
-    
+
     <!-- Purchase Orders Section -->
     <div class="bg-white rounded-2xl shadow-lg overflow-hidden mb-8 border border-emerald-100">
         <div class="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-4">
@@ -221,9 +133,9 @@ new #[Layout('components.layouts.supplier')] class extends Component
                 <i class="fas fa-file-invoice-dollar mr-3"></i>
                 Purchase Orders ({{ count($purchaseOrders) }})
             </h2>
-            <p class="text-emerald-100 text-sm mt-1">Orders awaiting your confirmation or delivery</p>
+            <p class="text-emerald-100 text-sm mt-1">Your issued purchase orders and warehouse receipt status</p>
         </div>
-        
+
         <div class="p-6">
             @if(count($purchaseOrders) > 0)
                 <div class="overflow-x-auto">
@@ -246,7 +158,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                         {{ Carbon::parse($order->order_date)->format('M d, Y') }}
                                     </td>
                                     <td class="p-3 text-emerald-800">
-                                        {{ Carbon::parse($order->expected_delivery_date)->format('M d, Y') }}
+                                        {{ $order->expected_delivery_date ? Carbon::parse($order->expected_delivery_date)->format('M d, Y') : 'Not specified' }}
                                     </td>
                                     <!-- <td class="p-3">
                                         <div class="font-bold text-green-700">₱{{ number_format($order->total_amount, 2) }}</div>
@@ -263,30 +175,33 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                                 <i class="fas fa-eye mr-2"></i>
                                                 View
                                             </button>
-                                            
-                                            @if($order->status === 'draft')
+
+                                            @if($order->status === 'sent')
                                                 <button wire:click="acceptOrder({{ $order->po_id }})"
-                                                        onclick="return confirm('Confirm acceptance of PO #{{ $order->po_number }}?')"
+                                                        wire:confirm="Accept this purchase order?"
                                                         class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
                                                     <i class="fas fa-check-circle mr-2"></i>
                                                     Accept
                                                 </button>
                                             @endif
-                                            
-                                            @if($order->status === 'confirmed')
+
+                                            @if($order->status === 'confirmed' && !$order->supplier_dispatched_at)
                                                 <button wire:click="markAsDelivered({{ $order->po_id }})"
-                                                        onclick="return confirm('Start delivery for PO #{{ $order->po_number }}? This will mark the order as "Delivery in Progress".')"
+                                                        wire:confirm="Report dispatch? Warehouse staff must confirm received quantities separately."
                                                         class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
                                                     <i class="fas fa-truck mr-2"></i>
-                                                    Start Delivery
+                                                    Report dispatch
                                                 </button>
                                             @endif
-                                            
+                                            @if($order->supplier_dispatched_at)
+                                                <span class="text-sm text-emerald-800">Dispatch reported</span>
+                                            @endif
+
                                             @if($order->status === 'partially_received')
                                                 <button class="px-4 py-2 bg-gray-300 text-gray-500 font-medium rounded-lg cursor-not-allowed flex items-center"
                                                         disabled>
                                                     <i class="fas fa-truck-loading mr-2"></i>
-                                                    Delivery in Progress
+                                                    Partially received
                                                 </button>
                                             @endif
                                         </div>
@@ -301,13 +216,13 @@ new #[Layout('components.layouts.supplier')] class extends Component
                     <div class="text-emerald-400 mb-4">
                         <i class="fas fa-file-invoice text-5xl"></i>
                     </div>
-                    <p class="text-emerald-700">No purchase orders found</p>
+                    <p class="text-emerald-700">No issued purchase orders found</p>
                     <p class="text-sm text-emerald-600 mt-1">All orders have been processed or you have no active orders</p>
                 </div>
             @endif
         </div>
     </div>
-    
+
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div class="bg-white rounded-xl shadow-lg p-6 border border-amber-100 hover:shadow-xl transition-shadow duration-300">
@@ -324,7 +239,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                 </div>
             </div>
         </div>
-        
+
         <div class="bg-white rounded-xl shadow-lg p-6 border border-emerald-100 hover:shadow-xl transition-shadow duration-300">
             <div class="flex items-center">
                 <div class="bg-emerald-100 p-3 rounded-lg mr-4">
@@ -334,12 +249,12 @@ new #[Layout('components.layouts.supplier')] class extends Component
                     @php
                         $confirmedCount = collect($purchaseOrders)->where('status', 'confirmed')->count();
                     @endphp
-                    <p class="text-sm text-emerald-700">Ready for Delivery</p>
+                    <p class="text-sm text-emerald-700">Confirmed orders</p>
                     <p class="text-2xl font-bold text-emerald-800">{{ $confirmedCount }}</p>
                 </div>
             </div>
         </div>
-        
+
         <div class="bg-white rounded-xl shadow-lg p-6 border border-teal-100 hover:shadow-xl transition-shadow duration-300">
             <div class="flex items-center">
                 <div class="bg-teal-100 p-3 rounded-lg mr-4">
@@ -349,17 +264,17 @@ new #[Layout('components.layouts.supplier')] class extends Component
                     @php
                         $partiallyCount = collect($purchaseOrders)->where('status', 'partially_received')->count();
                     @endphp
-                    <p class="text-sm text-teal-700">Delivery in Progress</p>
+                    <p class="text-sm text-teal-700">Partially received</p>
                     <p class="text-2xl font-bold text-teal-800">{{ $partiallyCount }}</p>
                 </div>
             </div>
         </div>
     </div>
-    
+
     <!-- Order Details Modal -->
     @if($selectedOrder)
-        <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-emerald-200">
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" x-data x-trap.inert.noscroll="true" @keydown.escape.window="$wire.closeOrderView()">
+            <div role="dialog" aria-modal="true" aria-label="Purchase order details" class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-emerald-200">
                 <!-- Modal Header -->
                 <div class="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-4">
                     <div class="flex justify-between items-center">
@@ -371,13 +286,13 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 PO #{{ $selectedOrder->po_number }} • {{ Carbon::parse($selectedOrder->order_date)->format('M d, Y') }}
                             </p>
                         </div>
-                        <button wire:click="closeOrderView" 
+                        <button wire:click="closeOrderView" aria-label="Close purchase order details"
                                 class="text-white hover:text-emerald-200 transition-colors">
                             <i class="fas fa-times text-2xl"></i>
                         </button>
                     </div>
                 </div>
-                
+
                 <!-- Modal Content -->
                 <div class="p-6 overflow-y-auto max-h-[60vh]">
                     <!-- Order Summary -->
@@ -391,7 +306,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-emerald-600">Expected Delivery:</span>
-                                    <span class="font-medium text-emerald-800">{{ Carbon::parse($selectedOrder->expected_delivery_date)->format('M d, Y') }}</span>
+                                    <span class="font-medium text-emerald-800">{{ $selectedOrder->expected_delivery_date ? Carbon::parse($selectedOrder->expected_delivery_date)->format('M d, Y') : 'Not specified' }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-emerald-600">Status:</span>
@@ -401,7 +316,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div class="bg-green-50 p-4 rounded-lg border border-green-100">
                             <h4 class="font-semibold text-green-800 mb-2">Payment & Terms</h4>
                             <div class="space-y-1 text-sm">
@@ -418,14 +333,14 @@ new #[Layout('components.layouts.supplier')] class extends Component
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Items List -->
                     <div class="mb-6">
                         <h4 class="font-semibold text-emerald-800 mb-3 flex items-center">
                             <i class="fas fa-list mr-2"></i>
                             <span>Order Items ({{ count($orderItems) }})</span>
                         </h4>
-                        
+
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
                                 <thead class="bg-emerald-50">
@@ -466,7 +381,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Modal Footer -->
                 <div class="border-t border-emerald-100 px-6 py-4 bg-emerald-50">
                     <div class="flex justify-between items-center">
@@ -479,30 +394,33 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                     class="px-6 py-3 border border-emerald-300 text-emerald-700 font-medium rounded-lg hover:bg-emerald-50 transition-colors">
                                 Close
                             </button>
-                            
+
                             @if($selectedOrder->status === 'sent')
                                 <button wire:click="acceptOrder({{ $selectedOrder->po_id }})"
-                                        onclick="return confirm('Confirm acceptance of PO #{{ $selectedOrder->po_number }}?')"
+                                        wire:confirm="Accept this purchase order?"
                                         class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
                                     <i class="fas fa-check-circle mr-2"></i>
                                     Accept Order
                                 </button>
                             @endif
-                            
-                            @if($selectedOrder->status === 'confirmed')
+
+                            @if($selectedOrder->status === 'confirmed' && !$selectedOrder->supplier_dispatched_at)
                                 <button wire:click="markAsDelivered({{ $selectedOrder->po_id }})"
-                                        onclick="return confirm('Start delivery for PO #{{ $selectedOrder->po_number }}? This will mark the order as "Delivery in Progress".')"
+                                        wire:confirm="Report dispatch? Warehouse staff must confirm received quantities separately."
                                         class="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex items-center">
                                     <i class="fas fa-truck mr-2"></i>
-                                    Start Delivery
+                                    Report dispatch
                                 </button>
                             @endif
-                            
+                            @if($selectedOrder->supplier_dispatched_at)
+                                <span class="text-sm text-emerald-800">Dispatch reported {{ Carbon::parse($selectedOrder->supplier_dispatched_at)->format('M d, Y H:i') }}</span>
+                            @endif
+
                             @if($selectedOrder->status === 'partially_received')
                                 <button class="px-6 py-3 bg-gray-300 text-gray-500 font-medium rounded-lg cursor-not-allowed"
                                         disabled>
                                     <i class="fas fa-truck-loading mr-2"></i>
-                                    Delivery in Progress
+                                    Partially received
                                 </button>
                             @endif
                         </div>
@@ -511,4 +429,4 @@ new #[Layout('components.layouts.supplier')] class extends Component
             </div>
         </div>
     @endif
-</div> 
+</div>

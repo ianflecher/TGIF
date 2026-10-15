@@ -62,34 +62,10 @@ new #[Layout('components.layouts.app')] class extends Component
             'avg_purchase_value' => $this->calculateAveragePurchaseValue(),
         ];
         
-        // Accounts Receivable
-        $this->accountsReceivable = [
-            'total_amount' => DB::table('sales_orders')->where('payment_status', 'pending')->sum('grand_total') ?? 0,
-            'paid_amount' => DB::table('sales_orders')->where('payment_status', 'paid')->sum('grand_total') ?? 0,
-            'outstanding' => DB::table('sales_orders')->where('payment_status', 'pending')->sum('grand_total') ?? 0,
-            'total_invoices' => DB::table('sales_orders')->count(),
-            'pending_invoices' => DB::table('sales_orders')->where('payment_status', 'pending')->count(),
-            'overdue_invoices' => DB::table('sales_orders')
-                ->where('payment_status', 'pending')
-                ->where('order_date', '<', now()->subDays(30))
-                ->count(),
-        ];
-        
-        // Accounts Payable
-        $this->accountsPayable = [
-            'total_amount' => DB::table('purchase_orders')->where('status', 'confirmed')->sum('total_amount') ?? 0,
-            'paid_amount' => DB::table('purchase_orders')->where('status', 'completed')->sum('total_amount') ?? 0,
-            'outstanding' => DB::table('purchase_orders')
-                ->whereIn('status', ['confirmed', 'partially_received'])
-                ->sum('total_amount') ?? 0,
-            'total_orders' => DB::table('purchase_orders')->count(),
-            'pending_orders' => DB::table('purchase_orders')->whereIn('status', ['draft', 'sent'])->count(),
-            'overdue_orders' => DB::table('purchase_orders')
-                ->where('status', 'confirmed')
-                ->where('expected_delivery_date', '<', now())
-                ->count(),
-        ];
-        
+        // Operational balances remain separate from the posted ledger.
+        $this->accountsReceivable = app(\App\Services\OperationalBalances::class)->sales();
+        $this->accountsPayable = app(\App\Services\OperationalBalances::class)->purchases();
+
         // Recent Journal Entries
         $this->recentJournalEntries = DB::table('journal_entries')
             ->select(
@@ -107,8 +83,9 @@ new #[Layout('components.layouts.app')] class extends Component
             ->select(
                 'chart_of_accounts.account_code',
                 'chart_of_accounts.account_name',
-                DB::raw('SUM(journal_details.credit) as total_revenue')
+                DB::raw('SUM(journal_details.credit - journal_details.debit) as total_revenue')
             )
+            ->join('journal_entries as posted_journal', 'journal_details.journal_id', '=', 'posted_journal.journal_id')->where('posted_journal.status', 'posted')
             ->leftJoin('chart_of_accounts', 'journal_details.account_id', '=', 'chart_of_accounts.account_id')
             ->where('chart_of_accounts.account_type', 'revenue')
             ->groupBy('chart_of_accounts.account_id', 'chart_of_accounts.account_code', 'chart_of_accounts.account_name')
@@ -122,8 +99,9 @@ new #[Layout('components.layouts.app')] class extends Component
             ->select(
                 'chart_of_accounts.account_code',
                 'chart_of_accounts.account_name',
-                DB::raw('SUM(journal_details.debit) as total_expense')
+                DB::raw('SUM(journal_details.debit - journal_details.credit) as total_expense')
             )
+            ->join('journal_entries as posted_journal', 'journal_details.journal_id', '=', 'posted_journal.journal_id')->where('posted_journal.status', 'posted')
             ->leftJoin('chart_of_accounts', 'journal_details.account_id', '=', 'chart_of_accounts.account_id')
             ->where('chart_of_accounts.account_type', 'expense')
             ->groupBy('chart_of_accounts.account_id', 'chart_of_accounts.account_code', 'chart_of_accounts.account_name')
@@ -135,22 +113,12 @@ new #[Layout('components.layouts.app')] class extends Component
     
     private function calculateRevenue($startDate, $endDate)
     {
-        $result = DB::table('sales_orders')
-            ->whereBetween('order_date', [$startDate, $endDate])
-            ->where('status', 'delivered')
-            ->sum('grand_total');
-        
-        return $result ?? 0;
+        return app(\App\Services\LedgerReports::class)->totals(substr((string) $startDate, 0, 10), substr((string) $endDate, 0, 10))['revenue'] / 100;
     }
     
     private function calculateExpenses($startDate, $endDate)
     {
-        $result = DB::table('purchase_orders')
-            ->whereBetween('order_date', [$startDate, $endDate])
-            ->whereIn('status', ['completed', 'partially_received'])
-            ->sum('total_amount');
-        
-        return $result ?? 0;
+        return app(\App\Services\LedgerReports::class)->totals(substr((string) $startDate, 0, 10), substr((string) $endDate, 0, 10))['expense'] / 100;
     }
     
     private function calculateNetIncome($startDate, $endDate)
@@ -167,14 +135,8 @@ new #[Layout('components.layouts.app')] class extends Component
             ->where('account_code', '1000')
             ->first();
         
-        if (!$cashAccount) return 0;
-        
-        $result = DB::table('journal_details')
-            ->where('account_id', $cashAccount->account_id)
-            ->select(DB::raw('SUM(debit - credit) as cash_balance'))
-            ->first();
-        
-        return $result->cash_balance ?? 0;
+        $configured = app(\App\Services\CommerceSettings::class)->get()['cash_account_id'];
+        return app(\App\Services\LedgerReports::class)->accountBalance($configured ?: $cashAccount?->account_id) / 100;
     }
     
     private function calculateAverageOrderValue()
@@ -380,7 +342,7 @@ new #[Layout('components.layouts.app')] class extends Component
         <div class="bg-white rounded-xl shadow-md">
             <div class="px-6 py-4 border-b flex justify-between items-center">
                 <div>
-                    <h2 class="text-xl font-semibold text-gray-800">Accounts Receivable</h2>
+                    <h2 class="text-xl font-semibold text-gray-800">Customer order balances</h2>
                     <p class="text-sm text-gray-600">Customer invoices and collections</p>
                 </div>
                 <a href="{{ route('sales.home') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
@@ -414,7 +376,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <span class="font-medium text-green-600">{{ $this->formatCurrency($accountsReceivable['paid_amount'] ?? 0) }}</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-700">Overdue Invoices:</span>
+                            <span class="text-gray-700">Unpaid orders older than 30 days:</span>
                             <span class="font-medium {{ ($accountsReceivable['overdue_invoices'] ?? 0) > 0 ? 'text-red-600' : 'text-green-600' }}">
                                 {{ $this->formatNumber($accountsReceivable['overdue_invoices'] ?? 0) }}
                             </span>
@@ -447,8 +409,8 @@ new #[Layout('components.layouts.app')] class extends Component
         <div class="bg-white rounded-xl shadow-md">
             <div class="px-6 py-4 border-b flex justify-between items-center">
                 <div>
-                    <h2 class="text-xl font-semibold text-gray-800">Accounts Payable</h2>
-                    <p class="text-sm text-gray-600">Supplier invoices and payments</p>
+                    <h2 class="text-xl font-semibold text-gray-800">Purchase order commitments</h2>
+                    <p class="text-sm text-gray-600">Operational PO values and recorded payments; not invoice-matched ledger payables</p>
                 </div>
                 <a href="{{ route('procurement.home') }}" class="text-green-600 hover:text-green-800 font-medium text-sm flex items-center">
                     View All
@@ -481,7 +443,7 @@ new #[Layout('components.layouts.app')] class extends Component
                             <span class="font-medium text-green-600">{{ $this->formatCurrency($accountsPayable['paid_amount'] ?? 0) }}</span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-gray-700">Overdue Orders:</span>
+                            <span class="text-gray-700">Late expected deliveries:</span>
                             <span class="font-medium {{ ($accountsPayable['overdue_orders'] ?? 0) > 0 ? 'text-red-600' : 'text-green-600' }}">
                                 {{ $this->formatNumber($accountsPayable['overdue_orders'] ?? 0) }}
                             </span>

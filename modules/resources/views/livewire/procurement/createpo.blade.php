@@ -89,7 +89,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
     {
         $this->pendingOrders = DB::table('purchase_orders as po')
             ->join('suppliers as s', 'po.supplier_id', '=', 's.supplier_id')
-            ->join('users as u', 'po.created_by', '=', 'u.user_id')
+            ->leftJoin('users as u', 'po.created_by', '=', 'u.user_id')
             ->whereIn('po.status', ['draft', 'sent', 'confirmed', 'partially_received'])
             ->select(
                 'po.po_id',
@@ -98,6 +98,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
                 'po.expected_delivery_date',
                 'po.total_amount',
                 'po.status',
+                'po.supplier_dispatched_at',
                 's.name as supplier_name',
                 'u.full_name as created_by_name'
             )
@@ -334,52 +335,11 @@ new #[Layout('components.layouts.procurement')] class extends Component
     }
 
     // ---------- Mark PO as Received (Complete) ----------
-    public function markAsReceived($poId): void
+    public function markAsReceived($poId)
     {
-        $po = DB::table('purchase_orders')->where('po_id', $poId)->first();
-        
-        if (!$po) {
-            $this->message = '⚠️ Purchase Order not found.';
-            return;
-        }
-
-        if ($po->status === 'completed') {
-            $this->message = '⚠️ This PO is already completed.';
-            return;
-        }
-
-        // Get all items in this PO
-        $items = DB::table('purchase_order_items as poi')
-            ->where('poi.po_id', $poId)
-            ->get();
-
-        // Update product stock for each item
-        foreach ($items as $item) {
-            // Find the product using inventory_id
-            $product = DB::table('products')
-                ->where('inventory_id', $item->inventory_id)
-                ->first();
-                
-            if ($product) {
-                DB::table('products')
-                    ->where('product_id', $product->product_id)
-                    ->increment('stock_quantity', $item->quantity);
-            }
-        }
-
-        // Update PO status to 'completed'
-        DB::table('purchase_orders')
-            ->where('po_id', $poId)
-            ->update([
-                'status' => 'completed',
-                'updated_at' => now()
-            ]);
-
-        $this->message = "✅ Purchase Order #{$po->po_number} marked as received and stock updated!";
-        $this->loadPendingOrders();
-        $this->loadProducts();
+        app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'inventory', 'write');
+        return redirect()->route('inventory.receiving');
     }
-
     // ---------- View PO Details ----------
     // ---------- View PO Details ----------
 public function viewOrderDetails($poId): void
@@ -505,6 +465,9 @@ public function viewOrderDetails($poId): void
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusClass }}">
                                 {{ ucfirst(str_replace('_', ' ', $order->status)) }}
                             </span>
+                            @if($order->supplier_dispatched_at)
+                                <div class="mt-1 text-xs text-teal-800">Supplier reported dispatch. Confirm warehouse receipt separately.</div>
+                            @endif
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex space-x-2">
@@ -523,8 +486,8 @@ public function viewOrderDetails($poId): void
                                 @if(in_array($order->status, ['sent', 'confirmed', 'partially_received']))
                                 <button wire:click="markAsReceived({{ $order->po_id }})" 
                                         class="text-green-600 hover:text-green-800 p-1"
-                                        title="Mark as Received"
-                                        onclick="return confirm('Mark this PO as received and update stock?')">
+                                        title="Open warehouse receiving"
+                                        >
                                     <i class="fas fa-check-circle"></i>
                                 </button>
                                 @endif

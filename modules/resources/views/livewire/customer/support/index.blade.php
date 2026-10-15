@@ -65,6 +65,8 @@ class extends Component
     
     protected function loadCustomerInfo()
     {
+        abort_unless(Auth::user()?->role === 'customer' && !Auth::user()->trashed(), 403);
+        $this->customer = null;
         $userId = Auth::id();
         $this->userId = $userId; // Store the user_id
         
@@ -183,6 +185,7 @@ class extends Component
     
     public function submitRequest()
     {
+        $this->loadCustomerInfo();
         $this->validate();
         
         if (!$this->customer || !$this->userId) {
@@ -250,6 +253,8 @@ class extends Component
     
     public function selectTicketForUpdate($ticketId)
 {
+    $this->loadCustomerInfo();
+    abort_unless($this->customer, 403);
     $ticket = DB::table('tickets')
         ->select(
             'tickets.*',
@@ -277,6 +282,7 @@ class extends Component
                 DB::raw('CASE WHEN ticket_notes.created_by = ' . $this->userId . ' THEN "customer" ELSE "agent" END as sender')
             )
             ->where('ticket_id', $ticketId)
+            ->where('internal', false)
             ->orderBy('created_at', 'asc')
             ->get();
     }
@@ -287,6 +293,14 @@ class extends Component
     
    public function addMessageToTicket()
 {
+    $this->loadCustomerInfo();
+    abort_unless($this->customer, 403);
+    $this->validate(['newMessage' => 'required|string|min:1|max:2000']);
+    if ($this->selectedTicket) {
+        $this->selectedTicket = DB::table('tickets')->where('ticket_id', $this->selectedTicket->ticket_id)
+            ->where('customer_id', $this->customer->customer_id)->first();
+        abort_unless($this->selectedTicket, 404);
+    }
     if ($this->selectedTicket && $this->newMessage && $this->userId) {
         // Check if ticket is closed
         if (in_array($this->selectedTicket->status, ['closed', 'resolved'])) {

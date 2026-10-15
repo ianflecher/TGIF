@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 new #[Layout('components.layouts.supplier')] class extends Component
 {
-    #[Validate('required|string')]
+    #[Validate('required|email|max:255')]
     public $email = '';
     
     #[Validate('required|string')]
@@ -34,7 +34,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
             return;
         }
         
-        // Since password is always 'supplier123', we can just check it directly
+        // Supplier accounts use individually provisioned password hashes.
         if (!$supplier->password || !Hash::check($this->password, $supplier->password)) {
             $this->addError('password', 'Invalid credentials.');
             return;
@@ -91,7 +91,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 x-ref="email"
                                 required
                                 autofocus
-                                placeholder="deekutchiki123@gmail.com"
+                                placeholder="supplier@example.com"
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
@@ -109,9 +109,6 @@ new #[Layout('components.layouts.supplier')] class extends Component
                             <label for="password" class="block text-sm font-medium text-gray-700">
                                 Password
                             </label>
-                            <span class="text-xs text-green-600 font-medium">
-                                Default: supplier123
-                            </span>
                         </div>
                         <div class="relative">
                             <input 
@@ -119,7 +116,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
                                 wire:model="password" 
                                 id="password"
                                 required
-                                value="supplier123"
+                                autocomplete="current-password"
                                 class="w-full pl-10 pr-10 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
@@ -141,25 +138,6 @@ new #[Layout('components.layouts.supplier')] class extends Component
                             <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
-
-                    <!-- Quick Login Helper -->
-                    <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-xs font-medium text-blue-800">Test Supplier Account</p>
-                                <p class="text-xs text-blue-700 mt-1">Email: deekutchiki123@gmail.com</p>
-                            </div>
-                            <button 
-                                type="button" 
-                                wire:click="$set('email', 'deekutchiki123@gmail.com')"
-                                class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1 rounded-lg transition"
-                            >
-                                <i class="fas fa-bolt mr-1"></i>
-                                Fill
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- Submit Button -->
                     <div>
                         <button 

@@ -225,6 +225,7 @@ new #[Layout('components.layouts.humanresource')] class extends Component
             ->select('ad.*', 'u.full_name')
             ->leftJoin('users as u', 'ad.user_id', '=', 'u.user_id')
             ->where('ad.application_id', $applicationId)
+            ->whereNull('ad.deleted_at')
             ->orderBy('ad.uploaded_at', 'desc')
             ->get();
         
@@ -664,13 +665,7 @@ public function updateApplicationStatus($applicationId, $status)
 
     public function downloadDocument($documentId)
     {
-        $document = DB::table('application_documents')
-            ->where('id', $documentId)
-            ->first();
-
-        if ($document) {
-            session()->flash('info', 'Document download would start here.');
-        }
+        return app(\App\Services\ApplicantDocuments::class)->download((int) $documentId);
     }
 
     public function deleteDepartment($departmentId)

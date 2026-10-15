@@ -4,6 +4,8 @@
     </IfModule>
 
     RewriteEngine On
+    # Applicant documents are served only by the authenticated download route.
+    RewriteRule ^storage/application_documents(?:/|$) - [F,L,NC]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

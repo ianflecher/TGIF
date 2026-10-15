@@ -16,7 +16,7 @@
                     @endforelse
                     @if($bag['count'])<p class="sf-bag-footnote">Items stay available for everyone until your order is placed. We'll check availability again at checkout.</p>@endif
                 </div>
-                @if($bag['count'])<div class="sf-bag-checkout"><div><span>Food subtotal</span><strong>₱{{ number_format($bag['total'] / 100, 2) }}</strong></div><p>No extra fees are added to this bag total. Review your final order at checkout.</p><button class="sf-button sf-full" wire:click="checkout" wire:loading.attr="disabled" @disabled(!$bag['canCheckout'])>{{ auth()->check() ? 'Continue to checkout' : 'Sign in to checkout' }} <span>↗</span></button><button class="sf-continue" wire:click="$set('open', false)">Keep exploring the menu</button></div>@endif
+                @if($bag['count'])<div class="sf-bag-checkout"><div><span>Food subtotal</span><strong>₱{{ number_format($bag['total'] / 100, 2) }}</strong></div><p>This is your food subtotal. Delivery fees, if applicable, are calculated at checkout.</p><button class="sf-button sf-full" wire:click="checkout" wire:loading.attr="disabled" @disabled(!$bag['canCheckout'])>{{ auth()->check() ? 'Continue to checkout' : 'Sign in to checkout' }} <span>↗</span></button><button class="sf-continue" wire:click="$set('open', false)">Keep exploring the menu</button></div>@endif
             </section>
         </div>
     @endif

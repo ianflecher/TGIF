@@ -15,7 +15,7 @@ class EnsurePortalAccess
             $supplierId = data_get($request->session()->get('supplier'), 'supplier_id');
             if (!$supplierId || !DB::table('suppliers')->where('supplier_id', $supplierId)->where('status', 'active')->exists()) {
                 $request->session()->forget('supplier');
-                return redirect()->route('supplier.login');
+                return new \Illuminate\Http\RedirectResponse(route('supplier.login'));
             }
             return $next($request);
         }
@@ -34,11 +34,16 @@ class EnsurePortalAccess
         $role = $portal === 'applicant' ? 'employee' : $portal;
         $allowedRoles = $portal === 'employee' ? ['employee', 'manager'] : [$role];
         abort_unless(in_array($user->role, $allowedRoles, true) && $user->deleted_at === null, 403);
+        if ($portal === 'admin') {
+            $access = app(\App\Services\AccessControl::class);
+            if ($module = $access->module((string) $request->route()?->getName())) $access->authorize($user, $module);
+        }
 
         // Public applicant registration creates an inactive employee record.
         // Only HR-activated employees may enter the staff portal.
         if ($portal === 'employee') {
             abort_unless(DB::table('employees')->where('user_id', $user->getKey())->where('status', 'active')->exists(), 403);
+            if ($request->route()?->getName() === 'employee.warehouse') app(\App\Services\AccessControl::class)->authorize($user, 'inventory');
         }
 
         return $next($request);

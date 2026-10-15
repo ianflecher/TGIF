@@ -69,6 +69,7 @@ new #[Layout('components.layouts.employeeland')] class extends Component
     public function submit()
     {
         $this->validate();
+        $this->calculateDays(); // Never trust a client-supplied day count.
 
         $employeeId = $this->employeeId();
 

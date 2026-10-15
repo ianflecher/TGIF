@@ -92,6 +92,7 @@ new #[Layout('components.layouts.landing')] class extends Component
 
     \Log::info('Attempting authentication', ['email' => $user->email]);
 
+    if (\App\Support\PortalTwoFactor::challenge($authCredentials, $this->remember)) return redirect()->route('two-factor.login');
     if (!Auth::attempt($authCredentials, $this->remember)) {
         \Log::warning('Authentication failed', ['email' => $user->email]);
         throw ValidationException::withMessages([
