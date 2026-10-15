@@ -17,8 +17,8 @@ new #[Layout('components.layouts.humanresource')] class extends Component
         'search' => null,
     ];
     public $stats = [];
-    public $selectedApplication = null;
-    public $selectedEmployee = null;
+    #[\Livewire\Attributes\Locked] public $selectedApplication = null;
+    #[\Livewire\Attributes\Locked] public $selectedEmployee = null;
     public $showApplicationModal = false;
     public $showRoleChangeModal = false;
     public $showInterviewModal = false;
@@ -29,10 +29,10 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     
     // Salary management
     public $showSalaryModal = false;
-    public $selectedEmployeeForSalary = null;
+    #[\Livewire\Attributes\Locked] public $selectedEmployeeForSalary = null;
     public $newSalary = '';
     
-    public $selectedUserForRoleChange = null;
+    #[\Livewire\Attributes\Locked] public $selectedUserForRoleChange = null;
     public $newRole = 'employee';
     public $newDepartment = '';
     public $newDepartmentName = '';
@@ -232,86 +232,12 @@ new #[Layout('components.layouts.humanresource')] class extends Component
         $this->showDocumentsModal = true;
     }
 
-public function updateApplicationStatus($applicationId, $status)
-{
-    $updates = [
-        'status' => $status,
-        'updated_at' => now()
-    ];
-
-    if ($status !== 'reviewed') {
-        $updates['interview_date'] = null;
-        $updates['interview_notes'] = null;
-        $updates['interviewer_id'] = null;
-        $updates['interview_status'] = null;
+    public function updateApplicationStatus($applicationId, $status)
+    {
+        app(\App\Services\IdentityAdministration::class)->application(auth()->user(), (int) $applicationId, (string) $status);
+        $this->showApplicationModal = false; $this->selectedApplication = null; $this->loadData();
+        session()->flash('success', 'Application status updated.');
     }
-
-    DB::table('job_applications')
-        ->where('application_id', $applicationId)
-        ->update($updates);
-
-    if ($status === 'hired') {
-        $application = DB::table('job_applications')
-            ->where('application_id', $applicationId)
-            ->first();
-
-        if ($application) {
-            // Update user role to employee
-            DB::table('users')
-                ->where('user_id', $application->user_id)
-                ->update(['role' => 'employee']);
-
-            // Check if employee record already exists
-            $existingEmployee = DB::table('employees')
-                ->where('user_id', $application->user_id)
-                ->first();
-            
-            if (!$existingEmployee) {
-                // Create employee record for new hire with status 'active'
-                DB::table('employees')->insert([
-                    'user_id' => $application->user_id,
-                    'job_title' => $application->position_applied,
-                    'hire_date' => date('Y-m-d'),
-                    'salary' => 0.00,
-                    'status' => 'active', // Explicitly set status to 'active'
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            } else {
-                // Update existing employee record for re-hire
-                DB::table('employees')
-                    ->where('user_id', $application->user_id)
-                    ->update([
-                        'job_title' => $application->position_applied,
-                        'hire_date' => date('Y-m-d'),
-                        'status' => 'active', // Ensure status is set to 'active'
-                        'updated_at' => now()
-                    ]);
-            }
-            
-            // Also update application notes to reflect hiring
-            $currentNotes = $application->notes ?? '';
-            $newNotes = $currentNotes . "\n\n--- HIRED ---\n";
-            $newNotes .= "Hired as: " . $application->position_applied . "\n";
-            $newNotes .= "Hire date: " . date('Y-m-d') . "\n";
-            $newNotes .= "Employee record " . ($existingEmployee ? 'updated' : 'created');
-            
-            DB::table('job_applications')
-                ->where('application_id', $applicationId)
-                ->update(['notes' => $newNotes]);
-        }
-    }
-
-    if ($this->showApplicationModal) {
-        $this->showApplicationModal = false;
-        $this->selectedApplication = null;
-    }
-    
-    $this->loadData();
-    
-    session()->flash('success', 'Application status updated successfully!');
-}
-
     public function markAsReviewed($applicationId)
     {
         DB::table('job_applications')
@@ -569,7 +495,7 @@ public function updateApplicationStatus($applicationId, $status)
 
     public function openRoleChangeModal($userId)
     {
-        $this->selectedUserForRoleChange = DB::table('users')
+        $this->selectedUserForRoleChange = DB::table('users')->select('user_id', 'full_name', 'role')
             ->where('user_id', $userId)
             ->first();
 
@@ -579,53 +505,11 @@ public function updateApplicationStatus($applicationId, $status)
 
     public function changeUserRole()
     {
-        if (!$this->selectedUserForRoleChange) {
-            return;
-        }
-
-        $userId = $this->selectedUserForRoleChange->user_id;
-        $oldRole = $this->selectedUserForRoleChange->role ?? 'employee';
-        
-        DB::table('users')
-            ->where('user_id', $userId)
-            ->update([
-                'role' => $this->newRole,
-                'updated_at' => now()
-            ]);
-
-        // Only create employee record when changing TO employee role
-        if ($oldRole !== 'employee' && $this->newRole === 'employee') {
-            $employee = DB::table('employees')->where('user_id', $userId)->first();
-            if (!$employee) {
-                DB::table('employees')->insert([
-                    'user_id' => $userId,
-                    'job_title' => 'New Employee',
-                    'hire_date' => date('Y-m-d'),
-                    'salary' => 0.00,
-                    'status' => 'active',
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
-        }
-
-        // Log the change
-        DB::table('audit_logs')->insert([
-            'action' => 'update',
-            'table_name' => 'users',
-            'record_id' => $userId,
-            'old_values' => json_encode(['role' => $oldRole]),
-            'new_values' => json_encode(['role' => $this->newRole]),
-            'user_id' => auth()->id() ?? 1,
-            'created_at' => now(),
-            'updated_at' => now()
-        ]);
-
-        $this->showRoleChangeModal = false;
-        $this->loadData();
-        session()->flash('success', 'User role changed successfully!');
+        if (!$this->selectedUserForRoleChange) return;
+        app(\App\Services\IdentityAdministration::class)->changeRole(auth()->user(), $this->selectedUserForRoleChange->user_id, $this->newRole);
+        $this->showRoleChangeModal = false; $this->loadData();
+        session()->flash('success', 'Role changed. Module access must be granted separately in Access control.');
     }
-
     public function deleteApplication($applicationId)
     {
         if (confirm('Are you sure you want to delete this application?')) {

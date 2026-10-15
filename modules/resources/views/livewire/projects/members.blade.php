@@ -112,7 +112,7 @@ new #[Layout('components.layouts.project')] class extends Component
             $userId = DB::table('users')->insertGetId([
                 'full_name' => $name,
                 'username' => Str::slug($name) . '_' . rand(1000, 9999),
-                'password' => bcrypt('password123'), // Default password, should be changed
+                'password' => bcrypt(\Illuminate\Support\Str::random(64)), // Default password, should be changed
                 'role' => 'employee',
                 'email' => Str::slug($name) . '@company.com',
                 'created_at' => now(),
