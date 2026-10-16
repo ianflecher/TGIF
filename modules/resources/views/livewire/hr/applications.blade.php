@@ -225,7 +225,6 @@ new #[Layout('components.layouts.humanresource')] class extends Component
             ->select('ad.*', 'u.full_name')
             ->leftJoin('users as u', 'ad.user_id', '=', 'u.user_id')
             ->where('ad.application_id', $applicationId)
-            ->whereNull('ad.deleted_at')
             ->orderBy('ad.uploaded_at', 'desc')
             ->get();
         
@@ -550,6 +549,11 @@ new #[Layout('components.layouts.humanresource')] class extends Component
     public function downloadDocument($documentId)
     {
         return app(\App\Services\ApplicantDocuments::class)->download((int) $documentId);
+    }
+    public function restoreDocument($documentId)
+    {
+        app(\App\Services\ApplicantDocuments::class)->restore((int) $documentId);
+        if ($this->selectedApplication) $this->viewDocuments($this->selectedApplication->application_id);
     }
 
     public function deleteDepartment($departmentId)
@@ -1543,10 +1547,14 @@ new #[Layout('components.layouts.humanresource')] class extends Component
                                             Uploaded: {{ date('M d, Y h:i A', strtotime($document->uploaded_at)) }}
                                         </div>
                                         <div class="flex gap-2">
+                                            @if($document->deleted_at)
+                                            <span class="text-xs text-gray-600">Archived</span><button wire:click="restoreDocument({{ $document->id }})" class="px-3 py-1 text-xs bg-green-50 text-green-800 rounded">Restore</button>
+                                            @else
                                             <button wire:click="downloadDocument('{{ $document->id }}')" 
                                                     class="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 flex-1">
                                                 <i class="fas fa-download mr-1"></i>Download
                                             </button>
+                                            @endif
                                         </div>
                                     </div>
                                 @endforeach

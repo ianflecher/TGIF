@@ -1,4 +1,17 @@
 /* Shared workspace styles; retain TGIF green with calmer surfaces. */
+.erp-card { background: #fff; border: 1px solid #e0e8e1; border-radius: 10px; min-width: 0; }
+.erp-card h2 { color: #284a34; font-size: 17px; font-weight: 650; line-height: 1.4; margin: 0 0 12px; }
+.erp-card h3 { color: #284a34; font-size: 14px; font-weight: 650; margin: 18px 0 10px; }
+.erp-card p, .erp-card li { line-height: 1.65; margin: 8px 0; }
+.erp-card label { display: flex; flex-direction: column; gap: 7px; color: #52685a; font-size: 12px; }
+.erp-card form > label { margin: 14px 0; }
+.erp-card .erp-toolbar > label { margin: 0; }
+.erp-card label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+.erp-input, .erp-select { display: block; width: 100%; min-height: 40px; padding: 9px 12px; border: 1px solid #dbe5de; border-radius: 6px; background: white; color: #375440; font-size: 13px; }
+.erp-input[type="date"] { min-width: 160px; }
+.erp-card textarea.erp-input { min-height: 90px; resize: vertical; }
+.erp-card input[type="checkbox"] { accent-color: #227447; width: 17px; height: 17px; }
+.erp-card .erp-table input.erp-input { min-width: 80px; max-width: 130px; }
 [x-cloak] { display: none !important; }
 .erp-app { margin: 0; background: #f5f7f6; color: #253b31; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; }
 .erp-app * { box-sizing: border-box; }

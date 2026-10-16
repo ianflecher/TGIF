@@ -76,6 +76,8 @@ class AuditControlsTest extends TestCase
         $this->actingAs($hr)->get(route('application.documents.download', $document->id))->assertOk();
         DB::table('users')->where('user_id', $hr->getKey())->update(['module_permissions' => json_encode(['finance' => ['read']])]);
         $this->get(route('application.documents.download', $document->id))->assertNotFound();
+        $this->actingAs($this->admin()); app(\App\Services\ApplicantDocuments::class)->restore($document->id);
+        $this->actingAs($owner)->get(route('application.documents.download', $document->id))->assertOk();
         $this->actingAs($owner); Volt::test('applicant.index')->call('deleteDocument', $document->id);
         $this->assertNotNull(DB::table('application_documents')->value('deleted_at')); Storage::disk('applicant_private')->assertExists($document->filepath);
         $this->get(route('application.documents.download', $document->id))->assertNotFound();
@@ -263,5 +265,19 @@ class AuditControlsTest extends TestCase
         $component = Volt::test('employee.support')->call('selectTicket', $ticket);
         DB::table('tickets')->where('ticket_id', $ticket)->update(['assigned_agent' => $otherEmployee]);
         $component->set('newNote', 'Must not reach another agent ticket')->call('addNote')->assertNotFound(); $this->assertDatabaseCount('ticket_notes', 0);
+    }
+
+    public function test_hr_permission_does_not_allow_role_escalation_and_promotions_need_explicit_grants(): void
+    {
+        $root = $this->admin(); $hr = $this->admin(); $target = User::factory()->withoutTwoFactor()->create(['role' => 'employee']);
+        app(AccessControl::class)->configure($root, $hr->getKey(), ['hr' => ['read', 'write', 'approve']]);
+        $this->actingAs($hr);
+        $component = Volt::test('hr.applications')->call('openRoleChangeModal', $target->getKey());
+        $this->assertObjectNotHasProperty('password', $component->get('selectedUserForRoleChange'));
+        $component->set('newRole', 'admin')->call('changeUserRole')->assertForbidden();
+        $this->assertDatabaseHas('users', ['user_id' => $target->getKey(), 'role' => 'employee']);
+        app(\App\Services\IdentityAdministration::class)->changeRole($root, $target->getKey(), 'admin');
+        $this->assertFalse(app(AccessControl::class)->allows($target->fresh(), 'finance'));
+        $this->assertSame('profile.edit', app(AccessControl::class)->home($target->fresh()));
     }
 }

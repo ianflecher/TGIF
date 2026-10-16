@@ -18,7 +18,7 @@ return [
     ],
     'sections' => [
         'ecommerce' => ['Overview' => 'ecommerce.home', 'Orders' => 'ecommerce.orders', 'Products' => 'ecommerce.products', 'Store settings' => 'commerce.settings', 'Cancellations & returns' => 'ecommerce.adjustments'],
-        'inventory' => ['Overview' => 'inventory.home', 'Stock' => 'inventory.stock', 'Tracking' => 'inventory.tracking'],
+        'inventory' => ['Overview' => 'inventory.home', 'Stock' => 'inventory.stock', 'Tracking' => 'inventory.tracking', 'Receiving' => 'inventory.receiving'],
         'procurement' => ['Overview' => 'procurement.home', 'Requisitions' => 'procurement.create', 'Purchase orders' => 'procurement.createpo', 'Status' => 'procurement.status'],
         'supplychain' => ['Overview' => 'supplychain.home', 'Logistics' => 'supplychain.logistic', 'Tracking' => 'supplychain.tracking'],
         'finance' => ['Overview' => 'finance.home', 'Accounts' => 'finance.accounts', 'Invoices' => 'finance.invoice', 'Receipts & refunds' => 'finance.payments', 'Approvals' => 'finance.approval', 'Ledger controls' => 'finance.controls'],

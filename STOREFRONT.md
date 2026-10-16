@@ -59,3 +59,7 @@ Checkout saves form drafts, shows field/offline/loading feedback, rejects change
 Existing configured databases must run `php artisan migrate` from `modules` before using these pages. Development migrated only the isolated temporary preview database. No real payment credentials, service areas, fees, hours or pickup location were supplied or invented.
 
 Verification: **73 PHPUnit tests passed, 223 assertions**, including fulfillment validation, checkout price changes/retries, customer ownership, reorder rollback, payment replay/overpayment, refund bounds and draft journal balancing. Customer order tracking was visually checked using a synthetic local-preview order.
+
+## Cancellations, returns and finance review
+
+`/ecommerce/adjustments` now records cancellation/partial-return quantities, explicit restock amounts and original-cost credit drafts. Original order totals are preserved, and credits/refund obligations appear on customer order details and the cash desk. Refunds remain separate records of cash actually returned. New sale journals are drafts; `/finance/controls` provides periods, independent approval/posting and reversal. Existing configured databases must apply the two audit-control migrations. See AUDIT_CONTROLS.md for operating rules and limits.

@@ -105,3 +105,9 @@ Configurable fulfillment settings, customer tracking/reorder, checkout draft/rev
 The latest audit repairs department page crashes, support-note privacy, validated customer-profile writes, journal line validation, custom-login two-factor enforcement and persistent Livewire portal checks. Final verification: **80 tests / 257 assertions**, plus passing build and Blade compilation. Read [END_TO_END_AUDIT.md](END_TO_END_AUDIT.md) for exact evidence, limits and remaining production blockers; passing page tests does not certify the complete ERP.
 
 Supplier follow-up: purchase-order ownership, issued-only acceptance, independent dispatch reporting, account disabling and admin-only supplier management are covered by new tests. Latest full suite: **89 tests / 332 assertions**. Run migrations for the new supplier dispatch/audit fields before using an existing configured database. See END_TO_END_AUDIT.md for scope and remaining procure-to-pay work.
+
+## Audit controls
+
+The four selected main-audit priorities now have implemented controls. See [AUDIT_CONTROLS.md](AUDIT_CONTROLS.md) for private document migration, module permissions, cancellation/return accounting, financial periods, independent approval/posting, reversal and reporting behavior. Existing configured databases must migrate before using the controls. No real tax policy, periods, gateway credentials or staff grants were invented.
+
+Audit-control validation: **105 tests / 418 assertions**; build, Blade, PHP syntax and whitespace checks passed. SQLite forward/rollback/reapply checks passed for the new control migrations.

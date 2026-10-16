@@ -34,4 +34,14 @@ class ApplicantDocuments
             DB::table('audit_logs')->insert(['action' => 'archive', 'table_name' => 'application_documents', 'record_id' => $document->id, 'user_id' => auth()->id(), 'created_at' => now(), 'updated_at' => now()]);
         });
     }
+    public function restore(int $id): void
+    {
+        app(AccessControl::class)->authorize(auth()->user(), 'hr', 'write');
+        DB::transaction(function () use ($id) {
+            $document = DB::table('application_documents')->where('id', $id)->lockForUpdate()->first(); abort_unless($document, 404);
+            abort_unless(in_array($document->disk, ['public', 'applicant_private'], true) && str_starts_with($document->filepath, 'application_documents/') && !str_contains($document->filepath, '..') && Storage::disk($document->disk)->exists($document->filepath), 422, 'The archived file must be recovered before restoring its record.');
+            DB::table('application_documents')->where('id', $id)->update(['deleted_at' => null, 'updated_at' => now()]);
+            DB::table('audit_logs')->insert(['action' => 'restore', 'table_name' => 'application_documents', 'record_id' => $id, 'user_id' => auth()->id(), 'created_at' => now(), 'updated_at' => now()]);
+        });
+    }
 }

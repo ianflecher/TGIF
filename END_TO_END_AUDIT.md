@@ -59,3 +59,7 @@ Existing configured databases require `php artisan migrate` from modules for `20
 Limits: this verifies the implemented supplier portal, not a complete procure-to-pay system. Supplier invitations/recovery, invoices and document exchange, quantity-based advance shipment notices, warehouse partial receipt/rejection, three-way invoice matching and payment reconciliation still need their own implementation/acceptance checks. Existing legacy management inventory/transfer mutations were not comprehensively redesigned. Live supplier accounts, real purchase-order acceptance, external notifications and business data were not used during testing.
 
 Supplier follow-up verification: **89 tests passed, 332 assertions** across the complete suite, including nine supplier workflow tests. Blade compilation, changed PHP syntax checks and whitespace checks passed. Frontend assets did not change in this follow-up.
+
+## Main audit priorities 1–4 implemented, 16 October 2026
+
+Private applicant storage/downloads and resumable migration, configurable module/action permissions, transactional cancellation/partial returns and independent financial-period/journal controls are implemented. The old findings under items 1–4 above are historical; [AUDIT_CONTROLS.md](AUDIT_CONTROLS.md) describes their current behavior, installation, evidence and limits. Business tax/revenue-recognition policy and production qualification remain outstanding.
