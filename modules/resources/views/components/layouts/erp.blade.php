@@ -20,6 +20,9 @@
     $current ??= $navigation->first(fn ($item) => $section && $access->module($item['route']) === $section);
     $sectionLinks = array_filter(config('erp.sections.'.$section, []), fn ($route) => !$access->module($route) || $access->allows(auth()->user(), $access->module($route)));
 @endphp
+@if($departmentMode)
+    @include('components.layouts.department')
+@else
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
@@ -67,3 +70,4 @@
     @fluxScripts
 </body>
 </html>
+@endif

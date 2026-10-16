@@ -35,7 +35,7 @@ class DepartmentPortalsTest extends TestCase
         $user = $this->staff('projects', ['read', 'write']);
         Livewire::test(DepartmentLogin::class, ['department' => 'projects'])->set('username', $user->email)->set('password', 'password')->call('login')->assertHasNoErrors()->assertRedirect(route('projects.home'));
         $this->assertAuthenticatedAs($user);
-        $this->get('/projects')->assertOk()->assertSee('Projects portal')->assertDontSee('href="'.route('finance.home').'"', false);
+        $this->get('/projects')->assertOk()->assertSee('Projects portal')->assertSee('data-portal="projects"', false)->assertDontSee('class="erp-sidebar"', false)->assertDontSee('href="'.route('finance.home').'"', false);
         $this->get('/admin')->assertForbidden(); $this->get('/finance')->assertForbidden(); $this->get('/hr')->assertForbidden(); $this->get('/admin/access')->assertForbidden();
         $this->get('/admin/projects')->assertRedirect(route('projects.home'));
         $this->get('/portals')->assertOk()->assertSee('href="'.route('projects.home').'"', false)->assertDontSee('href="'.route('finance.home').'"', false)->assertDontSee('href="'.route('applicant.login').'"', false);

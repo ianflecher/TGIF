@@ -47,3 +47,11 @@ This is server-enforced logical separation inside one application/database. A de
 A browser check used a synthetic **employee-role Projects-only** identity in the isolated SQLite preview. It signed in at `/projects/login`, landed directly at `/projects`, saw only Projects/personal navigation and received 403 at `/finance`. Real staff grants and business databases were not modified. An observed project dashboard defect was also corrected: tasks/progress now join through the actual project-phase relationship rather than matching obsolete phase IDs.
 
 Validation: **131 PHPUnit tests passed, 687 assertions** across the full suite. New tests cover every department home/login, staff scope, cross-module denial, direct Livewire calls, revoked permissions/employment, applicant/employee separation, super-admin-only access configuration, two-factor revocation, Finance mapping isolation, supplier session switching and correct project-phase linking. The Vite build, sequential Blade compilation, PHP syntax checks and whitespace checks passed. No new database migration is required. The synthetic preview browser session is currently signed in as a Projects-only employee.
+
+## Local demo accounts and department interface
+
+Department identities now use a separate horizontal portal layout with their department's sections, account links and no administrator sidebar. The full administrator retains the central workspace.
+
+Run `php artisan portals:provision-demo` only in local/testing to create missing demo managers and restrict the known demo department accounts. It preserves passwords and existing employee details, rejects conflicting emails/deleted or inactive identities, and leaves the main administrator unchanged. Each account gets exactly its own module. This command was applied to the isolated preview SQLite database.
+
+Usernames: `project`, `finance`, `inventory`, `procurement`, `hr`, `sales`, `ecommerce`, `supplychain`, `customerservice`, `businessintelligence` (Reports), `commerce` (Store settings). New demo accounts use `password`; existing passwords remain unchanged. These are local demonstration credentials only.
