@@ -140,11 +140,19 @@ class SupplierPayables
         $total = $this->cents(DB::table('supplier_invoices')->where('id', $id)->value('total'));
         $paid = $this->cents(DB::table('supplier_disbursements')->where('invoice_id', $id)->where('status', 'recorded')->sum('amount'));
         $reserved = $this->cents(DB::table('supplier_disbursements')->where('invoice_id', $id)->whereIn('status', ['pending', 'approved'])->sum('amount'));
-        return ['paid' => $paid / 100, 'outstanding' => ($total - $paid) / 100, 'reserved' => $reserved / 100, 'available' => ($total - $paid - $reserved) / 100];
+        $credits = $this->cents(DB::table('supplier_credits')->where('invoice_id', $id)->where('status', 'approved')->sum('amount'));
+        $corrections = DB::table('supplier_payment_corrections')->where('invoice_id', $id)->where('status', 'approved');
+        $voided = $this->cents((clone $corrections)->where('kind', 'void')->sum('amount'));
+        $refunded = $this->cents((clone $corrections)->where('kind', 'refund')->sum('amount'));
+        $netPaid = $paid - $voided - $refunded; $position = $total - $credits - $netPaid;
+        return ['gross_paid' => $paid / 100, 'paid' => $netPaid / 100, 'credits' => $credits / 100, 'voided' => $voided / 100, 'refunded' => $refunded / 100,
+            'position' => $position / 100, 'refund_due' => max(0, -$position) / 100, 'outstanding' => max(0, $position) / 100,
+            'reserved' => $reserved / 100, 'available' => max(0, $position - $reserved) / 100];
     }
     private function postedInvoice(object $invoice): void
     {
         if ($invoice->status !== 'approved' || DB::table('journal_entries')->where('journal_id', $invoice->journal_id)->value('status') !== 'posted' || DB::table('journal_entries')->where('reversal_of', $invoice->journal_id)->exists()) $this->error('Post the approved supplier invoice journal before payment. Reversed invoices require reconciliation.');
+        app(SupplierCorrections::class)->readyForSettlement($invoice->id);
     }
     public function requestPayment(User $actor, int $id, $amount, string $key): int
     {
@@ -203,7 +211,7 @@ class SupplierPayables
             if ($payment->status !== 'approved') $this->error('Approve the payment before recording money paid.');
             $this->postedInvoice($invoice);
             if ($date < $invoice->invoice_date) $this->error('Payment date cannot precede the invoice date.');
-            if (DB::table('supplier_disbursements')->where('reference', $reference)->exists()) $this->error('This payment reference has already been recorded.');
+            if (DB::table('supplier_disbursements')->where('reference', $reference)->exists() || DB::table('supplier_payment_corrections')->where('reference', $reference)->exists()) $this->error('This payment reference has already been recorded.');
             $this->account($cashAccount, ['asset']); $this->account($invoice->payable_account_id, ['liability']);
             $journal = app(AccountingLedger::class)->draft($actor->getKey(), $date, 'Supplier payment '.$reference, [
                 ['account_id' => $invoice->payable_account_id, 'debit' => $payment->amount, 'credit' => 0], ['account_id' => $cashAccount, 'debit' => 0, 'credit' => $payment->amount],
