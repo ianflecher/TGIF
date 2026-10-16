@@ -24,7 +24,7 @@ new #[Layout('components.layouts.ecommerce')] class extends Component
 
     private function authorizeOrders(): void
     {
-        abort_unless(auth()->user()?->role === 'admin' && !auth()->user()->trashed(), 403);
+        app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'ecommerce');
     }
 
     public function updated($property): void

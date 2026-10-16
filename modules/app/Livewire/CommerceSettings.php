@@ -28,7 +28,7 @@ class CommerceSettings extends Component
     public string $receivableAccount = '';
     public string $refundAccount = '';
 
-    private function authorizeSettings(): void { abort_unless(auth()->user()?->role === 'admin' && !auth()->user()->trashed(), 403); }
+    private function authorizeSettings(): void { app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'commerce'); }
 
     public function mount(): void
     {
@@ -38,9 +38,11 @@ class CommerceSettings extends Component
         $this->minimum = number_format($settings['minimum_cents'] / 100, 2, '.', '');
         foreach ($settings['zones'] as $zone) $this->zones[] = ['code' => $zone['code'], 'label' => $zone['label'], 'fee' => number_format($zone['fee_cents'] / 100, 2, '.', ''), 'minimum' => number_format($zone['minimum_cents'] / 100, 2, '.', ''), 'postal' => implode(', ', $zone['postal_codes'])];
         foreach (range(1, 7) as $day) $this->hours[$day] = ['open' => $settings['hours'][$day]['open'] ?? '', 'close' => $settings['hours'][$day]['close'] ?? ''];
-        $this->cashAccount = (string) ($settings['cash_account_id'] ?? '');
-        $this->receivableAccount = (string) ($settings['receivable_account_id'] ?? '');
-        $this->refundAccount = (string) ($settings['refund_account_id'] ?? '');
+        if (app(\App\Services\AccessControl::class)->allows(auth()->user(), 'finance', 'write')) {
+            $this->cashAccount = (string) ($settings['cash_account_id'] ?? '');
+            $this->receivableAccount = (string) ($settings['receivable_account_id'] ?? '');
+            $this->refundAccount = (string) ($settings['refund_account_id'] ?? '');
+        }
     }
 
     public function addZone(): void { $this->authorizeSettings(); $this->zones[] = ['code' => (string) Str::uuid(), 'label' => '', 'fee' => '0', 'minimum' => '0', 'postal' => '']; }
@@ -49,6 +51,9 @@ class CommerceSettings extends Component
     public function save(): void
     {
         $this->authorizeSettings();
+        app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'commerce', 'write');
+        $finance = app(\App\Services\AccessControl::class)->allows(auth()->user(), 'finance', 'write');
+        abort_if(!$finance && ($this->cashAccount !== '' || $this->receivableAccount !== '' || $this->refundAccount !== ''), 403);
         $this->validate([
             'rulesEnabled' => 'boolean', 'deliveryEnabled' => 'boolean', 'pickupEnabled' => 'boolean', 'schedulingEnabled' => 'boolean',
             'timezone' => 'required|timezone', 'pickupAddress' => ($this->pickupEnabled ? 'required|min:10|' : 'nullable|').'string|max:500',
@@ -82,6 +87,7 @@ class CommerceSettings extends Component
             'zones' => $zones, 'hours' => $hours, 'cash_account_id' => $this->cashAccount !== '' ? (int) $this->cashAccount : null,
             'receivable_account_id' => $this->receivableAccount !== '' ? (int) $this->receivableAccount : null, 'refund_account_id' => $this->refundAccount !== '' ? (int) $this->refundAccount : null,
         ];
+        if (!$finance) foreach (['cash_account_id', 'receivable_account_id', 'refund_account_id'] as $key) $settings[$key] = $before[$key];
         DB::transaction(function () use ($settings, $before) {
             app(SettingsStore::class)->save($settings);
             DB::table('audit_logs')->insert(['action' => 'update', 'table_name' => 'commerce_settings', 'record_id' => 0, 'user_id' => auth()->id(), 'old_values' => json_encode($before), 'new_values' => json_encode($settings), 'created_at' => now(), 'updated_at' => now()]);
@@ -92,6 +98,7 @@ class CommerceSettings extends Component
     public function render()
     {
         $this->authorizeSettings();
-        return view('livewire.commerce-settings', ['accounts' => DB::table('chart_of_accounts')->where('is_active', true)->orderBy('account_code')->get()]);
+        $finance = app(\App\Services\AccessControl::class)->allows(auth()->user(), 'finance', 'write');
+        return view('livewire.commerce-settings', ['canConfigureLedger' => $finance, 'accounts' => $finance ? DB::table('chart_of_accounts')->where('is_active', true)->orderBy('account_code')->get() : collect()]);
     }
 }

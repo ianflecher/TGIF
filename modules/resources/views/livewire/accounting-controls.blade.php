@@ -1,5 +1,5 @@
 <div>
-    <header class="erp-page-heading"><div><p class="erp-eyebrow">FINANCE CONTROLS</p><h1>Review, approve and post</h1><p>Drafts do not affect the ledger. A different administrator must approve each journal. Posted entries are corrected with reversal journals.</p></div></header>
+    <header class="erp-page-heading"><div><p class="erp-eyebrow">FINANCE CONTROLS</p><h1>Review, approve and post</h1><p>Drafts do not affect the ledger. A different Finance approver must approve each journal. Posted entries are corrected with reversal journals.</p></div></header>
     @if(session('message'))<div role="status" class="erp-notice">{{ session('message') }}</div>@endif
     @if($errors->any())<div role="alert" class="erp-notice">{{ $errors->first() }}</div>@endif
     <div class="erp-card" style="padding:20px;margin-bottom:20px"><h2>Posted ledger · all dates</h2><p>Debits ₱{{ number_format($totals['debit']/100,2) }} · Credits ₱{{ number_format($totals['credit']/100,2) }} · {{ $totals['balanced'] ? 'Balanced' : 'Needs reconciliation' }}</p><p>Revenue ₱{{ number_format($totals['revenue']/100,2) }} · Expenses ₱{{ number_format($totals['expense']/100,2) }} · Net income ₱{{ number_format($totals['income']/100,2) }}</p><p>Balances include only posted journals; approvals record Finance's accounting decision. No tax policy is assumed.</p></div>

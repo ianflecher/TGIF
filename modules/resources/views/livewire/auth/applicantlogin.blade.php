@@ -42,6 +42,11 @@ new #[Layout('components.layouts.employee')] class extends Component
         'password' => ['required', 'string'],
     ]);
     
+    $candidate = \App\Models\User::where('email', $this->email)->where('role', 'employee')->first();
+    if (!app(\App\Services\AccessControl::class)->isApplicant($candidate)) {
+        $this->addError('email', 'This portal is for applicants. Active employees must use the employee or assigned department portal.');
+        return;
+    }
     if (\App\Support\PortalTwoFactor::challenge(['email' => $this->email, 'password' => $this->password], (bool) $this->remember)) return redirect()->route('two-factor.login');
     if (Auth::attempt(['email' => $this->email, 'password' => $this->password], $this->remember)) {
         $user = Auth::user();
@@ -53,7 +58,7 @@ new #[Layout('components.layouts.employee')] class extends Component
             return;
         }
                
-        session()->regenerate();
+        session()->regenerate(); session()->forget('supplier');
         return redirect()->route('applicant.index');
     }
     

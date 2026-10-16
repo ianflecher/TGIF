@@ -25,9 +25,9 @@ new #[Layout('components.layouts.app')] class extends Component
             ->select(
                 'projects.*',
                 'users.full_name as project_manager_name',
-                DB::raw('(SELECT COUNT(*) FROM tasks WHERE tasks.phase_id = projects.phase_id) as total_tasks'),
-                DB::raw('(SELECT COUNT(*) FROM tasks WHERE tasks.phase_id = projects.phase_id AND tasks.status = "completed") as completed_tasks'),
-                DB::raw('(SELECT AVG(progress_percentage) FROM tasks WHERE tasks.phase_id = projects.phase_id) as avg_progress')
+                DB::raw('(SELECT COUNT(*) FROM tasks JOIN project_phases pp ON pp.phase_id = tasks.phase_id WHERE pp.project_id = projects.project_id) as total_tasks'),
+                DB::raw("(SELECT COUNT(*) FROM tasks JOIN project_phases pp ON pp.phase_id = tasks.phase_id WHERE pp.project_id = projects.project_id AND tasks.status = 'completed') as completed_tasks"),
+                DB::raw('(SELECT AVG(tasks.progress_percentage) FROM tasks JOIN project_phases pp ON pp.phase_id = tasks.phase_id WHERE pp.project_id = projects.project_id) as avg_progress')
             )
             ->leftJoin('employees', 'projects.project_manager_id', '=', 'employees.employee_id')
             ->leftJoin('users', 'employees.user_id', '=', 'users.user_id')
@@ -42,7 +42,8 @@ new #[Layout('components.layouts.app')] class extends Component
                 'projects.project_name',
                 'users.full_name as assigned_to_name'
             )
-            ->leftJoin('projects', 'tasks.phase_id', '=', 'projects.phase_id')
+            ->leftJoin('project_phases', 'tasks.phase_id', '=', 'project_phases.phase_id')
+            ->leftJoin('projects', 'project_phases.project_id', '=', 'projects.project_id')
             ->leftJoin('employees', 'tasks.assigned_to', '=', 'employees.employee_id')
             ->leftJoin('users', 'employees.user_id', '=', 'users.user_id')
             ->orderBy('tasks.created_at', 'desc')
@@ -340,7 +341,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <!-- Progress -->
                                     <div class="flex items-center text-sm">
                                         <span class="mr-2">Progress:</span>
-                                        <span class="font-medium">{{ $task->progress ?? 0 }}%</span>
+                                        <span class="font-medium">{{ $task->progress_percentage ?? 0 }}%</span>
                                     </div>
                                     
                                     <!-- Status -->

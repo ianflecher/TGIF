@@ -22,8 +22,9 @@ class EnsurePortalAccess
 
         $user = $request->user();
         if (!$user) {
+            $module = app(\App\Services\AccessControl::class)->module((string) $request->route()?->getName());
             $login = match ($portal) {
-                'admin' => 'admin.login',
+                'admin' => $module && config('portals.'.$module) ? 'portals.'.$module.'.login' : 'admin.login',
                 'employee' => 'employee.login',
                 'applicant' => 'applicant.login',
                 default => 'login',
@@ -31,13 +32,20 @@ class EnsurePortalAccess
             return redirect()->guest(route($login));
         }
 
+        // Re-read the identity so role revocation takes effect on Livewire requests too.
+        $user = \App\Models\User::find($user->getKey());
+        abort_unless($user && !$user->trashed(), 403);
+        $access = app(\App\Services\AccessControl::class);
+        if ($portal === 'admin') {
+            $module = $access->module((string) $request->route()?->getName());
+            if ($module) $access->authorize($user, $module);
+            else abort_unless($access->isSuperAdmin($user), 403);
+            return $next($request);
+        }
         $role = $portal === 'applicant' ? 'employee' : $portal;
         $allowedRoles = $portal === 'employee' ? ['employee', 'manager'] : [$role];
         abort_unless(in_array($user->role, $allowedRoles, true) && $user->deleted_at === null, 403);
-        if ($portal === 'admin') {
-            $access = app(\App\Services\AccessControl::class);
-            if ($module = $access->module((string) $request->route()?->getName())) $access->authorize($user, $module);
-        }
+        if ($portal === 'applicant') abort_unless($access->isApplicant($user), 403);
 
         // Public applicant registration creates an inactive employee record.
         // Only HR-activated employees may enter the staff portal.

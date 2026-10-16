@@ -19,10 +19,10 @@ class PortalTwoFactor
 
         $destination = match ($user->role) {
             'admin' => app(\App\Services\AccessControl::class)->home($user),
-            'employee', 'manager' => DB::table('employees')->where('user_id', $user->getKey())->where('status', 'active')->exists() ? 'employee.dashboard' : 'applicant.index',
+            'employee', 'manager' => app(\App\Services\AccessControl::class)->home($user),
             default => 'customer.dashboard',
         };
-        session()->regenerate();
+        Auth::logout(); session()->regenerate(); session()->forget('supplier');
         session(['login.id' => $user->getKey(), 'login.remember' => $remember]);
         if (!session()->has('url.intended')) session(['url.intended' => route($destination)]);
         return true;

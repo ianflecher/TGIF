@@ -102,9 +102,9 @@ new #[Layout('components.layouts.landing')] class extends Component
 
     \Log::info('Login successful', ['user_id' => $user->user_id]);
     
-    session()->regenerate();
+    session()->regenerate(); session()->forget('supplier');
     
-    return redirect()->route('employee.dashboard');
+    return redirect()->route(app(\App\Services\AccessControl::class)->home(Auth::user()));
 }
 }
 ?>

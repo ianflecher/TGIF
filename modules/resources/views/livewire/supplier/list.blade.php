@@ -77,7 +77,7 @@ new #[Layout('components.layouts.procurement')] class extends Component
 
     public function boot(): void
     {
-        abort_unless(auth()->user()?->role === 'admin' && !auth()->user()->trashed(), 403);
+        app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'procurement');
     }
 
     // ---------------- LOAD FUNCTIONS ----------------

@@ -85,7 +85,7 @@ class AccountingLedger
                 $changes = ['submitted_at' => now()];
             } elseif ($action === 'approve') {
                 if (!$entry->submitted_at) $this->error('Submit this journal before approval.');
-                if ((int) $entry->created_by === (int) $actor->getKey()) $this->error('A different administrator must approve this journal.');
+                if ((int) $entry->created_by === (int) $actor->getKey()) $this->error('A different Finance approver must approve this journal.');
                 if ($entry->approved_at) return;
                 $changes = ['approved_by' => $actor->getKey(), 'approved_at' => now()];
             } else {

@@ -88,7 +88,7 @@ class SupplierWorkflowTest extends TestCase
     public function test_supplier_cannot_access_internal_supplier_management(): void
     {
         $this->signIn($this->supplier());
-        $this->get('/supplier/list')->assertRedirect(route('admin.login'));
+        $this->get('/supplier/list')->assertRedirect(route('portals.procurement.login'));
         Volt::test('supplier.list')->assertForbidden();
         $this->actingAs(User::factory()->withoutTwoFactor()->create(['role' => 'admin']));
         $this->get('/supplier/list')->assertOk();

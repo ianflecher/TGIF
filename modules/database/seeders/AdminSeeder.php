@@ -161,6 +161,7 @@ class AdminSeeder extends Seeder
                 'email' => $admin['email'],
                 'password' => $admin['password'],
                 'role' => $admin['role'],
+                'module_permissions' => $admin['username'] === 'admin' ? null : json_encode([match ($admin['username']) { 'project' => 'projects', 'businessintelligence' => 'reports', default => $admin['username'] } => ['read', 'write', 'approve']]),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

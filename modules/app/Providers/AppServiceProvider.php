@@ -26,8 +26,12 @@ class AppServiceProvider extends ServiceProvider
             \Livewire\on($event, function ($component) use ($event) {
                 $access = app(\App\Services\AccessControl::class);
                 if ($module = $access->module($component->getName())) $access->authorize(auth()->user(), $module);
+                if ($component->getName() === 'applicant.index') {
+                    $applicant = \App\Models\User::find(auth()->id());
+                    abort_unless($access->isApplicant($applicant), 403);
+                }
                 if (str_starts_with($component->getName(), 'employee.')) {
-                    $user = auth()->user();
+                    $user = \App\Models\User::find(auth()->id());
                     if ($component->getName() === 'employee.warehouse' && $user?->role === 'admin') return;
                     abort_unless($user && in_array($user->role, ['employee', 'manager'], true) && !$user->trashed(), 403);
                     $id = \Illuminate\Support\Facades\DB::table('employees')->where('user_id', $user->getKey())->where('status', 'active')->value('employee_id');

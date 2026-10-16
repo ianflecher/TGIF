@@ -16,9 +16,8 @@ class PortalAccessTest extends TestCase
 
     public function test_guests_cannot_open_internal_modules(): void
     {
-        foreach (['/admin', '/admin/hr', '/finance/accounts', '/inventory/stock', '/projects/projects', '/gantt-tasks/1'] as $url) {
-            $this->get($url)->assertRedirect(route('admin.login'));
-        }
+        $this->get('/admin')->assertRedirect(route('admin.login'));
+        foreach (['/admin/hr' => 'hr', '/finance/accounts' => 'finance', '/inventory/stock' => 'inventory', '/projects/projects' => 'projects', '/gantt-tasks/1' => 'projects'] as $url => $department) $this->get($url)->assertRedirect(route('portals.'.$department.'.login'));
         $this->get('/employee/dashboard')->assertRedirect(route('employee.login'));
         $this->get('/supplier')->assertRedirect(route('supplier.login'));
     }

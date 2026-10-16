@@ -69,3 +69,5 @@ Private applicant storage/downloads and resumable migration, configurable module
 Supplier invoices, receipt/PO matching and partial/full payment controls now extend the supplier cycle. See [SUPPLIER_PAYABLES.md](SUPPLIER_PAYABLES.md). Earlier missing-invoice/matching/payment findings are historical; credit notes, statutory tax handling and target-MySQL qualification remain outside this implementation.
 
 Supplier credit notes, physical returns and independent payment corrections/refunds are now implemented with source-bound journals and reconciliation. Final suite: **119 tests / 533 assertions**; new SQLite migration rollback/reapply, Vite and Blade checks passed. Earlier missing-credit-note findings are historical. See SUPPLIER_PAYABLES.md for limits.
+
+Department portals follow-up: guest department requests now use their department login; explicit staff grants are enforced on routes, Livewire and services. Applicant/active employee entry is separated, Finance mappings are hidden from store-only staff, and supplier/web login identities are cleared when switching. See DEPARTMENT_PORTALS.md for deployment and verification details.

@@ -28,9 +28,9 @@ class AccessManagement extends Component
             $abilities = array_keys(array_filter($this->matrix[$module] ?? [], fn ($enabled) => $enabled === true));
             if ($abilities) $permissions[$module] = array_values(array_unique(array_merge(['read'], $abilities)));
         }
-        if ($this->selectedRole !== 'admin') $permissions = array_intersect_key($permissions, ['inventory' => true]);
+        $permissions = array_intersect_key($permissions, config('portals'));
         app(AccessControl::class)->configure(auth()->user(), $this->userId, $this->selectedRole === 'admin' && $this->fullAccess ? null : $permissions);
         session()->flash('message', 'Access updated. New requests use these permissions immediately.');
     }
-    public function render() { $this->guard(); return view('livewire.access-management', ['users' => DB::table('users')->whereIn('role', ['admin', 'employee', 'manager'])->whereNull('deleted_at')->select('user_id', 'full_name')->get(), 'modules' => AccessControl::MODULES]); }
+    public function render() { $this->guard(); return view('livewire.access-management', ['users' => DB::table('users')->whereIn('role', ['admin', 'employee', 'manager'])->whereNull('deleted_at')->select('user_id', 'full_name')->get(), 'modules' => array_keys(config('portals'))]); }
 }

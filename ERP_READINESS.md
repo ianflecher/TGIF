@@ -117,3 +117,7 @@ Audit-control validation: **105 tests / 418 assertions**; build, Blade, PHP synt
 Supplier invoice submission, exact three-way matching, independently approved partial payments and linked draft journals are implemented. See [SUPPLIER_PAYABLES.md](SUPPLIER_PAYABLES.md) for operating steps, installation and limits. Production MySQL and business accounting policy qualification remain outstanding.
 
 Supplier corrections now include agreed credit notes, stock-backed returns, full erroneous-payment voids, supplier cash refunds and per-invoice payable/cash/stock reconciliation. Validation: **119 tests / 533 assertions**. See SUPPLIER_PAYABLES.md for operating steps and remaining production limits.
+
+## Department portals
+
+Independent department logins and canonical workspaces now support explicitly assigned active employees/managers without admin roles. The global dashboard/access editor remain full-admin-only; applicants, employees, customers and suppliers retain separate personal portals. Existing full administrators remain unchanged and should be reviewed before rollout. See DEPARTMENT_PORTALS.md for addresses, assignment steps and security boundaries.

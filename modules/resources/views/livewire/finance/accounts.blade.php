@@ -344,7 +344,7 @@ new #[Layout('components.layouts.finance')] class extends Component
     
     public function saveJournalEntry()
     {
-        abort_unless(Auth::user()?->role === 'admin' && !Auth::user()->trashed(), 403);
+        app(\App\Services\AccessControl::class)->authorize(Auth::user(), 'finance', 'write');
         $this->validate([
             'entryDate' => 'required|date',
             'journalDescription' => 'required|min:10|max:500',

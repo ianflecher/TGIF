@@ -9,12 +9,31 @@ class AccessControl
 {
     public const MODULES = ['dashboard', 'ecommerce', 'inventory', 'procurement', 'supplychain', 'customerservice', 'sales', 'hr', 'projects', 'finance', 'reports', 'commerce', 'access'];
 
+    public function isSuperAdmin(?User $actor): bool
+    {
+        return $actor && DB::table('users')->where('user_id', $actor->getKey())->whereNull('deleted_at')->where('role', 'admin')->whereNull('module_permissions')->exists();
+    }
+
+    public function isActiveEmployee(?User $actor): bool
+    {
+        return $actor && DB::table('users')->where('user_id', $actor->getKey())->whereNull('deleted_at')->whereIn('role', ['employee', 'manager'])->exists()
+            && DB::table('employees')->where('user_id', $actor->getKey())->where('status', 'active')->exists();
+    }
+
+    public function isApplicant(?User $actor): bool
+    {
+        if (!$actor || !DB::table('users')->where('user_id', $actor->getKey())->where('role', 'employee')->whereNull('deleted_at')->exists()) return false;
+        $employment = DB::table('employees')->where('user_id', $actor->getKey())->first();
+        return (!$employment || $employment->status === 'inactive') && !DB::table('job_applications')->where('user_id', $actor->getKey())->where('status', 'hired')->exists();
+    }
+
     public function allows(?User $actor, string $module, string $ability = 'read'): bool
     {
         if (!$actor) return false;
         $user = DB::table('users')->where('user_id', $actor->getKey())->whereNull('deleted_at')->first();
         if (!$user || !in_array($user->role, ['admin', 'employee', 'manager'], true)) return false;
-        if ($user->role !== 'admin' && ($module !== 'inventory' || $ability === 'approve' || !DB::table('employees')->where('user_id', $user->user_id)->where('status', 'active')->exists())) return false;
+        if (in_array($module, ['dashboard', 'access'], true)) return $this->isSuperAdmin($actor);
+        if ($user->role !== 'admin' && (!$this->isActiveEmployee($actor) || !array_key_exists($module, config('portals')))) return false;
         if ($user->module_permissions === null) return $user->role === 'admin'; // Existing full administrators.
         $permissions = json_decode($user->module_permissions, true, 512, JSON_THROW_ON_ERROR);
         return in_array($ability, $permissions[$module] ?? [], true);
@@ -27,11 +46,12 @@ class AccessControl
 
     public function home(User $user): string
     {
-        if ($user->role === 'admin') {
+        if ($this->isSuperAdmin($user)) return 'admin.dashboard';
+        if ($user->role === 'admin' || $this->isActiveEmployee($user)) {
             foreach (config('erp.navigation') as $item) if (($module = $this->module($item['route'])) && $this->allows($user, $module)) return $item['route'];
-            return 'profile.edit';
+            if ($user->role === 'admin') return 'profile.edit';
         }
-        if (in_array($user->role, ['employee', 'manager'], true)) return DB::table('employees')->where('user_id', $user->getKey())->where('status', 'active')->exists() ? 'employee.dashboard' : 'applicant.index';
+        if (in_array($user->role, ['employee', 'manager'], true)) return $this->isActiveEmployee($user) ? 'employee.dashboard' : ($this->isApplicant($user) ? 'applicant.index' : 'profile.edit');
         return 'customer.dashboard';
     }
 
@@ -58,6 +78,9 @@ class AccessControl
         DB::transaction(function () use ($actor, $id, $permissions) {
             $target = DB::table('users')->where('user_id', $id)->whereIn('role', ['admin', 'employee', 'manager'])->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($target, 404);
+            if ($target->role !== 'admin') {
+                abort_if($permissions === null || array_intersect(array_keys($permissions), ['dashboard', 'access']), 422, 'Staff may receive department grants only, never full administrator access.');
+            }
             DB::table('users')->where('user_id', $id)->update(['module_permissions' => $permissions === null ? null : json_encode($permissions), 'updated_at' => now()]);
             DB::table('audit_logs')->insert(['action' => 'permissions', 'table_name' => 'users', 'record_id' => $id, 'user_id' => $actor->getKey(), 'old_values' => json_encode(['permissions' => $target->module_permissions]), 'new_values' => json_encode(['permissions' => $permissions]), 'created_at' => now(), 'updated_at' => now()]);
         });

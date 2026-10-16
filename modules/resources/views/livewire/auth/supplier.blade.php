@@ -41,7 +41,7 @@ new #[Layout('components.layouts.supplier')] class extends Component
         }
         
         // Store supplier in session
-        session()->regenerate();
+        \Illuminate\Support\Facades\Auth::logout(); session()->regenerate(); session()->forget(['url.intended', 'login.id', 'login.remember']);
         unset($supplier->password);
         session(['supplier' => $supplier]);
         

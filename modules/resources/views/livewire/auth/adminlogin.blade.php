@@ -59,7 +59,7 @@ new #[Layout('components.layouts.employee')] class extends Component
     }
 
     // Check if user has admin role
-    if ($user->role !== 'admin') {
+    if (!app(\App\Services\AccessControl::class)->isSuperAdmin(\App\Models\User::find($user->user_id))) {
         \Log::info('User role is not admin:', ['role' => $user->role]);
         throw ValidationException::withMessages([
             'username' => __('Access denied. Administrator credentials required.'),
@@ -77,14 +77,14 @@ new #[Layout('components.layouts.employee')] class extends Component
     // Get the authenticated user
     $user = Auth::user();
     
-    if ($user->role !== 'admin') {
+    if (!app(\App\Services\AccessControl::class)->isSuperAdmin(\App\Models\User::find($user->user_id))) {
         Auth::logout();
         throw ValidationException::withMessages([
             'username' => __('Insufficient permissions. Administrator access required.'),
         ]);
     }
 
-    session()->regenerate();
+    session()->regenerate(); session()->forget('supplier');
 
     // Redirect based on username
     return $this->redirectBasedOnUsername($user->username);
@@ -103,8 +103,8 @@ new #[Layout('components.layouts.employee')] class extends Component
             <div class="mx-auto h-20 w-20 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mb-4 overflow-hidden border-2 border-emerald-200 shadow-lg">
                 <i class="fas fa-crown text-3xl text-white"></i>
             </div>
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">ERP System Portal</h1>
-            <p class="text-gray-600">Module-Based Administrator Access</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Super admin portal</h1>
+            <p class="text-gray-600">Administration and access management</p>
         </div>
 
         <!-- Login Card -->
@@ -126,7 +126,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                                 x-ref="username"
                                 required
                                 autofocus
-                                placeholder="admin, inventory, sales, etc."
+                                placeholder="Your super administrator account"
                                 class="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
                             >
                             <div class="absolute left-3 top-3 text-gray-400">
@@ -180,7 +180,7 @@ new #[Layout('components.layouts.employee')] class extends Component
                         >
                             <span wire:loading.remove wire:target="login">
                                 <i class="fas fa-sign-in-alt"></i>
-                                Access Module
+                                Sign in as super admin
                             </span>
                             <span wire:loading wire:target="login">
                                 <i class="fas fa-spinner fa-spin"></i>
@@ -196,38 +196,13 @@ new #[Layout('components.layouts.employee')] class extends Component
                 <div class="flex items-center justify-center">
                     <i class="fas fa-server text-green-600 mr-2"></i>
                     <p class="text-xs text-center text-green-800 font-medium">
-                        TGIF ERP System - Module Authentication
+                        TGIF ERP · Super administrator access
                     </p>
                 </div>
             </div>
         </div>
 
-        <!-- Default Credentials -->
-        @if(app()->environment('local', 'testing'))
-        <div class="mt-8 text-center">
-            <details class="inline-block">
-                <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
-                    <i class="fas fa-key mr-1"></i>
-                    Available Logins (Password: password)
-                </summary>
-                <div class="mt-2 p-3 bg-gray-50 rounded-lg text-left">
-                    <div class="grid grid-cols-2 gap-2">
-                        <div class="text-xs"><strong>admin</strong> → Super Admin</div>
-                        <div class="text-xs"><strong>inventory</strong> → Inventory</div>
-                        <div class="text-xs"><strong>sales</strong> → Sales</div>
-                        <div class="text-xs"><strong>hr</strong> → HR</div>
-                        <div class="text-xs"><strong>finance</strong> → Finance</div>
-                        <div class="text-xs"><strong>project</strong> → Projects</div>
-                        <div class="text-xs"><strong>procurement</strong> → Procurement</div>
-                        <div class="text-xs"><strong>ecommerce</strong> → E-commerce</div>
-                        <div class="text-xs"><strong>customerservice</strong> → Customer Service</div>
-                        <div class="text-xs"><strong>supplychain</strong> → Supply Chain</div>
-                        <div class="text-xs"><strong>businessintelligence</strong> → Reports</div>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-2 italic">All passwords: "password"</p>
-                </div>
-            </details>
-        </div>
-        @endif
+        <p class="mt-8 text-center"><a class="text-sm text-green-700 underline" href="{{ route('portals.index') }}">Looking for your department? Open department portals →</a></p>
+        @if(app()->environment('local', 'testing'))<p class="mt-4 text-center text-xs text-gray-500">Local demo super admin: admin / password</p>@endif
     </div>
 </div>

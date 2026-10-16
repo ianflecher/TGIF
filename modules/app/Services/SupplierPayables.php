@@ -98,7 +98,7 @@ class SupplierPayables
             $invoice = $this->invoiceLock($id);
             if ($invoice->status === 'approved') return;
             if ($invoice->status !== 'submitted') $this->error('Only submitted invoices may be approved.');
-            if ((int) $invoice->created_by === (int) $actor->getKey()) $this->error('A different administrator must approve the invoice.');
+            if ((int) $invoice->created_by === (int) $actor->getKey()) $this->error('A different Finance approver must approve the invoice.');
             if (!in_array(DB::table('purchase_orders')->where('po_id', $invoice->po_id)->value('status'), ['confirmed', 'partially_received', 'completed'], true)) $this->error('The purchase order is no longer eligible.');
             $match = $this->matching($id); if (!$match['matched']) $this->error(implode('; ', $match['problems']));
             $this->account($debitAccount, ['asset', 'expense']); $this->account($payableAccount, ['liability']);
@@ -180,7 +180,7 @@ class SupplierPayables
             $payment = DB::table('supplier_disbursements')->where('id', $id)->lockForUpdate()->first();
             if ($payment->status === 'approved') return;
             if ($payment->status !== 'pending') $this->error('Only pending payments can be approved.');
-            if ((int) $payment->requested_by === (int) $actor->getKey()) $this->error('A different administrator must approve payment.');
+            if ((int) $payment->requested_by === (int) $actor->getKey()) $this->error('A different Finance approver must approve payment.');
             $this->postedInvoice($invoice);
             DB::table('supplier_disbursements')->where('id', $id)->update(['status' => 'approved', 'approved_by' => $actor->getKey(), 'approved_at' => now(), 'updated_at' => now()]);
             $this->audit($actor->getKey(), 'supplier_payment_approved', $id, 'supplier_disbursements');
@@ -221,5 +221,3 @@ class SupplierPayables
         });
     }
 }
-
-

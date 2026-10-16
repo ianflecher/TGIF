@@ -111,7 +111,7 @@ new #[Layout('components.layouts.landing')] class extends Component
 
         logger()->info('Auth::attempt successful', ['user_id' => Auth::id()]);
 
-        session()->regenerate();
+        session()->regenerate(); session()->forget('supplier');
         
 
         // Get authenticated user

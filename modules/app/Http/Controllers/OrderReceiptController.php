@@ -9,7 +9,8 @@ class OrderReceiptController extends Controller
 {
     public function __invoke(int $order, int $payment)
     {
-        if (auth()->user()?->role === 'admin' && !auth()->user()->trashed()) {
+        if (request()->routeIs('admin.orders.receipt')) {
+            app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'finance');
             $record = DB::table('sales_orders')->where('order_id', $order)->first();
             abort_if(!$record, 404);
         } else {

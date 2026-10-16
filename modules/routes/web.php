@@ -13,6 +13,16 @@ use App\Livewire\StorefrontCartPage;
 // ====================
 Route::get('/application-documents/{document}', \App\Http\Controllers\ApplicantDocumentController::class)->whereNumber('document')->middleware('auth')->name('application.documents.download');
 
+Route::view('/portals', 'portals')->name('portals.index');
+foreach (config('portals') as $department => $portal) {
+    Route::get('/'.$portal['path'].'/login', \App\Livewire\DepartmentLogin::class)->defaults('department', $department)->name('portals.'.$department.'.login');
+}
+Route::get('/project', fn () => redirect()->route('projects.home'));
+foreach (['projects' => 'projects', 'finance' => 'finance', 'inventory' => 'inventory', 'procurement' => 'procurement', 'hr' => 'hr', 'sales' => 'sales', 'ecommerce' => 'ecommerce', 'supplychain' => 'supplychain', 'customerservice' => 'customerservice', 'reporting' => 'reports', 'storefront-settings' => 'commerce'] as $old => $department) {
+    Route::get('/admin/'.$old, fn () => redirect()->route(config('portals.'.$department.'.home')))->middleware('portal:admin')->name($department.'.legacy-home');
+}
+Route::post('/department/logout', \App\Livewire\Actions\LogoutDepartment::class)->name('department.logout');
+
 // Landing Page
 Route::get('/welcome', fn () => redirect()->route('landing'))->name('home');
 Route::get('/', Storefront::class)->name('landing');
@@ -63,7 +73,7 @@ Route::get('/supplier/invoices', \App\Livewire\SupplierInvoicePortal::class)->mi
 Route::get('/finance/controls', \App\Livewire\AccountingControls::class)->middleware('portal:admin')->name('finance.controls');
 Route::get('/admin/access', \App\Livewire\AccessManagement::class)->middleware('portal:admin')->name('access.management');
 Route::get('/ecommerce/adjustments', \App\Livewire\OrderAdjustmentDesk::class)->middleware('portal:admin')->name('ecommerce.adjustments');
-Route::get('/admin/storefront-settings', \App\Livewire\CommerceSettings::class)->middleware('portal:admin')->name('commerce.settings');
+Route::get('/commerce', \App\Livewire\CommerceSettings::class)->middleware('portal:admin')->name('commerce.settings');
 
 // Customer Cart & Checkout
 Route::get('/cart', StorefrontCartPage::class)->middleware('portal:customer')->name('customer.cart.index');
@@ -103,40 +113,40 @@ Route::get('/admin/reports', fn () => redirect()->route('reports.home'))->middle
 // Admin Settings
 Route::get('/admin/settings', fn () => redirect()->route('commerce.settings'))->middleware('portal:admin')->name('admin.settings.index');
 
-Volt::route('/admin/projects', 'projects.home')->middleware('portal:admin')->name('projects.home');
+Volt::route('/projects', 'projects.home')->middleware('portal:admin')->name('projects.home');
 
-Volt::route('/admin/sales', 'sales.home')->middleware('portal:admin')->name('sales.home');
+Volt::route('/sales', 'sales.home')->middleware('portal:admin')->name('sales.home');
 Volt::route('/sales/ticket', 'sales.ticket')->middleware('portal:admin')->name('sales.ticket');
 
-Volt::route('/admin/inventory', 'inventory.home')->middleware('portal:admin')->name('inventory.home');
+Volt::route('/inventory', 'inventory.home')->middleware('portal:admin')->name('inventory.home');
 Volt::route('/inventory/tracking', 'inventory.tracking')->middleware('portal:admin')->name('inventory.tracking');
 Volt::route('/inventory/stock', 'inventory.stock')->middleware('portal:admin')->name('inventory.stock');
 Volt::route('/inventory/receiving', 'employee.warehouse')->middleware('portal:admin')->name('inventory.receiving');
 
-Volt::route('/admin/customerservice', 'customerservice.home')->middleware('portal:admin')->name('customerservice.home');
+Volt::route('/customerservice', 'customerservice.home')->middleware('portal:admin')->name('customerservice.home');
 
-Volt::route('/admin/hr', 'hr.home')->middleware('portal:admin')->name('hr.home');
+Volt::route('/hr', 'hr.home')->middleware('portal:admin')->name('hr.home');
 Volt::route('/hr/applications', 'hr.applications')->middleware('portal:admin')->name('hr.applications');
 Volt::route('/hr/attendance', 'hr.attendance')->middleware('portal:admin')->name('hr.attendance');
 Volt::route('/hr/leave', 'hr.leave')->middleware('portal:admin')->name('hr.leave');
 Volt::route('/hr/payroll', 'hr.payroll')->middleware('portal:admin')->name('hr.payroll');
 
 
-Volt::route('/admin/procurement', 'procurement.home')->middleware('portal:admin')->name('procurement.home');
+Volt::route('/procurement', 'procurement.home')->middleware('portal:admin')->name('procurement.home');
 
 
-Volt::route('/admin/supplychain', 'supplychain.home')->middleware('portal:admin')->name('supplychain.home');
+Volt::route('/supplychain', 'supplychain.home')->middleware('portal:admin')->name('supplychain.home');
 Volt::route('/supplychain/logistic', 'supplychain.logistic')->middleware('portal:admin')->name('supplychain.logistic');
 Volt::route('/supplychain/tracking', 'supplychain.tracking')->middleware('portal:admin')->name('supplychain.tracking');
 
-Volt::route('/admin/finance', 'finance.home')->middleware('portal:admin')->name('finance.home');
+Volt::route('/finance', 'finance.home')->middleware('portal:admin')->name('finance.home');
 Volt::route('/finance/accounts', 'finance.accounts')->middleware('portal:admin')->name('finance.accounts');
 Volt::route('/finance/invoice', 'finance.invoice')->middleware('portal:admin')->name('finance.invoice');
 Volt::route('/finance/approval', 'finance.approval')->middleware('portal:admin')->name('finance.approval');
 
-Volt::route('/admin/ecommerce', 'ecommerce.home')->middleware('portal:admin')->name('ecommerce.home');
+Volt::route('/ecommerce', 'ecommerce.home')->middleware('portal:admin')->name('ecommerce.home');
 
-Volt::route('/admin/reporting', 'reports.home')->middleware('portal:admin')->name('reports.home');
+Volt::route('/reports', 'reports.home')->middleware('portal:admin')->name('reports.home');
 Volt::route('/reports/summary', 'reports.summary')->middleware('portal:admin')->name('reports.summary');
 
 Volt::route('/employee/dashboard', 'employee.index')->middleware('portal:employee')->name('employee.dashboard');

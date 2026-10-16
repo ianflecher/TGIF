@@ -20,7 +20,7 @@ class OrderPaymentDesk extends Component
     public string $amount = '';
     public string $note = '';
 
-    private function authorizeDesk(): void { abort_unless(auth()->user()?->role === 'admin' && !auth()->user()->trashed(), 403); }
+    private function authorizeDesk(): void { app(\App\Services\AccessControl::class)->authorize(auth()->user(), 'finance'); }
     public function mount(): void { $this->authorizeDesk(); if (request()->integer('order') > 0) $this->selectOrder(request()->integer('order')); }
     public function selectOrder(int $order): void
     {
