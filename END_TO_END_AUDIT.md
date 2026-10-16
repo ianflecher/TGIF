@@ -63,3 +63,7 @@ Supplier follow-up verification: **89 tests passed, 332 assertions** across the 
 ## Main audit priorities 1–4 implemented, 16 October 2026
 
 Private applicant storage/downloads and resumable migration, configurable module/action permissions, transactional cancellation/partial returns and independent financial-period/journal controls are implemented. The old findings under items 1–4 above are historical; [AUDIT_CONTROLS.md](AUDIT_CONTROLS.md) describes their current behavior, installation, evidence and limits. Business tax/revenue-recognition policy and production qualification remain outstanding.
+
+## Supplier payables follow-up, 16 October 2026
+
+Supplier invoices, receipt/PO matching and partial/full payment controls now extend the supplier cycle. See [SUPPLIER_PAYABLES.md](SUPPLIER_PAYABLES.md). Earlier missing-invoice/matching/payment findings are historical; credit notes, statutory tax handling and target-MySQL qualification remain outside this implementation.

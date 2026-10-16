@@ -578,7 +578,7 @@
         </button>
 
         <!-- Navigation -->
-        <nav class="supplier-nav">
+        <nav class="supplier-nav"><a href="{{ route('supplier.invoices') }}" class="nav-link">Invoices &amp; payments</a>
             <a href="{{ route('supplier.dashboard') }}" class="nav-link">
                 <i class="fas fa-tachometer-alt"></i>Dashboard
             </a>
@@ -602,7 +602,7 @@
     </div>
 
     <!-- Mobile Navigation -->
-    <nav class="mobile-nav" id="mobileMenu">
+    <nav class="mobile-nav" id="mobileMenu"><a href="{{ route('supplier.invoices') }}" class="nav-link">Invoices &amp; payments</a>
         <a href="{{ route('supplier.dashboard') }}" class="nav-link">
             <i class="fas fa-tachometer-alt"></i>Dashboard
         </a>

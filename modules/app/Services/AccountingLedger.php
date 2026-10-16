@@ -89,6 +89,7 @@ class AccountingLedger
                 if ($entry->approved_at) return;
                 $changes = ['approved_by' => $actor->getKey(), 'approved_at' => now()];
             } else {
+                if (in_array($entry->reference_type, ['supplier_invoice', 'supplier_payment'], true)) app(SupplierPayables::class)->validateJournal($entry);
                 if ($entry->reference_type === 'order_adjustment') {
                     $orderId = DB::table('order_adjustments')->where('id', $entry->reference_id)->value('order_id');
                     $originalStatus = DB::table('journal_entries')->where('reference_type', 'sales_order')->where('reference_id', $orderId)->value('status');
@@ -113,6 +114,7 @@ class AccountingLedger
             abort_unless($entry, 404);
             if ($existing = DB::table('journal_entries')->where('reversal_of', $id)->first()) return $existing->journal_id;
             if ($entry->status !== 'posted') $this->error('Only posted journals can be reversed.');
+            if (in_array($entry->reference_type, ['supplier_invoice', 'supplier_payment'], true)) $this->error('Supplier source journals require a supplier credit/payment correction workflow. Reconcile with Finance before reversing.');
             if ($entry->reference_type === 'sales_order' && DB::table('order_adjustments')->where('order_id', $entry->reference_id)->exists()) $this->error('This sale already has operational adjustments. Reconcile those credit journals instead of reversing the sale twice.');
             $lines = DB::table('journal_details')->where('journal_id', $id)->get()->map(fn ($line) => ['account_id' => $line->account_id, 'debit' => $line->credit, 'credit' => $line->debit])->all();
             return $this->draft($actor->getKey(), $date, 'Reversal of '.$entry->journal_number.': '.$reason, $lines, 'journal_reversal', $id, $id);

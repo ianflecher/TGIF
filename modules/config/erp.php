@@ -21,7 +21,7 @@ return [
         'inventory' => ['Overview' => 'inventory.home', 'Stock' => 'inventory.stock', 'Tracking' => 'inventory.tracking', 'Receiving' => 'inventory.receiving'],
         'procurement' => ['Overview' => 'procurement.home', 'Requisitions' => 'procurement.create', 'Purchase orders' => 'procurement.createpo', 'Status' => 'procurement.status'],
         'supplychain' => ['Overview' => 'supplychain.home', 'Logistics' => 'supplychain.logistic', 'Tracking' => 'supplychain.tracking'],
-        'finance' => ['Overview' => 'finance.home', 'Accounts' => 'finance.accounts', 'Invoices' => 'finance.invoice', 'Receipts & refunds' => 'finance.payments', 'Approvals' => 'finance.approval', 'Ledger controls' => 'finance.controls'],
+        'finance' => ['Overview' => 'finance.home', 'Accounts' => 'finance.accounts', 'Invoices' => 'finance.invoice', 'Receipts & refunds' => 'finance.payments', 'Approvals' => 'finance.approval', 'Ledger controls' => 'finance.controls', 'Supplier payables' => 'finance.supplier-payables'],
         'hr' => ['Overview' => 'hr.home', 'Applications' => 'hr.applications', 'Attendance' => 'hr.attendance', 'Leave' => 'hr.leave', 'Payroll' => 'hr.payroll'],
         'projects' => ['Overview' => 'projects.home', 'Projects' => 'projects.projects', 'Budgets' => 'projects.budget', 'Resources' => 'projects.resources'],
         'reports' => ['Overview' => 'reports.home', 'Summary' => 'reports.summary'],

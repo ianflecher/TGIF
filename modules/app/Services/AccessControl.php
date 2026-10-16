@@ -37,7 +37,7 @@ class AccessControl
 
     public function module(string $name): ?string
     {
-        $name = ['order-payment-desk' => 'finance.payments', 'commerce-settings' => 'commerce.settings', 'accounting-controls' => 'finance.controls', 'order-adjustment-desk' => 'ecommerce.adjustments', 'access-management' => 'access.management'][$name] ?? $name;
+        $name = ['supplier-invoice-desk' => 'finance.supplier-payables', 'order-payment-desk' => 'finance.payments', 'commerce-settings' => 'commerce.settings', 'accounting-controls' => 'finance.controls', 'order-adjustment-desk' => 'ecommerce.adjustments', 'access-management' => 'access.management'][$name] ?? $name;
         if ($name === 'supplier.list') return 'procurement';
         if ($name === 'employee.warehouse') return 'inventory';
         if (str_starts_with($name, 'admin.orders.receipt')) return 'finance';

@@ -58,6 +58,8 @@ Route::get('/orders/{order}', \App\Livewire\CustomerOrder::class)->middleware('p
 Route::get('/orders/{order}/receipts/{payment}', \App\Http\Controllers\OrderReceiptController::class)->middleware('portal:customer')->name('customer.orders.receipt');
 Route::get('/admin/orders/{order}/receipts/{payment}', \App\Http\Controllers\OrderReceiptController::class)->middleware('portal:admin')->name('admin.orders.receipt');
 Route::get('/finance/payments', \App\Livewire\OrderPaymentDesk::class)->middleware('portal:admin')->name('finance.payments');
+Route::get('/finance/supplier-payables', \App\Livewire\SupplierInvoiceDesk::class)->middleware('portal:admin')->name('finance.supplier-payables');
+Route::get('/supplier/invoices', \App\Livewire\SupplierInvoicePortal::class)->middleware('portal:supplier')->name('supplier.invoices');
 Route::get('/finance/controls', \App\Livewire\AccountingControls::class)->middleware('portal:admin')->name('finance.controls');
 Route::get('/admin/access', \App\Livewire\AccessManagement::class)->middleware('portal:admin')->name('access.management');
 Route::get('/ecommerce/adjustments', \App\Livewire\OrderAdjustmentDesk::class)->middleware('portal:admin')->name('ecommerce.adjustments');

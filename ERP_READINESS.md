@@ -111,3 +111,7 @@ Supplier follow-up: purchase-order ownership, issued-only acceptance, independen
 The four selected main-audit priorities now have implemented controls. See [AUDIT_CONTROLS.md](AUDIT_CONTROLS.md) for private document migration, module permissions, cancellation/return accounting, financial periods, independent approval/posting, reversal and reporting behavior. Existing configured databases must migrate before using the controls. No real tax policy, periods, gateway credentials or staff grants were invented.
 
 Audit-control validation: **105 tests / 418 assertions**; build, Blade, PHP syntax and whitespace checks passed. SQLite forward/rollback/reapply checks passed for the new control migrations.
+
+## Supplier purchasing cycle
+
+Supplier invoice submission, exact three-way matching, independently approved partial payments and linked draft journals are implemented. See [SUPPLIER_PAYABLES.md](SUPPLIER_PAYABLES.md) for operating steps, installation and limits. Production MySQL and business accounting policy qualification remain outstanding.

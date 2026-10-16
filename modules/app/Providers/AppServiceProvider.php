@@ -42,7 +42,7 @@ class AppServiceProvider extends ServiceProvider
         \Livewire\on('call', function ($component, $method) {
             $access = app(\App\Services\AccessControl::class);
             if (!$module = $access->module($component->getName())) return;
-            $readActions = ['$refresh', 'viewOrder', 'selectJournal', 'selectOrder', 'downloadDocument', 'viewDocuments', 'closeOrderView', 'clearFilters', 'setPage', 'nextPage', 'previousPage', 'gotoPage', 'viewOrderDetails', 'showJournalEntryDetails', 'closeModal', 'generateFinancialStatement', 'generateTrialBalance', 'downloadCSV', 'downloadPDF'];
+            $readActions = ['$refresh', 'viewOrder', 'selectInvoice', 'selectJournal', 'selectOrder', 'downloadDocument', 'viewDocuments', 'closeOrderView', 'clearFilters', 'setPage', 'nextPage', 'previousPage', 'gotoPage', 'viewOrderDetails', 'showJournalEntryDetails', 'closeModal', 'generateFinancialStatement', 'generateTrialBalance', 'downloadCSV', 'downloadPDF'];
             $ability = in_array($method, $readActions, true) ? 'read' : (preg_match('/^(approve|post|reject|reverse|closePeriod)/i', $method) ? 'approve' : 'write');
             $access->authorize(auth()->user(), $module, $ability);
         });
